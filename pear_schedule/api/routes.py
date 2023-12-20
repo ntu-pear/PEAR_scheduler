@@ -13,11 +13,12 @@ def generate_schedule():
     # Set up patient schedule structure
     patientSchedule = {} # patient id: [[],[],[],[],[]]
 
-    patientDF = PatientsOnlyView.execute_query().values.tolist()
-    patientIDs = [x[0] for x in patientDF]
+    patientDF = PatientsOnlyView.execute_query()
 
-    for id in patientIDs:
+    for id in patientDF["PatientID"]:
         patientSchedule[id] = [["" for _ in range(HOURS)] for _ in range(DAYS)]
+
+
 
     
     # Schedule compulsory activities
