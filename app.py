@@ -14,5 +14,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# https://khalidabuhakmeh.com/how-to-add-a-view-to-an-entity-framework-core-dbcontext
