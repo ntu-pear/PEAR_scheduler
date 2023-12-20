@@ -2,10 +2,7 @@
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE CONFIGS ~~~~~~~~~~~~~~~~~~~~~~~
-from dataclasses import dataclass
-
-
-DB_CONN_STR = "mssql+pymssql://localhost:1433/fypcom_pearCore"
+DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE TABLES/VIEWS ~~~~~~~~~~~~~~~~~~~~~~~
