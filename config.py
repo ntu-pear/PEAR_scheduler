@@ -1,4 +1,4 @@
-from sqlalchemy.engine import URL
+from utils import DBTABLES
 
 # ideally all configs should be in an artifactory but PEAR doesnt have one as of yet
 
@@ -20,8 +20,7 @@ DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+
 # )
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE TABLES/VIEWS ~~~~~~~~~~~~~~~~~~~~~~~
-from utils import DBTABLES
-db_tables = DBTABLES(
+DB_TABLES = DBTABLES(
     DB_SCHEMA = "",
     ACTIVITY_TABLE = "Activity",
     ACTIVITY_AVAILABILITY_TABLE = "ActivityAvailability",
