@@ -5,11 +5,12 @@ from typing import Any, Mapping
 from flask import Flask
 
 from pear_schedule.db import DB
-from pear_schedule.api.routes import blueprint as sched_bp
+
 
 logger = logging.getLogger(__name__)
 
 def init_app(config: Mapping[str, Any]):
+    from pear_schedule.api.routes import blueprint as sched_bp
     logger.info("Initialising app")
 
     app = Flask(__name__)  # TODO: might want to change to FASTAPI/starlette for ASGI and free swagger
@@ -18,6 +19,8 @@ def init_app(config: Mapping[str, Any]):
     app.register_blueprint(sched_bp, url_prefix="/schedule")
 
     DB.init_app(app.config["DB_CONN_STR"])
+    
+    app.run(host="localhost", debug=True, port=8000)
 
 @dataclass(kw_only=True, frozen=True)
 class DBTABLES:

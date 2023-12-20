@@ -15,6 +15,10 @@ class DB:
 
         cls.schema.reflect(bind=cls.engine)
 
+        logger.info("Connected to DB")
+
+        
+
     @classmethod
     def get_engine(cls):
         return cls.engine

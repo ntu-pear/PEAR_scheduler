@@ -1,11 +1,10 @@
-from typing import Mapping
+from typing import Mapping, Any
 import pandas as pd
 
 from sqlalchemy import Select, select
 from pear_schedule.db import DB
 from pear_schedule.db_views.utils import compile_query
 from utils import DBTABLES
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,9 +14,9 @@ class BaseView:  # might want to change to abc
     db: DB = None
     db_tables: DBTABLES
     @classmethod
-    def init_app(cls, db: DB, config: Mapping[str, str]):
+    def init_app(cls, db: DB, config: Mapping[str, Any], db_tables: DBTABLES):
         cls.db = db
-        cls.db_tables = config["db_tables"]
+        cls.db_tables = db_tables
         cls.config = config
     
     
