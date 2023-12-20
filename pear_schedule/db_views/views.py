@@ -21,7 +21,7 @@ class BaseView:  # might want to change to abc
     
     
     @classmethod
-    def get_activities(cls) -> pd.DataFrame:
+    def execute_query(cls) -> pd.DataFrame:
         with cls.db.get_engine().begin() as conn:
             query: Select = cls.build_query()
 
@@ -79,6 +79,21 @@ class PatientsView(BaseView):
             patient.c["PatientID"] == centre_activity_recommendation.c["PatientID"]
         ).join(
             activity_exclusion, patient.c["PatientID"] == activity_exclusion.c["PatientID"]
+        )
+
+        return query
+    
+
+class PatientsOnlyView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building only patients query")
+        schema = cls.db.schema
+
+        patient = schema.tables[cls.db_tables.PATIENT_TABLE]
+
+        query: Select = select(
+            patient.c.PatientID
         )
 
         return query
