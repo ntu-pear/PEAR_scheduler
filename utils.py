@@ -5,6 +5,7 @@ from typing import Any, Mapping
 from flask import Flask
 
 from pear_schedule.db import DB
+from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView
 
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,10 @@ def init_app(config: Mapping[str, Any]):
     app.register_blueprint(sched_bp, url_prefix="/schedule")
 
     DB.init_app(app.config["DB_CONN_STR"])
+
+    PatientsOnlyView.init_app(DB, config, config["db_tables"])
+    ActivitiesView.init_app(DB, config, config["db_tables"])
+    PatientsView.init_app(DB, config, config["db_tables"])
     
     app.run(host="localhost", debug=True, port=8000)
 
