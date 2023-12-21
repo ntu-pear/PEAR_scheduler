@@ -40,3 +40,4 @@ DAYS = 5
 HOURS = 8
 GROUP_TIMESLOTS = 10
 GROUP_TIMESLOT_MAPPING = [(0,1),(1,6), (2,1), (3,6), (4,1), (2,6), (3,1), (0,6), (1,1), (4,6)] #(day, timeslot in day)
+MINWEEKLYACTIVITIES = 6
