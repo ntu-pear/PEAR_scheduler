@@ -1,11 +1,12 @@
 from flask import Blueprint, jsonify
-from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView
+from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView
+
+from config import DAYS, HOURS, GROUP_TIMESLOT_MAPPING
+from pear_schedule.helper.groupScheduling import groupScheduling
 
 
 blueprint = Blueprint("scheduling", __name__)
 
-DAYS = 5
-HOURS = 8
 
 @blueprint.route("/generate", methods=["GET"])
 def generate_schedule():
@@ -19,15 +20,25 @@ def generate_schedule():
         patientSchedule[id] = [["" for _ in range(HOURS)] for _ in range(DAYS)]
 
 
-
     
     # Schedule compulsory activities
 
     # Schedule group activities
+    groupSchedule = groupScheduling()
+    for patientID, scheduleArr in groupSchedule.items():
+        for i, activity in enumerate(scheduleArr):
+            day,hour = GROUP_TIMESLOT_MAPPING[i]
+            patientSchedule[patientID][day][hour] = activity
 
     # Schedule individual activities
 
 
-    data = {"data": "Hello World"} 
+    for p, slots in groupSchedule.items():
+        print(f"{p} Schedule: {slots}")
+
+    data = {"data": "Success"} 
     return jsonify(data) 
-    # raise NotImplementedError()
+
+
+
+

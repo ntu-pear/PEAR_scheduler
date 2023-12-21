@@ -4,7 +4,7 @@ from typing import Any, Mapping
 from flask import Flask
 
 from pear_schedule.db import DB
-from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView
+from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView
 
 import config
 
@@ -28,6 +28,11 @@ def init_app(config: Mapping[str, Any]):
     PatientsOnlyView.init_app(DB, app.config, app.config["DB_TABLES"])
     ActivitiesView.init_app(DB, app.config, app.config["DB_TABLES"])
     PatientsView.init_app(DB, app.config, app.config["DB_TABLES"])
+    GroupActivitiesOnlyView.init_app(DB, app.config, app.config["DB_TABLES"])
+    GroupActivitiesPreferenceView.init_app(DB, app.config, app.config["DB_TABLES"])
+    GroupActivitiesRecommendationView.init_app(DB, app.config, app.config["DB_TABLES"])
+    GroupActivitiesExclusionView.init_app(DB, app.config, app.config["DB_TABLES"])
+
 
     
     app.run(host="localhost", debug=True, port=8000)
