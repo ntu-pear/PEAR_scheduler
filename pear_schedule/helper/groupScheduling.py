@@ -1,6 +1,6 @@
 from pear_schedule.db_views.views import PatientsOnlyView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView
 from copy import deepcopy
-from config import DAYS, HOURS, GROUP_TIMESLOTS, GROUP_TIMESLOT_MAPPING
+from config import DAYS, HOURS, GROUP_TIMESLOTS, GROUP_TIMESLOT_MAPPING,MINWEEKLYACTIVITIES
 
 def groupScheduling():
     # Get list of all available group activities (activity ID, title, isFixed, fixedTimeSlots, 
@@ -109,6 +109,7 @@ def groupScheduling():
         
 
     # Allocate for second round using secondRoundList
+    patientActivityCountMap = getpatientActivityCountMap(firstTimeTable)
     secondActivityMap = {}
     for activityTitle in secondRoundList:
         secondActivityMap[activityTitle] = set()
@@ -126,7 +127,30 @@ def groupScheduling():
     secondTimeTable, secondEmptySlots = bruteForceGroupScheduling(secondActivityMap, firstTimeTable, GROUP_TIMESLOTS, firstEmptySlots, groupActivityDF)
     
 
-    # TODO: allocate more patients to activities
+    # allocate more patients to activities
+    allScheduledActivitiesSet = getAllScheduledActivities(secondTimeTable)
+    activityToTimeSlotMap = getActivityToTimeSlotMap(secondTimeTable)
+    patientActivityCountMap = getpatientActivityCountMap(secondTimeTable)
+    
+    for pid in patientDF["PatientID"]:
+        if patientActivityCountMap[pid] >= MINWEEKLYACTIVITIES:
+            continue
+        
+        curPatientActivitiesSet = set()
+        for activity in secondTimeTable[pid]:
+            curPatientActivitiesSet.add(activity)
+
+        canBeScheduledSet = allScheduledActivitiesSet.difference(curPatientActivitiesSet)
+        
+        toAdd = min(len(canBeScheduledSet), MINWEEKLYACTIVITIES - patientActivityCountMap[pid])
+
+        while toAdd != 0 and canBeScheduledSet:
+            activity = canBeScheduledSet.pop()
+            activitySlot = activityToTimeSlotMap[activity]
+            if secondTimeTable[pid][activitySlot] == "":
+                secondTimeTable[pid][activitySlot] = activity
+                toAdd -= 1
+        
 
     # for p, slots in secondTimeTable.items():
     #     print(f"{p} Schedule: {slots}")
@@ -134,7 +158,7 @@ def groupScheduling():
     return secondTimeTable
 
 
-    
+
 
 def bruteForceGroupScheduling(activityMap, timeTable, timeslots, emptySlots, groupActivityDF):
     timeSlotsArr = [i for i in range(timeslots)]
@@ -234,3 +258,35 @@ def getFixedTimeArr(fixedTimeSlots):
         fixedTimeArr[i] = timeSlotMappingReverse[(day,slot)]
 
     return fixedTimeArr
+
+
+def getAllScheduledActivities(timeTable):
+    activitySet = set()
+
+    for _, arr in timeTable.items():
+        for a in arr:
+            activitySet.add(a)
+
+    return activitySet
+
+
+def getActivityToTimeSlotMap(timeTable):
+    mapping = {}
+    for _, arr in timeTable.items():
+        for i, a in enumerate(arr):
+            if a not in mapping:
+                mapping[a] = i
+
+    return mapping
+
+
+def getpatientActivityCountMap(timeTable):
+    mapping = {}
+    for pid, arr in timeTable.items():
+        count = 0
+        for a in arr:
+            if a != "":
+                count += 1
+        mapping[pid] = count
+
+    return mapping

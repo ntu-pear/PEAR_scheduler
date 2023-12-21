@@ -33,8 +33,8 @@ def generate_schedule():
     # Schedule individual activities
 
 
-    for p, slots in groupSchedule.items():
-        print(f"{p} Schedule: {slots}")
+    # for p, slots in groupSchedule.items():
+    #     print(f"{p} Schedule: {slots}")
 
     data = {"data": "Success"} 
     return jsonify(data) 
@@ -42,3 +42,14 @@ def generate_schedule():
 
 
 
+@blueprint.route("/test2", methods=["GET"])
+def test2():
+    groupActivityDF = GroupActivitiesOnlyView.execute_query()
+    isFixed = groupActivityDF.query(f"ActivityTitle == 'Board Games'").iloc[0]['IsFixed']
+    print(isFixed)
+
+    
+
+    
+    data = {"data": "Hello test2"} 
+    return jsonify(data) 
