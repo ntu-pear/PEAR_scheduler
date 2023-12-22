@@ -1,7 +1,7 @@
 from pear_schedule.db_views.views import CompulsoryActivitiesOnlyView
 
 def compulsoryScheduling(patientSchedule):
-    compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.execute_query()
+    compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.get_data()
     
     for activityTitle in compulsoryActivitiesDF["ActivityTitle"]:
         fixedSlotString = compulsoryActivitiesDF.query(f"ActivityTitle == '{activityTitle}'").iloc[0]['FixedTimeSlots']

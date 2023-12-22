@@ -15,7 +15,7 @@ def generate_schedule():
     # Set up patient schedule structure
     patientSchedule = {} # patient id: [[],[],[],[],[]]
 
-    patientDF = PatientsOnlyView.execute_query()
+    patientDF = PatientsOnlyView.get_data()
 
     for id in patientDF["PatientID"]:
         patientSchedule[id] = [["" for _ in range(HOURS)] for _ in range(DAYS)]
@@ -45,7 +45,7 @@ def generate_schedule():
 
 @blueprint.route("/test", methods=["GET"])
 def test2():
-    compulsoryActivityDF = CompulsoryActivitiesOnlyView.execute_query()
+    compulsoryActivityDF = CompulsoryActivitiesOnlyView.get_data()
     # isFixed = groupActivityDF.query(f"ActivityTitle == 'Board Games'").iloc[0]['IsFixed']
     print(compulsoryActivityDF)
 

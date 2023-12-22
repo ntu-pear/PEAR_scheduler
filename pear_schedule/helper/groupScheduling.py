@@ -11,21 +11,21 @@ def groupScheduling():
     activityExclusionMap = {}
     totalPatientSet = set() #set of all patient ids
 
-    patientDF = PatientsOnlyView.execute_query()
+    patientDF = PatientsOnlyView.get_data()
     for id in patientDF["PatientID"]:
         totalPatientSet.add(id)
         patientActivityCountMap[id] = 0
 
 
-    groupActivityDF = GroupActivitiesOnlyView.execute_query()
+    groupActivityDF = GroupActivitiesOnlyView.get_data()
     for title in groupActivityDF["ActivityTitle"]:
         activityMap[title] = set()
         activityExclusionMap[title] = set()
 
     
-    groupPreferenceDF = GroupActivitiesPreferenceView.execute_query()
-    groupRecommendationDF = GroupActivitiesRecommendationView().execute_query()
-    groupExcludedDF = GroupActivitiesExclusionView().execute_query()
+    groupPreferenceDF = GroupActivitiesPreferenceView.get_data()
+    groupRecommendationDF = GroupActivitiesRecommendationView().get_data()
+    groupExcludedDF = GroupActivitiesExclusionView().get_data()
 
     for _, record in groupActivityDF.iterrows():
         patients = totalPatientSet.copy()

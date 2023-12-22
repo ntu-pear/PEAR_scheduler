@@ -22,7 +22,7 @@ class BaseView:  # might want to change to abc
     
     
     @classmethod
-    def execute_query(cls) -> pd.DataFrame:
+    def get_data(cls) -> pd.DataFrame:
         with cls.db.get_engine().begin() as conn:
             query: Select = cls.build_query()
 
