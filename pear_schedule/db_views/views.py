@@ -192,3 +192,25 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
 
 
         return query
+    
+
+class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building only compulsory activities query")
+        schema = cls.db.schema
+
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+
+        query: Select = select(
+            centre_activity.c["ActivityID"],
+            activity.c["ActivityTitle"],
+            centre_activity.c["IsFixed"],
+            centre_activity.c["FixedTimeSlots"],
+        ).join(
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).where(centre_activity.c["IsCompulsory"] == True)
+
+        return query
+    
