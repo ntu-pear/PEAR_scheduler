@@ -30,8 +30,8 @@ class IndividualActivityScheduler(BaseScheduler):
 
         # consolidate activity data
         activities: pd.DataFrame = ActivitiesView.get_data()  # non compulsory individual activities
-        activities = activities.sample(frac=1)\
-            .reset_index(drop=True)
+        # activities = activities.sample(frac=1)\
+        #     .reset_index(drop=True)
 
         for pid, sched in schedules.items():
             if pid not in patients:
@@ -54,27 +54,24 @@ class IndividualActivityScheduler(BaseScheduler):
 
                 i = 0
                 while i < len(day_sched):
-                    slot = i
+                    if not day_sched[i]:
+                        j = i + 1
+                        while (j < len(day_sched) and not day_sched[j]):
+                            j += 1
+                        if i >= len(day_sched):
+                            break
+
+                        find_activity = partial(cls.__find_activity, day=day, slot=i, slot_size=j-i)
+                        new_activity = \
+                            find_activity(preferred_activities, curr_day_activities) or \
+                            find_activity(non_preferred_activites, curr_day_activities)
+
+                        if not new_activity:
+                            continue
+                        curr_day_activities.add(new_activity)
+                        day_sched[i] = new_activity
                     i += 1
 
-                    if slot:
-                        continue
-
-                    slot_size = 1
-                    while (not day_sched[i]):
-                        i += 1
-                        slot_size += 1
-
-                    find_activity = partial(cls.__find_activity, day=day, slot=slot, slot_size=slot_size)
-                    new_activity = \
-                        find_activity(preferred_activities, curr_day_activities) or \
-                        find_activity(non_preferred_activites, curr_day_activities)
-
-                    if not new_activity:
-                        continue
-
-                    curr_day_activities.add(new_activity)
-                    day_sched[i] = new_activity
 
 
     @classmethod
@@ -89,10 +86,13 @@ class IndividualActivityScheduler(BaseScheduler):
         if activities.empty:
             return
         
-        out = [0, 1000]
+        activities = activities.sample(frac=1)\
+            .reset_index(drop=True)
+        
+        out = [-1, 1000, False]
 
-        for i, a in activities.reset_index(inplace=False).iterrows():
-            if a["ActivityID"] in used_activities:
+        for i, a in activities.iterrows():
+            if a["ActivityTitle"] in used_activities:
                 continue
 
             minDuration = max(1, a["MinDuration"])
@@ -106,12 +106,16 @@ class IndividualActivityScheduler(BaseScheduler):
                 else:
                     earliest_end = min(t[1] + minDuration for t in timeSlots)
             else:
-                if activities.iloc[out[0]]["FixedTimeSlots"]:
+                if out[2]:
                     continue
                 earliest_end = slot + minDuration
 
-            if earliest_end < out[1]:
+            if earliest_end < out[1] and bool(a["FixedTimeSlots"]) >= out[2]:
                 out[0] = i
                 out[1] = earliest_end
+                out[2] = bool(a["FixedTimeSlots"])
+        
+        if out[0] < 0:
+            return None
 
         return activities.iloc[out[0]]["ActivityTitle"]

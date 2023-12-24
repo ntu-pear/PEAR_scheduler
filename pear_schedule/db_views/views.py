@@ -84,9 +84,9 @@ class PatientsView(BaseView):
             centre_activity_cte.c["PreferredActivityID"],
             activity_exclusion.c["ActivityID"].label("ExcludedActivityID"),
         ).join(
-            centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"]
+            centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"], isouter=True
         ).join(
-            activity_exclusion, patient.c["PatientID"] == activity_exclusion.c["PatientID"]
+            activity_exclusion, patient.c["PatientID"] == activity_exclusion.c["PatientID"], isouter=True
         )\
         # .join(
         #     centre_activity_recommendation, 
