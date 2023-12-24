@@ -1,4 +1,4 @@
-from functools import partialmethod
+from functools import partial
 import logging
 from typing import List, Mapping, Optional
 
@@ -36,14 +36,16 @@ class IndividualActivityScheduler(BaseScheduler):
         for pid, sched in schedules.items():
             if pid not in patients:
                 logger.error(f"unknown patientID {pid} found in schedules")
+                continue
             patient = patients[pid]
-            exclusions = patient["ExcludedActivityID"]
-            preferences = patient["PreferredActivityID"]
+
+            exclusions = patient["exclusions"]
+            preferences = patient["preferences"]
 
             avail_activities = activities[~activities["ActivityID"].isin(exclusions)]
-            avail_activities = avail_activities[["ActivityID", "fixedTimeSlots", "minDuration", "maxDuration"]]
+            avail_activities = avail_activities[["ActivityID", "ActivityTitle", "FixedTimeSlots", "MinDuration", "MaxDuration"]]
 
-            preference_idx = avail_activities["ActivityId"].isin(preferences)
+            preference_idx = avail_activities["ActivityID"].isin(preferences)
             preferred_activities = avail_activities[preference_idx]
             non_preferred_activites = avail_activities[~preference_idx]
 
@@ -52,7 +54,7 @@ class IndividualActivityScheduler(BaseScheduler):
 
                 i = 0
                 while i < len(day_sched):
-                    slot = day_sched[i]
+                    slot = i
                     i += 1
 
                     if slot:
@@ -63,7 +65,7 @@ class IndividualActivityScheduler(BaseScheduler):
                         i += 1
                         slot_size += 1
 
-                    find_activity = partialmethod(cls.__find_activity, day=day, slot=slot, slot_size=slot_size)
+                    find_activity = partial(cls.__find_activity, day=day, slot=slot, slot_size=slot_size)
                     new_activity = \
                         find_activity(preferred_activities, curr_day_activities) or \
                         find_activity(non_preferred_activites, curr_day_activities)
@@ -89,14 +91,14 @@ class IndividualActivityScheduler(BaseScheduler):
         
         out = [0, 1000]
 
-        for i, a in activities.iterrows():
+        for i, a in activities.reset_index(inplace=False).iterrows():
             if a["ActivityID"] in used_activities:
                 continue
 
-            minDuration = a["minDuration"]
+            minDuration = max(1, a["MinDuration"])
 
-            if a["fixedTimeSlots"]:
-                timeSlots = map(lambda x: x.split("-"), a["fixedTimeSlots"].split(","))
+            if a["FixedTimeSlots"]:
+                timeSlots = map(lambda x: x.split("-"), a["FixedTimeSlots"].split(","))
                 timeSlots = [t for t in timeSlots if t[0] == day and t[1] >= slot and t[1] + minDuration < slot + slot_size]
 
                 if not timeSlots:
@@ -104,7 +106,7 @@ class IndividualActivityScheduler(BaseScheduler):
                 else:
                     earliest_end = min(t[1] + minDuration for t in timeSlots)
             else:
-                if activities.iloc[out]["fixedTimeSlots"]:
+                if activities.iloc[out[0]]["FixedTimeSlots"]:
                     continue
                 earliest_end = slot + minDuration
 
@@ -112,4 +114,4 @@ class IndividualActivityScheduler(BaseScheduler):
                 out[0] = i
                 out[1] = earliest_end
 
-        return activities.iloc[out[0]]["ActivityID"]
+        return activities.iloc[out[0]]["ActivityTitle"]

@@ -41,16 +41,19 @@ class ActivitiesView(BaseView):
         schema = DB.schema
 
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         # activity_availability = schema.tables[cls.db_tables.ACTIVITY_AVAILABILITY_TABLE]
-        # centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         # routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
 
         query: Select = select(
-            activity
-        )
+            activity,
+            centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
+            centre_activity.c["MinDuration"].label("MinDuration"),
+            centre_activity.c["MaxDuration"].label("MaxDuration")
+        ).join(
+            centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        )\
         # .join(
-        #     centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
-        # ).join(
         #     routine, activity.c["ActivityID"] == routine.c["ActivityID"]
         # )
 
@@ -65,21 +68,29 @@ class PatientsView(BaseView):
 
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         centre_activity_preference = schema.tables[cls.db_tables.CENTRE_ACTIVITY_PREFERENCE_TABLE]
-        centre_activity_recommendation = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
-        # activity_exclusion = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
+        activity_exclusion = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+        # centre_activity_recommendation = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
+
+        centre_activity_cte = select(
+            centre_activity_preference.c["PatientID"],
+            centre_activity.c["ActivityID"].label("PreferredActivityID")
+        ).join(
+            centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).cte()
 
         query: Select = select(
             patient.c["PatientID"], 
-            centre_activity_preference.c["CentreActivityID"].label("PreferredActivityID"),
-            # activity_exclusion.c["ACtivityID"]
+            centre_activity_cte.c["PreferredActivityID"],
+            activity_exclusion.c["ActivityID"].label("ExcludedActivityID"),
         ).join(
-            centre_activity_preference, patient.c["PatientID"] == centre_activity_preference.c["PatientID"]
+            centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"]
         ).join(
-            centre_activity_recommendation, 
-            patient.c["PatientID"] == centre_activity_recommendation.c["PatientID"]
+            activity_exclusion, patient.c["PatientID"] == activity_exclusion.c["PatientID"]
         )\
         # .join(
-        #     activity_exclusion, patient.c["PatientID"] == activity_exclusion.c["PatientID"]
+        #     centre_activity_recommendation, 
+        #     patient.c["PatientID"] == centre_activity_recommendation.c["PatientID"]
         # )
 
         return query
