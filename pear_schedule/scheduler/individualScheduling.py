@@ -25,8 +25,8 @@ class IndividualActivityScheduler(BaseScheduler):
                 }
 
             # patients[pid].add(p["RecommendedActivityID"])
-            patients[pid].add(p["ExcludedActivityID"])
-            patients[pid].add(p["PreferredActivityID"])
+            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
+            patients[pid]["preferences"].add(p["PreferredActivityID"])
 
         # consolidate activity data
         activities: pd.DataFrame = ActivitiesView.get_data()  # non compulsory individual activities

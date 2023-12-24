@@ -5,7 +5,7 @@ from pear_schedule.scheduler.baseScheduler import BaseScheduler
 
 class CompulsoryActivityScheduler(BaseScheduler):
     @classmethod
-    def fill_schedule(patientSchedules: Mapping[str, List[str]]):
+    def fillSchedule(cls, patientSchedules: Mapping[str, List[str]]):
         compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.get_data()
         
         for activityTitle in compulsoryActivitiesDF["ActivityTitle"]:

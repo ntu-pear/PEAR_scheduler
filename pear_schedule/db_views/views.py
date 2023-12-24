@@ -70,7 +70,7 @@ class PatientsView(BaseView):
 
         query: Select = select(
             patient.c["PatientID"], 
-            centre_activity_preference.c["ActivityID"].label("PreferredActivityID"),
+            centre_activity_preference.c["CentreActivityID"].label("PreferredActivityID"),
             # activity_exclusion.c["ACtivityID"]
         ).join(
             centre_activity_preference, patient.c["PatientID"] == centre_activity_preference.c["PatientID"]
