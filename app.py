@@ -3,10 +3,11 @@ from typing import Any, Mapping
 
 from flask import Flask
 
-from pear_schedule.db import DB
-from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView, CompulsoryActivitiesOnlyView
+# from pear_schedule.db import DB
+# from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView, CompulsoryActivitiesOnlyView
 
 import config
+from pear_schedule.utils import loadConfigs
 
 logging.basicConfig(format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
     datefmt='%Y-%m-%d:%H:%M:%S',
@@ -23,19 +24,19 @@ def init_app(config: Mapping[str, Any]):
 
     app.register_blueprint(sched_bp, url_prefix="/schedule")
 
-    DB.init_app(app.config["DB_CONN_STR"])
+    loadConfigs(app.config)
 
-    PatientsOnlyView.init_app(DB, app.config, app.config["DB_TABLES"])
-    ActivitiesView.init_app(DB, app.config, app.config["DB_TABLES"])
-    PatientsView.init_app(DB, app.config, app.config["DB_TABLES"])
-    GroupActivitiesOnlyView.init_app(DB, app.config, app.config["DB_TABLES"])
-    GroupActivitiesPreferenceView.init_app(DB, app.config, app.config["DB_TABLES"])
-    GroupActivitiesRecommendationView.init_app(DB, app.config, app.config["DB_TABLES"])
-    GroupActivitiesExclusionView.init_app(DB, app.config, app.config["DB_TABLES"])
-    CompulsoryActivitiesOnlyView.init_app(DB, app.config, app.config["DB_TABLES"])
+    # DB.init_app(app.config["DB_CONN_STR"])
 
+    # PatientsOnlyView.init_app(app.config)
+    # ActivitiesView.init_app(app.config)
+    # PatientsView.init_app(app.config)
+    # GroupActivitiesOnlyView.init_app(app.config)
+    # GroupActivitiesPreferenceView.init_app(app.config)
+    # GroupActivitiesRecommendationView.init_app(app.config)
+    # GroupActivitiesExclusionView.init_app(app.config)
+    # CompulsoryActivitiesOnlyView.init_app(app.config)
 
-    
     app.run(host="localhost", debug=True, port=8000)
 
 def main():

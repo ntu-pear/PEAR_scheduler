@@ -4,6 +4,7 @@ import pandas as pd
 from sqlalchemy import Select, select
 from pear_schedule.db import DB
 from pear_schedule.db_views.utils import compile_query
+from pear_schedule.utils import ConfigDependant
 from utils import DBTABLES
 import logging
 from datetime import datetime
@@ -11,19 +12,16 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 
-class BaseView:  # might want to change to abc
-    db: DB = None
+class BaseView(ConfigDependant):
     db_tables: DBTABLES
     @classmethod
-    def init_app(cls, db: DB, config: Mapping[str, Any], db_tables: DBTABLES):
-        cls.db = db
-        cls.db_tables = db_tables
+    def init_app(cls, config: Mapping[str, Any]):
+        cls.db_tables = config["DB_TABLES"]
         cls.config = config
-    
-    
+
     @classmethod
     def get_data(cls) -> pd.DataFrame:
-        with cls.db.get_engine().begin() as conn:
+        with DB.get_engine().begin() as conn:
             query: Select = cls.build_query()
 
             logger.info(f"Retrieving data for {cls.__name__}")
@@ -40,7 +38,7 @@ class ActivitiesView(BaseView):
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building activities query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
         # activity_availability = schema.tables[cls.db_tables.ACTIVITY_AVAILABILITY_TABLE]
@@ -63,7 +61,7 @@ class PatientsView(BaseView):
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building patients query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         centre_activity_preference = schema.tables[cls.db_tables.CENTRE_ACTIVITY_PREFERENCE_TABLE]
@@ -91,7 +89,7 @@ class PatientsOnlyView(BaseView): # Just patients only
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only patients query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
 
@@ -106,7 +104,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only group activities query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
@@ -129,7 +127,7 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only group activities preference query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         centre_activity_preference = schema.tables[cls.db_tables.CENTRE_ACTIVITY_PREFERENCE_TABLE]
@@ -152,7 +150,7 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only group activities recommendation query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         centre_activity_recommendation= schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
@@ -175,7 +173,7 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only group activities exclusion query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         activity_exclusion = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
@@ -200,7 +198,7 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only compulsory activities query")
-        schema = cls.db.schema
+        schema = DB.schema
 
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]

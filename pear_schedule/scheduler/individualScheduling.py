@@ -1,21 +1,17 @@
 from functools import partialmethod
 import logging
-from typing import Any, List, Mapping, Optional
+from typing import List, Mapping, Optional
 
 import pandas as pd
 
 from pear_schedule.db_views.views import ActivitiesView, PatientsView
+from pear_schedule.scheduler.baseScheduler import BaseScheduler
 
 
 logger = logging.getLogger(__name__)
 
 
-class IndividualActivityScheduler:
-    config: Mapping[str, Any]
-    @classmethod
-    def init_app(cls, config: Mapping[str, Any]):
-        cls.config = config
-
+class IndividualActivityScheduler(BaseScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]]):
         patients: Mapping[str, Mapping[str, set[str]]] = {}
@@ -78,7 +74,6 @@ class IndividualActivityScheduler:
                     curr_day_activities.add(new_activity)
                     day_sched[i] = new_activity
 
-        return schedules
 
     @classmethod
     def __find_activity(
