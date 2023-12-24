@@ -25,12 +25,12 @@ class IndividualActivityScheduler:
             pid = p["PatientID"]
             if pid not in patients:
                 patients[pid] = {
-                    "preferences":set(), "recommendations": set()  # exclusions handled in compulsory scheduling
+                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
                 }
 
             # patients[pid].add(p["RecommendedActivityID"])
-            patients[pid].add(p["ExcludedActivityID"])
-            patients[pid].add(p["PreferredActivityID"])
+            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
+            patients[pid]["preferences"].add(p["PreferredActivityID"])
 
         # consolidate activity data
         activities: pd.DataFrame = ActivitiesView.get_data()  # non compulsory individual activities
@@ -41,8 +41,8 @@ class IndividualActivityScheduler:
             if pid not in patients:
                 logger.error(f"unknown patientID {pid} found in schedules")
             patient = patients[pid]
-            exclusions = patient["ExcludedActivityID"]
-            preferences = patient["PreferredActivityID"]
+            exclusions = patient["exclusions"]
+            preferences = patient["preferences"]
 
             avail_activities = activities[~activities["ActivityID"].isin(exclusions)]
             avail_activities = avail_activities[["ActivityID", "fixedTimeSlots", "minDuration", "maxDuration"]]
