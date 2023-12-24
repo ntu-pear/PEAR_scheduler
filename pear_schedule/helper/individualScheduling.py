@@ -25,7 +25,7 @@ class IndividualActivityScheduler:
             pid = p["PatientID"]
             if pid not in patients:
                 patients[pid] = {
-                    "preferences":set(), "recommendations": set()  # exclusions handled in compulsory scheduling
+                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
                 }
 
             # patients[pid].add(p["RecommendedActivityID"])
