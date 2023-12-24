@@ -5,17 +5,13 @@ from typing import Any, List, Mapping, Optional
 import pandas as pd
 
 from pear_schedule.db_views.views import ActivitiesView, PatientsView
+from pear_schedule.scheduler.baseScheduler import BaseScheduler
 
 
 logger = logging.getLogger(__name__)
 
 
-class IndividualActivityScheduler:
-    config: Mapping[str, Any]
-    @classmethod
-    def init_app(cls, config: Mapping[str, Any]):
-        cls.config = config
-
+class IndividualActivityScheduler(BaseScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]]):
         patients: Mapping[str, Mapping[str, set[str]]] = {}

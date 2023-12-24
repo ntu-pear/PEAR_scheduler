@@ -3,7 +3,7 @@ from typing import Any, Mapping
 
 from flask import Flask
 
-# from pear_schedule.db import DB
+from pear_schedule.db import DB
 # from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView, CompulsoryActivitiesOnlyView
 
 import config
@@ -24,9 +24,9 @@ def init_app(config: Mapping[str, Any]):
 
     app.register_blueprint(sched_bp, url_prefix="/schedule")
 
+    DB.init_app(app.config["DB_CONN_STR"])
     loadConfigs(app.config)
 
-    # DB.init_app(app.config["DB_CONN_STR"])
 
     # PatientsOnlyView.init_app(app.config)
     # ActivitiesView.init_app(app.config)
