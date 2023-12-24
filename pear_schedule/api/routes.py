@@ -1,9 +1,9 @@
-from flask import Blueprint, jsonify
-from pear_schedule.db_views.views import PatientsOnlyView, GroupActivitiesOnlyView,CompulsoryActivitiesOnlyView
+from flask import Blueprint, jsonify, current_app
+from pear_schedule.db_views.views import PatientsOnlyView, CompulsoryActivitiesOnlyView
 
-from config import DAYS, HOURS, GROUP_TIMESLOT_MAPPING
-from pear_schedule.helper.groupScheduling import groupScheduling
-from pear_schedule.helper.compulsoryScheduling import compulsoryScheduling
+from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
+from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
+from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
 
 
 blueprint = Blueprint("scheduling", __name__)
@@ -11,30 +11,32 @@ blueprint = Blueprint("scheduling", __name__)
 
 @blueprint.route("/generate", methods=["GET"])
 def generate_schedule():
+    config = current_app.config
 
     # Set up patient schedule structure
-    patientSchedule = {} # patient id: [[],[],[],[],[]]
+    patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     patientDF = PatientsOnlyView.get_data()
 
     for id in patientDF["PatientID"]:
-        patientSchedule[id] = [["" for _ in range(HOURS)] for _ in range(DAYS)]
+        patientSchedules[id] = [["" for _ in range(config["HOURS"])] for _ in range(config["DAYS"])]
 
 
     # Schedule compulsory activities
-    compulsoryScheduling(patientSchedule)
+    CompulsoryActivityScheduler.fillSchedule(patientSchedules)
 
     # Schedule group activities
-    groupSchedule = groupScheduling()
+    groupSchedule = GroupActivityScheduler.fillSchedule(patientSchedules)
     for patientID, scheduleArr in groupSchedule.items():
         for i, activity in enumerate(scheduleArr):
-            day,hour = GROUP_TIMESLOT_MAPPING[i]
-            patientSchedule[patientID][day][hour] = activity
+            day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
+            patientSchedules[patientID][day][hour] = activity
 
     # Schedule individual activities
+    IndividualActivityScheduler.fillSchedule(patientSchedules)
 
 
-    for p, slots in patientSchedule.items():
+    for p, slots in patientSchedules.items():
         print(f"{p} Schedule: {slots}")
 
     data = {"data": "Success"} 
