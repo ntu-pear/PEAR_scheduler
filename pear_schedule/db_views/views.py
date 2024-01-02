@@ -147,11 +147,12 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
         query: Select = select(
             centre_activity.c["CentreActivityID"],
             centre_activity_preference.c["PatientID"],
+            centre_activity_preference.c["IsLike"],
             
         ).join(
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity_preference.c["IsLike"] == 1)
+        )
 
 
         return query
@@ -170,11 +171,12 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
         query: Select = select(
             centre_activity.c["CentreActivityID"],
             centre_activity_recommendation.c["PatientID"],
+            centre_activity_recommendation.c["DoctorRecommendation"],
             
         ).join(
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity_recommendation.c["DoctorRecommendation"] == True)
+        )
 
 
         return query

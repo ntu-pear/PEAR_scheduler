@@ -12,12 +12,11 @@ logger = logging.getLogger(__name__)
 class GroupActivityScheduler(BaseScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]]):
-        # Get list of all available group activities (activity ID, title, isFixed, fixedTimeSlots, 
-        # minPeopleReq) and create a dictionary of {activity: [patients]/set}
-        activityMap = {}
-        patientActivityCountMap = {}
-        activityMinSizeMap = {}
-        activityExclusionMap = {}
+       
+        activityMap = {} # mapping of activity Title: set of patients that can do the activity
+        patientActivityCountMap = {} # mapping of activityID: count of number of patients to the activity
+        activityMinSizeMap = {} # mapping of activity Tile: min size required for activity
+        activityExclusionMap = {} # mapping of activityTitle: set of patients that are excluded, not recommended, not preferred
         totalPatientSet = set() #set of all patient ids
 
         patientDF = PatientsOnlyView.get_data()
@@ -51,20 +50,40 @@ class GroupActivityScheduler(BaseScheduler):
                 activityExclusionMap[activityTitle].add(id)
                 patients.remove(id)
 
-            # Find preferred and recommendation patients of activity
-            preferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID}")
+            # Find not recommended patients
+            notRecommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID} and DoctorRecommendation == False")
+            for id in notRecommendedDF["PatientID"]:
+                activityExclusionMap[activityTitle].add(id)
+                if id in patients:
+                    patients.remove(id)
+
+            # Find not preferred patients
+            notPreferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == -1")
+            for id in notPreferredDF["PatientID"]:
+                activityExclusionMap[activityTitle].add(id)
+                if id in patients:
+                    patients.remove(id)
+
+
+            # Find recommended patients of activity
+            recommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID} and DoctorRecommendation == True")
+            for id in recommendedDF["PatientID"]:
+                if id in patients:
+                    activityMap[activityTitle].add(id)
+                    patients.remove(id)
+                    patientActivityCountMap[id] += 1
+            
+        
+            # Find preferred patients of activity
+            preferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == 1")
             for id in preferredDF["PatientID"]:
                 if id in patients:
                     activityMap[activityTitle].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
 
-            recommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID}")
-            for id in recommendedDF["PatientID"]:
-                if id in patients:
-                    activityMap[activityTitle].add(id)
-                    patients.remove(id)
-                    patientActivityCountMap[id] += 1
+            
+
             
         
         toRemoveList = []
@@ -134,8 +153,9 @@ class GroupActivityScheduler(BaseScheduler):
 
             for i in range(activityMinSizeMap[activityTitle]):
                 _, pid = minHeap[i]
-                secondActivityMap[activityTitle].add(pid)
-                patientActivityCountMap[pid] += 1
+                if pid not in activityExclusionMap[activityTitle]: # not being excluded 
+                    secondActivityMap[activityTitle].add(pid)
+                    patientActivityCountMap[pid] += 1
 
         logger.info("Second Round Scheduling")
         # Second Round Scheduling
@@ -164,7 +184,7 @@ class GroupActivityScheduler(BaseScheduler):
             while toAdd != 0 and canBeScheduledSet:
                 activity = canBeScheduledSet.pop()
                 activitySlot = activityToTimeSlotMap[activity]
-                if secondTimeTable[pid][activitySlot] == "":
+                if secondTimeTable[pid][activitySlot] == "" and pid not in activityExclusionMap[activity]:
                     secondTimeTable[pid][activitySlot] = activity
                     toAdd -= 1
             

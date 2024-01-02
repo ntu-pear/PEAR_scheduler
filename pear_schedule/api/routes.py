@@ -1,14 +1,5 @@
 from flask import Blueprint, jsonify, current_app
-from pear_schedule.db_models.models import Schedule
 from pear_schedule.db_views.views import PatientsOnlyView, CompulsoryActivitiesOnlyView
-
-# IMPORT TEMPORARILY, WILL REFACTOR
-from sqlalchemy.orm import Session
-from pear_schedule.db import DB
-from pear_schedule.db_views.utils import compile_query
-from pear_schedule.utils import ConfigDependant
-import datetime
-##
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
 from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
@@ -100,9 +91,13 @@ def generate_schedule():
 
 @blueprint.route("/test", methods=["GET"])
 def test2():
-    compulsoryActivityDF = CompulsoryActivitiesOnlyView.get_data()
-    # isFixed = groupActivityDF.query(f"ActivityTitle == 'Board Games'").iloc[0]['IsFixed']
-    print(compulsoryActivityDF)
+    groupPreferenceDF = GroupActivitiesPreferenceView.get_data()
+    preferredDF = groupPreferenceDF.query(f"CentreActivityID == 4 and IsLike == 1")
+    
+    for id in preferredDF["PatientID"]:
+        print(id)
+        
+
 
     
     data = {"data": "Hello test2"} 
