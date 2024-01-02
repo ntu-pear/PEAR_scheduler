@@ -1,3 +1,5 @@
+## NOT USED: ONLY IF WE NEED TO MANUALLY CREATE AND ALTER THE TABLES
+
 from sqlalchemy import Column, Integer, DateTime, String, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -21,3 +23,4 @@ class Schedule(Base):
     IsDeleted = Column(Integer)
     CreatedDateTime = Column(DateTime)
     UpdatedDateTime = Column(DateTime)
+

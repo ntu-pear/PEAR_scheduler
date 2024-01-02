@@ -27,7 +27,6 @@ def init_app(config: Mapping[str, Any]):
     DB.init_app(app.config["DB_CONN_STR"])
     loadConfigs(app.config)
 
-
     # PatientsOnlyView.init_app(app.config)
     # ActivitiesView.init_app(app.config)
     # PatientsView.init_app(app.config)

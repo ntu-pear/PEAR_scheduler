@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 class GroupActivityScheduler(BaseScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]]):
-       
         activityMap = {} # mapping of activity Title: set of patients that can do the activity
         patientActivityCountMap = {} # mapping of activityID: count of number of patients to the activity
         activityMinSizeMap = {} # mapping of activity Tile: min size required for activity

@@ -1,5 +1,10 @@
 from flask import Blueprint, jsonify, current_app
-from pear_schedule.db_views.views import PatientsOnlyView, CompulsoryActivitiesOnlyView
+from pear_schedule.db_views.views import PatientsOnlyView, GroupActivitiesPreferenceView
+
+from pear_schedule.db import DB
+from sqlalchemy.orm import Session
+from sqlalchemy import Table
+import datetime
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
 from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
@@ -37,52 +42,58 @@ def generate_schedule():
     
     ## ------------------------------------------------------------------------------------------------
     ## Inserting into Schedule Table
-    ## TODO: TRYING TO TEST TO INSERT TO TABLE... WILL REFACTOR
     session = Session(bind=DB.engine)
-    latest_schedule_id = session.query(Schedule.ScheduleID).order_by(Schedule.ScheduleID.desc()).first()
-    new_schedule_id = latest_schedule_id[0] + 1
     
-    print("Latest Schedule Id: ", latest_schedule_id[0])
+    # Reflect the database tables
+    schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
     
     today = datetime.datetime.now()
     start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
     end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
     
-    for p, slots in patientSchedules.items():
-        print(f"{p} Schedule: {slots}")
-        
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-        converted_schedule = {}
-
-        for i, day in enumerate(days):
-            activities = "-".join(slots[i])
-            converted_schedule[day] = activities
+    #TEST
+    patientSchedules[1] = [['Breathing+Vital Check', '', 'Movie Screening', 'Lunch', 'Cutting Pictures', 'Sewing', 'Brisk Walking', ''], ['Breathing+Vital Check', 'Musical Instrument Lesson', '', 'Lunch', 'Cutting Pictures', '', 'Movie Screening', 'Cup Stacking Game'], ['Breathing+Vital Check', 'Mahjong', 'Sewing', 'Lunch', 'Movie Screening', 'Cutting Pictures', 'Clip Coupons', 'Sort poker chips'], ['Breathing+Vital Check', 'Movie Screening', 'Cutting Pictures', 'Lunch', 'Sewing', 'String beads', 'Clip Coupons', ''], ['Breathing+Vital Check', 'Sewing', 'Cutting Pictures', 'Lunch', 'Movie Screening', 'Sort poker chips', 'Origami', '']]
+    
+    try:
+        for p, slots in patientSchedules.items():
+            print(f"{p} Schedule: {slots}")
             
-        new_schedule = Schedule(
-            ScheduleID=new_schedule_id,
-            PatientID=p,
-            StartDate=start_of_week,
-            EndDate=end_of_week,
-            Monday= converted_schedule["Monday"],
-            Tuesday= converted_schedule["Tuesday"],
-            Wednesday= converted_schedule["Wednesday"],
-            Thursday= converted_schedule["Thursday"],
-            Friday= converted_schedule["Friday"],
-            IsDeleted = 0,
-            CreatedDateTime = today,
-            UpdatedDateTime = today
-        )
-        
-        new_schedule_id = new_schedule_id + 1
+            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+            converted_schedule = {}
 
-        # Add the Schedule object to the session and commit
-        session.add(new_schedule)
-        session.commit()
+            for i, day in enumerate(days):
+                activities = "-".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
+                converted_schedule[day] = activities
+            
+            schedule_data = {
+                ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
+                "PatientID": p,
+                "StartDate": start_of_week,
+                "EndDate": end_of_week,
+                "Monday": converted_schedule["Monday"],
+                "Tuesday": converted_schedule["Tuesday"],
+                "Wednesday": converted_schedule["Wednesday"],
+                "Thursday": converted_schedule["Thursday"],
+                "Friday": converted_schedule["Friday"],
+                "IsDeleted": 0, ## Mandatory Field 
+                "CreatedDateTime": today, ## Mandatory Field 
+                "UpdatedDateTime": today ## Mandatory Field 
+            }
+            
+            # Use the add method to add data to the session
+            schedule_instance = schedule_table.insert().values(schedule_data)
+            session.execute(schedule_instance)
+            
+            # Commit the changes to the database
+            session.commit()
+            
+    except Exception as e:
+        print(f"Error occurred when inserting {schedule_data}: {e}")
         
     # Close the session
-        session.close()
+    session.close()
     ## ------------------------------------------------------------------------------------------------
-        
+    
     data = {"data": "Success"} 
     return jsonify(data) 
 
