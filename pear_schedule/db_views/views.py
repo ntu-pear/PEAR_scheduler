@@ -198,7 +198,7 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
             activity_exclusion.c["PatientID"],
             
         ).join(
-            activity_exclusion, centre_activity.c["CentreActivityID"] == activity_exclusion.c["ActivityID"] 
+            activity_exclusion, centre_activity.c["ActivityID"] == activity_exclusion.c["ActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
         ).where(activity_exclusion.c["StartDateTime"] <= curDateTime
         ).where(activity_exclusion.c["EndDateTime"] >= curDateTime)
@@ -227,3 +227,25 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
 
         return query
     
+
+class ValidRoutineActivitiesView(BaseView): # 
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building valid routine activities query")
+        schema = DB.schema
+
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        routine_activity = schema.tables[cls.db_tables.ROUTINE_ACTIVITY_TABLE]
+        routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
+
+        query: Select = select(
+            activity.c["ActivityTitle"],
+            routine_activity.c["FixedTimeSlots"],
+            routine.c["PatientID"]
+        ).join(
+            activity, activity.c["ActivityID"] == routine.c["ActivityID"]
+        ).join(
+            routine_activity, routine.c["RoutineID"] == routine_activity.c["RoutineID"]
+        ).where(routine.c["IncludeInSchedule"] == True)
+
+        return query
