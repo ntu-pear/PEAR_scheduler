@@ -226,4 +226,23 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         ).where(centre_activity.c["IsCompulsory"] == True)
 
         return query
-    
+
+class PrescriptionView(BaseView): # Just the prescription and the prescription name 
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building prescription view query")
+        schema = DB.schema
+        
+        prescription = schema.tables[cls.db_tables.PRESCRIPTION_TABLE]
+        list_prescription = schema.tables[cls.db_tables.LIST_PRESCRIPTION_TABLE]
+        
+        curDateTime = datetime.now()
+        query: Select = select(
+            prescription,
+            list_prescription.c["Value"]
+        ).join(
+            list_prescription, list_prescription.c["List_PrescriptionID"] == prescription.c["PrescriptionListID"]
+        ).where(prescription.c["StartDate"] <= curDateTime
+        ).where(prescription.c["EndDate"] >= curDateTime)
+        
+        return query

@@ -108,7 +108,7 @@ class GroupActivityScheduler(BaseScheduler):
                 elif len(leftOverPatients) == shortfall: # just nice enough
                     for id in leftOverPatients:
                         activityMap[activityTitle].add(id)
-                        patientActivityCountMap[id] += 1
+                        patientActivityCountMap[id] += 1 
 
                 else: # more leftover patients than shortfall, need to allocate patients with lower group activity count
                     minHeap = [(patientActivityCountMap[id], id) for id in leftOverPatients]
