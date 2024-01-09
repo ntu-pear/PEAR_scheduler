@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 class GroupActivityScheduler(BaseScheduler):
     @classmethod
-    def fillSchedule(cls, schedules: Mapping[str, List[str]]):
+    def fillSchedule(cls, patientSchedules: Mapping[str, List[str]]):
+        
         activityMap = {} # mapping of activity Title: set of patients that can do the activity
         patientActivityCountMap = {} # mapping of activityID: count of number of patients to the activity
         activityMinSizeMap = {} # mapping of activity Tile: min size required for activity
@@ -130,6 +131,15 @@ class GroupActivityScheduler(BaseScheduler):
         for id in patientDF["PatientID"]:
             patientCount += 1
             timetable[id] = ["" for _ in range(cls.config["GROUP_TIMESLOTS"])]
+
+        # Check if routine activities are scheduled at group time slot
+        for patientID, scheduleArr in timetable.items():
+            for i, activity in enumerate(scheduleArr):
+                day,hour = cls.config["GROUP_TIMESLOT_MAPPING"][i]
+                curActivity = patientSchedules[patientID][day][hour]
+                if curActivity != "": # there is routine activity
+                    timetable[patientID][i] = "-"
+
         
         logger.info("First Round Scheduling")
         firstTimeTable, firstEmptySlots = cls.bruteForceGroupScheduling(
@@ -139,7 +149,7 @@ class GroupActivityScheduler(BaseScheduler):
             patientCount * cls.config["GROUP_TIMESLOTS"], 
             groupActivityDF
         )
-            
+    
 
         # Allocate for second round using secondRoundList
         patientActivityCountMap = getpatientActivityCountMap(firstTimeTable)
@@ -155,13 +165,13 @@ class GroupActivityScheduler(BaseScheduler):
                 if pid not in activityExclusionMap[activityTitle]: # not being excluded 
                     secondActivityMap[activityTitle].add(pid)
                     patientActivityCountMap[pid] += 1
-
+        
+       
         logger.info("Second Round Scheduling")
         # Second Round Scheduling
         secondTimeTable, secondEmptySlots = cls.bruteForceGroupScheduling(
             secondActivityMap, firstTimeTable, cls.config["GROUP_TIMESLOTS"], firstEmptySlots, groupActivityDF
         )
-        
 
         # allocate more patients to activities
         allScheduledActivitiesSet = getAllScheduledActivities(secondTimeTable)
@@ -201,6 +211,7 @@ class GroupActivityScheduler(BaseScheduler):
         
 
         def can_schedule(activity, time_slot, timeTable, activityMap):
+            
             for person in activityMap[activity]:
                 if timeTable[person][time_slot] != "":
                     return False
@@ -300,7 +311,8 @@ def getAllScheduledActivities(timeTable):
 
     for _, arr in timeTable.items():
         for a in arr:
-            activitySet.add(a)
+            if a != "-":
+                activitySet.add(a)
 
     return activitySet
 
@@ -309,6 +321,8 @@ def getActivityToTimeSlotMap(timeTable):
     mapping = {}
     for _, arr in timeTable.items():
         for i, a in enumerate(arr):
+            if a == "-":
+                continue
             if a not in mapping:
                 mapping[a] = i
 
@@ -320,7 +334,7 @@ def getpatientActivityCountMap(timeTable):
     for pid, arr in timeTable.items():
         count = 0
         for a in arr:
-            if a != "":
+            if a != "" and a != "-": 
                 count += 1
         mapping[pid] = count
 

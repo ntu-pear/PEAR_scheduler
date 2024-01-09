@@ -31,9 +31,9 @@ DB_TABLES = DBTABLES(
     CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "CentreActivityRecommendation",
     PATIENT_TABLE = "Patient",
     ROUTINE_TABLE = "Routine",
+    ROUTINE_ACTIVITY_TABLE= "RoutineActivity", 
+    MEDICATION_TABLE = "Medication",
     SCHEDULE_TABLE = "Schedule",
-    PRESCRIPTION_TABLE = "Prescription",
-    LIST_PRESCRIPTION_TABLE = "List_Prescription"
 )
 
 
@@ -42,5 +42,4 @@ DAYS = 5
 HOURS = 8
 GROUP_TIMESLOTS = 10
 GROUP_TIMESLOT_MAPPING = [(0,1),(1,6), (2,1), (3,6), (4,1), (2,6), (3,1), (0,6), (1,1), (4,6)] #(day, timeslot in day)
-MEDICATION_TIMESLOT = (1,5) # 1: 1000-1100 | 5: 1400-1500 (4 hours interval between)
 MINWEEKLYACTIVITIES = 6
