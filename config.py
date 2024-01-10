@@ -5,20 +5,24 @@ from sqlalchemy import URL
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE CONFIGS ~~~~~~~~~~~~~~~~~~~~~~~
+<<<<<<< Updated upstream
 DB_CONN_STR = "mssql+pyodbc://(LocalDb)\\MSSQLLocalDB/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
+=======
+# DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
+>>>>>>> Stashed changes
 
-# connection_string = (
-#     r"Driver=ODBC Driver 18 for SQL Server;"
-#     r"Server=127.0.0.1;"
-#     r"Database=fypcom_localdb;"
-#     r"TrustServerCertificate=yes;"
-#     r"UID=sa;"
-#     r"PWD=MyPass@word;"
-# )
-# DB_CONN_STR = URL.create(
-#     "mssql+pyodbc", 
-#     query={"odbc_connect": connection_string}
-# )
+connection_string = (
+    r"Driver=ODBC Driver 18 for SQL Server;"
+    r"Server=127.0.0.1;"
+    r"Database=fypcom_localdb;"
+    r"TrustServerCertificate=yes;"
+    r"UID=sa;"
+    r"PWD=MyPass@word;"
+)
+DB_CONN_STR = URL.create(
+    "mssql+pyodbc", 
+    query={"odbc_connect": connection_string}
+)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE TABLES/VIEWS ~~~~~~~~~~~~~~~~~~~~~~~
 DB_TABLES = DBTABLES(
