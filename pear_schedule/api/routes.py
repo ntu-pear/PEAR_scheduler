@@ -82,6 +82,8 @@ def generate_schedule():
     start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
     end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
     
+    print("hiii")
+    print(start_of_week)
     try:
         for p, slots in patientSchedules.items():
             
@@ -110,7 +112,7 @@ def generate_schedule():
             }
 
             # check if have existing schedule, if have then just ignore
-            existingScheduleDF = ExistingScheduleView.get_data(today, p)
+            existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
             if len(existingScheduleDF) > 0:
                 continue
             
