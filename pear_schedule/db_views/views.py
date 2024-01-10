@@ -261,3 +261,100 @@ class ValidRoutineActivitiesView(BaseView): #
         ).where(routine.c["IncludeInSchedule"] == True)
 
         return query
+    
+
+class ActivityNameView(BaseView): # get activity name from activityID
+    @classmethod
+    def build_query(cls, activityID) -> Select:
+        logger.info("Building valid routine activities query")
+        schema = DB.schema
+
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+
+        query: Select = select(
+            activity.c["ActivityTitle"],
+        ).where(activity.c["ActivityID"] == activityID)
+
+        return query
+    
+
+    @classmethod
+    def get_data(cls, activityID) -> pd.DataFrame:
+        with DB.get_engine().begin() as conn:
+            query: Select = cls.build_query(activityID)
+
+            logger.info(f"Retrieving data for {cls.__name__}")
+            logger.debug(compile_query(query))
+            result: pd.DataFrame = pd.read_sql(query, con=conn)
+        return result
+    
+
+class AdHocScheduleView(BaseView): # get schedule for specific patients
+    @classmethod
+    def build_query(cls, patientIDList) -> Select:
+        logger.info("Building ad hoc schedule query")
+        schema = DB.schema
+
+        schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
+
+        curDateTime = datetime.now()
+
+        query: Select = select(
+            schedule.c["ScheduleID"],
+            schedule.c["PatientID"],
+            schedule.c["Monday"],
+            schedule.c["Tuesday"],
+            schedule.c["Wednesday"],
+            schedule.c["Thursday"],
+            schedule.c["Friday"],
+            schedule.c["Saturday"],
+        ).where(schedule.c["PatientID"].in_(tuple(patientIDList))
+        ).where(schedule.c["StartDate"] <= curDateTime
+        ).where(schedule.c["EndDate"] >= curDateTime)
+
+        
+
+        return query
+    
+
+    @classmethod
+    def get_data(cls, patientIDList) -> pd.DataFrame:
+        with DB.get_engine().begin() as conn:
+            query: Select = cls.build_query(patientIDList)
+
+            logger.info(f"Retrieving data for {cls.__name__}")
+            logger.debug(compile_query(query))
+            result: pd.DataFrame = pd.read_sql(query, con=conn)
+        return result
+    
+
+
+class ExistingScheduleView(BaseView): # check if have existing schedule
+    @classmethod
+    def build_query(cls, curDate, patientID) -> Select:
+        logger.info("Building existing schedule query")
+        schema = DB.schema
+
+        schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
+
+        
+
+        query: Select = select(
+            schedule.c["ScheduleID"],
+        ).where(schedule.c["EndDate"] >= curDate
+        ).where(schedule.c["PatientID"] == patientID)
+
+        
+
+        return query
+    
+
+    @classmethod
+    def get_data(cls, curDate, patientID) -> pd.DataFrame:
+        with DB.get_engine().begin() as conn:
+            query: Select = cls.build_query(curDate, patientID)
+
+            logger.info(f"Retrieving data for {cls.__name__}")
+            logger.debug(compile_query(query))
+            result: pd.DataFrame = pd.read_sql(query, con=conn)
+        return result
