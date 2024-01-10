@@ -1,5 +1,5 @@
-from flask import Blueprint, jsonify, current_app
-from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView
+from flask import Blueprint, jsonify, current_app, request, Response
+from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
@@ -84,7 +84,6 @@ def generate_schedule():
     
     try:
         for p, slots in patientSchedules.items():
-            print(f"{p} Schedule: {slots}")
             
             days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
             converted_schedule = {}
@@ -109,6 +108,11 @@ def generate_schedule():
                 "CreatedDateTime": today, ## Mandatory Field 
                 "UpdatedDateTime": today ## Mandatory Field 
             }
+
+            # check if have existing schedule, if have then just ignore
+            existingScheduleDF = ExistingScheduleView.get_data(today, p)
+            if len(existingScheduleDF) > 0:
+                continue
             
             # Use the add method to add data to the session
             schedule_instance = schedule_table.insert().values(schedule_data)
@@ -124,8 +128,87 @@ def generate_schedule():
     session.close()
     ## ------------------------------------------------------------------------------------------------
     
-    data = {"data": "Success"} 
-    return jsonify(data) 
+    return Response(
+        "Generated Schedule Successfully",
+        status=200,
+    ) 
+
+
+
+@blueprint.route("/adhoc", methods=["PUT"])
+def adhoc_change_schedule():
+    # example request body = {
+    #     "originalActivityID": 0,
+    #     "newActivityID": 1,
+    #     "patientIDList": [1,3], (if empty means replace for all patients)
+    #     "dayList": ["Monday", "Tuesday"], (if empty means replace for all days)
+    # }
+
+    data = request.get_json()
+
+    # check request body
+    errorRes = checkRequestBody(data)
+    if errorRes != None:
+        return errorRes
+    
+    # find original activity name
+    originalDF = ActivityNameView.get_data(data["originalActivityID"])
+    if len(originalDF) == 0: # invalid activity
+        return Response(
+            "Invalid original activity ID",
+            status=400,
+        )
+
+    originalActivityName = originalDF["ActivityTitle"].iloc[0]
+
+    # find new activity name
+    newDF = ActivityNameView.get_data(data["newActivityID"])
+    if len(newDF) == 0: # invalid activity
+        return Response(
+            "Invalid new activity ID",
+            status=400,
+        )
+
+    newActivityName = newDF["ActivityTitle"].iloc[0]
+
+    adHocDF = AdHocScheduleView.get_data(data["patientIDList"])
+    chosenDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    if len(data["dayList"]) != 0:
+        chosenDays = data["dayList"]
+
+    filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
+    
+    # replace activities
+    for i, record in filteredAdHocDF.iterrows():
+        for col in chosenDays:
+            originalSchedule = record[col]
+            if originalSchedule != "":
+                newSchedule = originalSchedule.replace(originalActivityName, newActivityName)
+                filteredAdHocDF.at[i,col] = newSchedule
+
+    # Start transaction
+    session = Session(bind=DB.engine)
+    # Reflect the database tables
+    schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
+    today = datetime.datetime.now()
+
+    for i, record in filteredAdHocDF.iterrows():
+        schedule_data = {
+            "UpdatedDateTime": today
+        }
+        for col in chosenDays:
+            schedule_data[col] = record[col]
+
+        schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
+        session.execute(schedule_instance)
+
+    # Commit the changes to the database
+    session.commit()
+            
+    return Response(
+        "Updated Schedule Successfully",
+        status=200,
+    )
 
 
 
@@ -141,8 +224,47 @@ def test2():
     
     print(routineActivitiesDF)
 
-        
-
-    
     data = {"data": "Hello test2"} 
     return jsonify(data) 
+
+
+
+def checkRequestBody(data):
+    if "originalActivityID" not in data or "newActivityID" not in data or "patientIDList" not in data or "dayList" not in data:
+        
+        return Response(
+            "Invalid Request Body",
+            status = 500
+        )
+    
+    if not isinstance(data["originalActivityID"], int) or not isinstance(data["newActivityID"], int):
+        
+        return Response(
+            "Invalid Request Body",
+            status = 500
+        )
+    
+    if not isinstance(data["patientIDList"], list) or not isinstance(data["dayList"], list):
+        
+        return Response(
+            "Invalid Request Body",
+            status = 500
+        )
+    
+
+    for val in data["patientIDList"]:
+        if not isinstance(val, int):
+            return Response(
+                "Invalid Request Body",
+                status = 500
+            )
+    
+    days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+    for val in data["dayList"]:
+        if val not in days:
+            return Response(
+                "Invalid Request Body",
+                status = 500
+            )
+
+    return None
