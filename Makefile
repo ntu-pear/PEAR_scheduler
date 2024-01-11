@@ -11,7 +11,7 @@ docker/build:
 	docker build -t pear_schedule .
 
 docker/run:
-	docker run --name pear -p 8000:8000 --network=host -it pear_schedule:latest
+	docker run --name pear -p 8000:8000 -it pear_schedule:latest
 
 # TODO: fix credentials
 deploy/gcp:
