@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, current_app, request, Response
-from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView
+from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationView
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
@@ -79,11 +79,10 @@ def generate_schedule():
     schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
     
     today = datetime.datetime.now()
-    start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
-    end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
+    start_of_week = today - datetime.timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0)  # Monday -> 00:00:00
+    start_of_week = start_of_week.replace(hour=0, minute=0, second=0)
+    end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59)  # Sunday -> 23:59:59
     
-    print("hiii")
-    print(start_of_week)
     try:
         for p, slots in patientSchedules.items():
             
@@ -135,6 +134,84 @@ def generate_schedule():
         status=200,
     ) 
 
+@blueprint.route("/test", methods=["GET"])
+def test_schedule():
+    
+    weeklyScheduleViewDF = WeeklyScheduleView.get_data()
+    centreActivityPreferenceViewDF = CentreActivityPreferenceView.get_data()
+    centreActivityRecommendationViewDF = CentreActivityRecommendationView.get_data()
+    activitiesExcludedViewDF = ActivitiesExcludedView.get_data()
+    routineViewDF = RoutineView.get_data()
+    medicationViewDF = MedicationView.get_data()
+    
+    for index, row, in weeklyScheduleViewDF.iterrows():
+        print(f"================== Checking patient {row['PatientID']} schedule now ==================")
+        
+        centre_activity_preference_for_patient = centreActivityPreferenceViewDF.loc[centreActivityPreferenceViewDF['PatientID'] == row['PatientID']]
+        centre_activity_recommendation_for_patient = centreActivityRecommendationViewDF.loc[centreActivityRecommendationViewDF['PatientID'] == row['PatientID']]
+        activities_excluded_for_patient = activitiesExcludedViewDF.loc[activitiesExcludedViewDF['PatientID'] == row['PatientID']]
+        routine_for_patient = routineViewDF.loc[(routineViewDF['PatientID'] == row['PatientID']) & routineViewDF["IncludeInSchedule"]]
+        medication_for_patient = medicationViewDF.loc[medicationViewDF['PatientID'] == row['PatientID']]
+        
+        centre_activity_likes = centre_activity_preference_for_patient.loc[centre_activity_preference_for_patient['IsLike'] == True]
+        centre_activity_dislikes = centre_activity_preference_for_patient.loc[centre_activity_preference_for_patient['IsLike'] == False]
+        centre_activity_recommended = centre_activity_recommendation_for_patient.loc[centre_activity_recommendation_for_patient['DoctorRecommendation'] == True]
+        centre_activity_non_recommended = centre_activity_recommendation_for_patient.loc[centre_activity_recommendation_for_patient['DoctorRecommendation'] == False]
+        
+        print(f"Preferred Activities: {centre_activity_likes['ActivityTitle'].tolist()}")
+        print(f"Non-Preferred Activities: {centre_activity_dislikes['ActivityTitle'].tolist()}")
+        print(f"Activities Excluded: {activities_excluded_for_patient['ActivityTitle'].tolist()}")
+        print(f"Routines: {routine_for_patient['ActivityTitle'].tolist()}")
+        print(f"Doctor Recommended Activities: {centre_activity_recommended['ActivityTitle'].tolist()}")
+        print(f"Doctor Non-Recommended Activities: {centre_activity_non_recommended['ActivityTitle'].tolist()}")
+        print(f"Medication: {medication_for_patient['PrescriptionName'].tolist()}")
+        print()
+        
+        remaining_centre_activity_likes = centre_activity_likes['ActivityTitle'].tolist()
+        remaining_centre_activity_recommended = centre_activity_recommended['ActivityTitle'].tolist()
+        
+        for day in range(2,7):
+            print(f"Activities in the week: {row.iloc[day]}")
+            
+            activities_in_a_day = row.iloc[day].split("--")
+            
+            remaining_centre_activity_likes = [item for item in remaining_centre_activity_likes if not any(item in activity for activity in activities_in_a_day)] # if the preferred activity is in the activities_in_a_day, we remove that activity from the initial list
+            remaining_centre_activity_recommended = [item for item in remaining_centre_activity_recommended if not any(item in activity for activity in activities_in_a_day)] # if the activities recommended is in the activities_in_a_day, we remove that activity from the initial list
+        
+        ## INDIVIDUAL CHECKS 
+        print("\nCHECKING IN PROGRESS")
+        
+        print(f"Test 1: Patient preferred activities are scheduled ", end = '')
+        if len(remaining_centre_activity_likes) == 0:
+            print(f"(Passed)")
+        else:
+            if any(item in activities_excluded_for_patient['ActivityTitle'].tolist() for item in remaining_centre_activity_likes):
+                print(f"(Warning)")
+                print(f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}, because there are part of Activities Excluded")
+            elif any(item in centre_activity_non_recommended['ActivityTitle'].tolist() for item in remaining_centre_activity_likes):
+                print(f"(Warning)")
+                print(f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}, because there are Doctor Non-Recommendation Activities")
+            else:
+                print(f"(Failed)")
+                print(f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}")
+            
+        print(f"Test 3: Doctor recommended activities are scheduled ", end = '')
+        if len(remaining_centre_activity_recommended) == 0:
+            print(f"(Passed)")
+        else:
+            if any(item in activities_excluded_for_patient['ActivityTitle'].tolist() for item in remaining_centre_activity_recommended):
+                print(f"(Warning)")
+                print(f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}, because there are part of Activities Excluded")
+            else:
+                print(f"(Failed)")
+                print(f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}")
+        
+        print()
+        
+    return Response(
+        "Schedule Test Successfully",
+        status=200,
+    )
 
 
 @blueprint.route("/adhoc", methods=["PUT"])
@@ -215,7 +292,7 @@ def adhoc_change_schedule():
 
 
 
-@blueprint.route("/test", methods=["GET"])
+@blueprint.route("/test2", methods=["GET"])
 def test2():
     routineActivitiesDF = ValidRoutineActivitiesView.get_data()
     # x = GroupActivitiesRecommendationView.get_data()
