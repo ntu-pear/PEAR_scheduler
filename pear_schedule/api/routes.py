@@ -12,6 +12,11 @@ from pear_schedule.scheduler.individualScheduling import IndividualActivitySched
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 
+from colorama import init, Fore
+
+init(autoreset=True)
+
+
 blueprint = Blueprint("scheduling", __name__)
 
 
@@ -145,7 +150,7 @@ def test_schedule():
     medicationViewDF = MedicationView.get_data()
     
     for index, row, in weeklyScheduleViewDF.iterrows():
-        print(f"================== Checking patient {row['PatientID']} schedule now ==================")
+        print(f"=========================================== Checking patient {row['PatientID']} schedule now ===========================================")
         
         centre_activity_preference_for_patient = centreActivityPreferenceViewDF.loc[centreActivityPreferenceViewDF['PatientID'] == row['PatientID']]
         centre_activity_recommendation_for_patient = centreActivityRecommendationViewDF.loc[centreActivityRecommendationViewDF['PatientID'] == row['PatientID']]
@@ -183,28 +188,28 @@ def test_schedule():
         
         print(f"Test 1: Patient preferred activities are scheduled ", end = '')
         if len(remaining_centre_activity_likes) == 0:
-            print(f"(Passed)")
+            print(Fore.GREEN + f"(Passed)" + Fore.RESET)
         else:
             if any(item in activities_excluded_for_patient['ActivityTitle'].tolist() for item in remaining_centre_activity_likes):
-                print(f"(Warning)")
-                print(f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}, because there are part of Activities Excluded")
+                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+                print(Fore.YELLOW + f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}, because there are part of Activities Excluded" + Fore.RESET)
             elif any(item in centre_activity_non_recommended['ActivityTitle'].tolist() for item in remaining_centre_activity_likes):
-                print(f"(Warning)")
-                print(f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}, because there are Doctor Non-Recommendation Activities")
+                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+                print(Fore.YELLOW + f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}, because there are Doctor Non-Recommendation Activities" + Fore.RESET)
             else:
-                print(f"(Failed)")
-                print(f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}")
+                print(Fore.RED + f"(Failed)" + Fore.RESET)
+                print(Fore.RED + f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}" + Fore.RESET)
             
         print(f"Test 3: Doctor recommended activities are scheduled ", end = '')
         if len(remaining_centre_activity_recommended) == 0:
-            print(f"(Passed)")
+            print(Fore.GREEN + f"(Passed)" + Fore.RESET)
         else:
             if any(item in activities_excluded_for_patient['ActivityTitle'].tolist() for item in remaining_centre_activity_recommended):
-                print(f"(Warning)")
-                print(f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}, because there are part of Activities Excluded")
+                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+                print(Fore.YELLOW + f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}, because there are part of Activities Excluded"  + Fore.RESET)
             else:
-                print(f"(Failed)")
-                print(f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}")
+                print(Fore.RED + f"(Failed)" + Fore.RESET)
+                print(Fore.RED + f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}" + Fore.RESET)
         
         print()
         
