@@ -1,9 +1,10 @@
 from flask import Blueprint, jsonify, current_app, request, Response
+import pandas as pd
 from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
-from sqlalchemy import Table
+from sqlalchemy import Select, Table, select
 import datetime
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
@@ -11,6 +12,7 @@ from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivitySched
 from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
+from utils import DBTABLES
 
 blueprint = Blueprint("scheduling", __name__)
 
@@ -31,6 +33,9 @@ def generate_schedule():
     # Schedule compulsory activities
     CompulsoryActivityScheduler.fillSchedule(patientSchedules)
 
+    # Schedule individual recommended activities
+    IndividualActivityScheduler.fillRecommendations(patientSchedules)
+
     # Schedule routine activities
     RoutineActivityScheduler.fillSchedule(patientSchedules)
 
@@ -43,8 +48,8 @@ def generate_schedule():
             day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
             patientSchedules[patientID][day][hour] = activity
 
-    # Schedule individual activities
-    IndividualActivityScheduler.fillSchedule(patientSchedules)
+    # Schedule individual preferred activities
+    IndividualActivityScheduler.fillPreferences(patientSchedules)
     
     # Insert the medication schedule into scheduler
     medicationScheduler.fillSchedule(patientSchedules)
@@ -124,7 +129,8 @@ def generate_schedule():
             session.commit()
             
     except Exception as e:
-        print(f"Error occurred when inserting {schedule_data}: {e}")
+        session.rollback()
+        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
         
     # Close the session
     session.close()
@@ -194,18 +200,27 @@ def adhoc_change_schedule():
     schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
     today = datetime.datetime.now()
 
-    for i, record in filteredAdHocDF.iterrows():
-        schedule_data = {
-            "UpdatedDateTime": today
-        }
-        for col in chosenDays:
-            schedule_data[col] = record[col]
+    try:
 
-        schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
-        session.execute(schedule_instance)
+        for i, record in filteredAdHocDF.iterrows():
+            schedule_data = {
+                "UpdatedDateTime": today
+            }
+            for col in chosenDays:
+                schedule_data[col] = record[col]
 
-    # Commit the changes to the database
-    session.commit()
+            schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
+            session.execute(schedule_instance)
+
+        # Commit the changes to the database
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+        return Response(
+            "Schedule update error. Check Logs",
+            status=500,
+        )
             
     return Response(
         "Updated Schedule Successfully",
@@ -236,21 +251,21 @@ def checkRequestBody(data):
         
         return Response(
             "Invalid Request Body",
-            status = 500
+            status = 400
         )
     
     if not isinstance(data["originalActivityID"], int) or not isinstance(data["newActivityID"], int):
         
         return Response(
             "Invalid Request Body",
-            status = 500
+            status = 400
         )
     
     if not isinstance(data["patientIDList"], list) or not isinstance(data["dayList"], list):
         
         return Response(
             "Invalid Request Body",
-            status = 500
+            status = 400
         )
     
 
@@ -258,7 +273,7 @@ def checkRequestBody(data):
         if not isinstance(val, int):
             return Response(
                 "Invalid Request Body",
-                status = 500
+                status = 400
             )
     
     days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
@@ -266,7 +281,7 @@ def checkRequestBody(data):
         if val not in days:
             return Response(
                 "Invalid Request Body",
-                status = 500
+                status = 400
             )
 
     return None

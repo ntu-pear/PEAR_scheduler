@@ -1,7 +1,8 @@
+from operator import or_
 from typing import Mapping, Any
 import pandas as pd
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, and_, func, select
 from pear_schedule.db import DB
 from pear_schedule.db_views.utils import compile_query
 from pear_schedule.utils import ConfigDependant
@@ -224,6 +225,43 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsCompulsory"] == True)
+
+        return query
+    
+
+class RecommendedActivitiesView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building recommended activities query")
+        schema = DB.schema
+
+        recommendations = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+        exclusions = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
+
+        query: Select = select(
+            centre_activity.c["ActivityID"],
+            centre_activity.c["IsFixed"],
+            activity.c["ActivityTitle"],
+            centre_activity.c["FixedTimeSlots"],
+            recommendations.c["PatientID"],
+            func.coalesce(exclusions.c["IsDeleted"], True).label("IsAllowed"),  # flipping IsDeleted can cause syntax error
+        ).join(
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).join(
+            recommendations, recommendations.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).join(
+            exclusions, and_(
+                exclusions.c["PatientID"] == recommendations.c["PatientID"],
+                exclusions.c["ActivityID"] == activity.c["ActivityID"]
+            ),
+            isouter=True
+        ).where(
+            recommendations.c["IsDeleted"] == False,
+            recommendations.c["DoctorRecommendation"] > 0,
+            or_(exclusions.c["IsDeleted"] == False, exclusions.c["IsDeleted"] == None)
+        )
 
         return query
 
