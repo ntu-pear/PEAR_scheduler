@@ -1,9 +1,10 @@
 from flask import Blueprint, jsonify, current_app, request, Response
 from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationView
+import pandas as pd
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
-from sqlalchemy import Table
+from sqlalchemy import Select, Table, select
 import datetime
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
@@ -11,6 +12,7 @@ from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivitySched
 from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
+from utils import DBTABLES
 
 from colorama import init, Fore
 
@@ -36,6 +38,9 @@ def generate_schedule():
     # Schedule compulsory activities
     CompulsoryActivityScheduler.fillSchedule(patientSchedules)
 
+    # Schedule individual recommended activities
+    IndividualActivityScheduler.fillRecommendations(patientSchedules)
+
     # Schedule routine activities
     RoutineActivityScheduler.fillSchedule(patientSchedules)
 
@@ -48,8 +53,8 @@ def generate_schedule():
             day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
             patientSchedules[patientID][day][hour] = activity
 
-    # Schedule individual activities
-    IndividualActivityScheduler.fillSchedule(patientSchedules)
+    # Schedule individual preferred activities
+    IndividualActivityScheduler.fillPreferences(patientSchedules)
     
     # Insert the medication schedule into scheduler
     medicationScheduler.fillSchedule(patientSchedules)
@@ -93,10 +98,21 @@ def generate_schedule():
             
             days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
             converted_schedule = {}
-
+            
+            # check if have existing schedule
+            existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
+            if len(existingScheduleDF) > 0:    
+                continue         
+                # check_counter = 0
+                # for i, day in enumerate(days):
+                #     activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
+                #     converted_schedule[day] = activities
+                #     if existingScheduleDF[day].tolist() == activities: # if the existing schedule activities are the same as the new activities created -> increment counter by 1
+                #         check_counter += 1
+                # if check_counter == 5:
+                #     continue
             for i, day in enumerate(days):
                 activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
-                converted_schedule[day] = activities
             
             schedule_data = {
                 ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
@@ -114,11 +130,6 @@ def generate_schedule():
                 "CreatedDateTime": today, ## Mandatory Field 
                 "UpdatedDateTime": today ## Mandatory Field 
             }
-
-            # check if have existing schedule, if have then just ignore
-            existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
-            if len(existingScheduleDF) > 0:
-                continue
             
             # Use the add method to add data to the session
             schedule_instance = schedule_table.insert().values(schedule_data)
@@ -128,7 +139,8 @@ def generate_schedule():
             session.commit()
             
     except Exception as e:
-        print(f"Error occurred when inserting {schedule_data}: {e}")
+        session.rollback()
+        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
         
     # Close the session
     session.close()
@@ -138,6 +150,7 @@ def generate_schedule():
         "Generated Schedule Successfully",
         status=200,
     ) 
+
 
 @blueprint.route("/test", methods=["GET"])
 def test_schedule():
@@ -157,59 +170,201 @@ def test_schedule():
         activities_excluded_for_patient = activitiesExcludedViewDF.loc[activitiesExcludedViewDF['PatientID'] == row['PatientID']]
         routine_for_patient = routineViewDF.loc[(routineViewDF['PatientID'] == row['PatientID']) & routineViewDF["IncludeInSchedule"]]
         medication_for_patient = medicationViewDF.loc[medicationViewDF['PatientID'] == row['PatientID']]
-        
         centre_activity_likes = centre_activity_preference_for_patient.loc[centre_activity_preference_for_patient['IsLike'] == True]
         centre_activity_dislikes = centre_activity_preference_for_patient.loc[centre_activity_preference_for_patient['IsLike'] == False]
         centre_activity_recommended = centre_activity_recommendation_for_patient.loc[centre_activity_recommendation_for_patient['DoctorRecommendation'] == True]
         centre_activity_non_recommended = centre_activity_recommendation_for_patient.loc[centre_activity_recommendation_for_patient['DoctorRecommendation'] == False]
         
-        print(f"Preferred Activities: {centre_activity_likes['ActivityTitle'].tolist()}")
-        print(f"Non-Preferred Activities: {centre_activity_dislikes['ActivityTitle'].tolist()}")
-        print(f"Activities Excluded: {activities_excluded_for_patient['ActivityTitle'].tolist()}")
-        print(f"Routines: {routine_for_patient['ActivityTitle'].tolist()}")
-        print(f"Doctor Recommended Activities: {centre_activity_recommended['ActivityTitle'].tolist()}")
-        print(f"Doctor Non-Recommended Activities: {centre_activity_non_recommended['ActivityTitle'].tolist()}")
-        print(f"Medication: {medication_for_patient['PrescriptionName'].tolist()}")
+        # Lists created for comparison later on
+        ori_centre_activity_likes = centre_activity_likes['ActivityTitle'].tolist()
+        dup_centre_activity_likes = centre_activity_likes['ActivityTitle'].tolist()
+        
+        ori_centre_activity_dislikes = centre_activity_dislikes['ActivityTitle'].tolist()
+        dup_centre_activity_dislikes = []
+        
+        ori_activities_excluded_for_patient = activities_excluded_for_patient['ActivityTitle'].tolist()
+        dup_activities_excluded_for_patient = []
+        
+        ori_routine_for_patient = routine_for_patient['ActivityTitle'].tolist()
+        dup_routine_for_patient = routine_for_patient['ActivityTitle'].tolist()
+        
+        ori_centre_activity_recommended = centre_activity_recommended['ActivityTitle'].tolist()
+        dup_centre_activity_recommended = centre_activity_recommended['ActivityTitle'].tolist()
+        
+        ori_activity_non_recommended = centre_activity_non_recommended['ActivityTitle'].tolist()
+        dup_activity_non_recommended = []
+        
+        ori_medication_for_patient = medication_for_patient['PrescriptionName'].tolist()
+        dup_medication_for_patient = medication_for_patient['PrescriptionName'].tolist()
+        
+        print(f"Preferred Activities: {dup_centre_activity_likes}")
+        print(f"Non-Preferred Activities: {ori_centre_activity_dislikes}")
+        print(f"Activities Excluded: {ori_activities_excluded_for_patient}")
+        print(f"Routines: {dup_routine_for_patient}")
+        print(f"Doctor Recommended Activities: {dup_centre_activity_recommended}")
+        print(f"Doctor Non-Recommended Activities: {ori_activity_non_recommended}")
+        print(f"Medication: {dup_medication_for_patient}")
         print()
         
-        remaining_centre_activity_likes = centre_activity_likes['ActivityTitle'].tolist()
-        remaining_centre_activity_recommended = centre_activity_recommended['ActivityTitle'].tolist()
         
         for day in range(2,7):
             print(f"Activities in the week: {row.iloc[day]}")
             
             activities_in_a_day = row.iloc[day].split("--")
             
-            remaining_centre_activity_likes = [item for item in remaining_centre_activity_likes if not any(item in activity for activity in activities_in_a_day)] # if the preferred activity is in the activities_in_a_day, we remove that activity from the initial list
-            remaining_centre_activity_recommended = [item for item in remaining_centre_activity_recommended if not any(item in activity for activity in activities_in_a_day)] # if the activities recommended is in the activities_in_a_day, we remove that activity from the initial list
+            for activity in activities_in_a_day:
+                # if the preferred activity/ recommended activities/ routine activities are in the activities_in_a_day, we remove that activity from the list
+                dup_centre_activity_likes = [item for item in dup_centre_activity_likes if item not in activity] 
+                dup_centre_activity_recommended = [item for item in dup_centre_activity_recommended if item not in activity] 
+                dup_routine_for_patient = [item for item in dup_routine_for_patient if item not in activity] 
+                
+                # if the non-preferred activities/ non-recommended activities/ activities excluded are in the activities_in_a_day, we keep that activity in the list
+                dup_centre_activity_dislikes = [item for item in ori_centre_activity_dislikes if item in activity]
+                dup_activity_non_recommended = [item for item in ori_activity_non_recommended if item in activity]
+                dup_activities_excluded_for_patient = [item for item in ori_activities_excluded_for_patient if item in activity]
+                
+        ## ========================= FOR TESTING CASES =========================
+        
+        # Test 1
+        # ori_activity_non_recommended = ["Mahjong", "Cutting"]
+        # dup_centre_activity_likes = ["Mahjong","Cutting","Dancing","Piano", "Killing"]
+        # ori_activities_excluded_for_patient = ["Dancing", "Piano"]
+        
+        # Test 2
+        # dup_centre_activity_dislikes = ["Mahjong"]
+        # ori_centre_activity_recommended = ["Mahjong", "Cutting"]
+        
+        # Test 3
+        # dup_centre_activity_recommended = ["Clip Coupons", "Cutting"]
+        # ori_activities_excluded_for_patient = ["Clip Coupons", "Piano"]
+        
+        # Test 5
+        # dup_activity_non_recommended = ["Clip Coupons"]
+        
+        # =======================================================================
         
         ## INDIVIDUAL CHECKS 
         print("\nCHECKING IN PROGRESS")
         
         print(f"Test 1: Patient preferred activities are scheduled ", end = '')
-        if len(remaining_centre_activity_likes) == 0:
+        if len(dup_centre_activity_likes) == 0:
             print(Fore.GREEN + f"(Passed)" + Fore.RESET)
         else:
-            if any(item in activities_excluded_for_patient['ActivityTitle'].tolist() for item in remaining_centre_activity_likes):
-                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
-                print(Fore.YELLOW + f"\t{remaining_centre_activity_likes} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
-            elif any(item in centre_activity_non_recommended['ActivityTitle'].tolist() for item in remaining_centre_activity_likes):
-                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
-                print(Fore.YELLOW + f"\t{remaining_centre_activity_likes} are not scheduled because there are Doctor Non-Recommendation Activities" + Fore.RESET)
-            else:
-                print(Fore.RED + f"(Failed)" + Fore.RESET)
-                print(Fore.RED + f"\tThe following preferred activities are not scheduled: {remaining_centre_activity_likes}" + Fore.RESET)
+            common_exclusion_and_preferred = list(set(ori_activities_excluded_for_patient) & set(dup_centre_activity_likes))
+            common_non_recommended_and_preferred = list(set(ori_activity_non_recommended) & set(dup_centre_activity_likes))
+            not_in_exclusion_or_non_recommended = list(set(dup_centre_activity_likes) - (set(ori_activities_excluded_for_patient) | set(ori_activity_non_recommended)))
             
-        print(f"Test 3: Doctor recommended activities are scheduled ", end = '')
-        if len(remaining_centre_activity_recommended) == 0:
+            if len(not_in_exclusion_or_non_recommended) != 0:
+                print(Fore.RED + f"(Failed)" + Fore.RESET)
+                if len(common_exclusion_and_preferred) != 0:
+                    print(Fore.YELLOW + f"\t{common_exclusion_and_preferred} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
+                if len(common_non_recommended_and_preferred) != 0:
+                    print(Fore.YELLOW + f"\t{common_non_recommended_and_preferred} are not scheduled because there are part of Doctor Non-Recommended Activities" + Fore.RESET)
+                print(Fore.RED + f"\tThe following preferred activities are not scheduled: {not_in_exclusion_or_non_recommended}" + Fore.RESET)
+            else:
+                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+                if len(common_exclusion_and_preferred) != 0:
+                    print(Fore.YELLOW + f"\t{common_exclusion_and_preferred} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
+                if len(common_non_recommended_and_preferred) != 0:
+                    print(Fore.YELLOW + f"\t{common_non_recommended_and_preferred} are not scheduled because there are part of Doctor Non-Recommended Activities" + Fore.RESET)
+                
+            # if any(item in ori_activities_excluded_for_patient for item in dup_centre_activity_likes):
+            #     common_elements = list(set(ori_activities_excluded_for_patient) & set(dup_centre_activity_likes))
+            #     if len(common_elements) == len(dup_centre_activity_likes): # all NOT SCHEDULED preferred activities are part of activities excluded
+            #         print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+            #         print(Fore.YELLOW + f"\t{dup_centre_activity_likes} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
+            #     else: # there are some preferred activities that are NOT IN activities excluded BUT ARE NOT scheduled
+            #         print(Fore.RED + f"(Failed)" + Fore.RESET)
+            #         print(Fore.RED + f"\t{common_elements} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
+            #         print(Fore.RED + f"\tHowever, {[item for item in dup_centre_activity_likes if item not in common_elements]} are not Activities Excluded but are still not scheduled" + Fore.RESET)
+            # elif any(item in ori_activity_non_recommended for item in dup_centre_activity_likes):
+            #     common_elements = list(set(ori_activity_non_recommended) & set(dup_centre_activity_likes))
+            #     if len(common_elements) == len(dup_centre_activity_likes): # all NOT SCHEDULED preferred activities are part of doctor non-recommended activities
+            #         print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+            #         print(Fore.YELLOW + f"\t{dup_centre_activity_likes} are not scheduled because there are Doctor Non-Recommendation Activities" + Fore.RESET)
+            #     else: # there are some preferred activities that are NOT IN doctor non-recommended activities BUT ARE NOT scheduled
+            #         print(Fore.RED + f"(Failed)" + Fore.RESET)
+            #         print(Fore.RED + f"\t{common_elements} are not scheduled because there are part of Doctor Non-Recommended Activities" + Fore.RESET)
+            #         print(Fore.RED + f"\tHowever, {[item for item in dup_centre_activity_likes if item not in common_elements]} are not Doctor Non-Recommended Activities but are still not scheduled" + Fore.RESET)
+            # else:
+            #     print(Fore.RED + f"(Failed)" + Fore.RESET)
+            #     print(Fore.RED + f"\tThe following preferred activities are not scheduled: {dup_centre_activity_likes}" + Fore.RESET)
+                
+                
+        print(f"Test 2: Patient non-preferred activities are not scheduled ", end = '')
+        if len(dup_centre_activity_dislikes) == 0:
             print(Fore.GREEN + f"(Passed)" + Fore.RESET)
         else:
-            if any(item in activities_excluded_for_patient['ActivityTitle'].tolist() for item in remaining_centre_activity_recommended):
+            common_recommended_and_non_preferred = list(set(ori_centre_activity_recommended) & set(dup_centre_activity_dislikes))
+            not_in_recommended = list(set(dup_centre_activity_dislikes) - set(ori_centre_activity_recommended))
+            
+            if len(not_in_recommended) != 0:
+                print(Fore.RED + f"(Failed)" + Fore.RESET)
+                if len(common_recommended_and_non_preferred) != 0:
+                    print(Fore.YELLOW + f"\t{common_recommended_and_non_preferred} are scheduled because there are part of Doctor Recommended Activities" + Fore.RESET)
+                print(Fore.RED + f"\tThe following non-preferred activities are scheduled: {not_in_recommended}" + Fore.RESET)
+            else:
                 print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
-                print(Fore.YELLOW + f"\t{remaining_centre_activity_recommended} are not scheduled because there are part of Activities Excluded"  + Fore.RESET)
+                if len(common_recommended_and_non_preferred) != 0:
+                    print(Fore.YELLOW + f"\t{common_recommended_and_non_preferred} are scheduled because there are part of Doctor Recommended Activities" + Fore.RESET)
+                
+            # if any(item in ori_centre_activity_recommended for item in dup_centre_activity_dislikes):
+            #     common_elements = list(set(ori_centre_activity_recommended) & set(dup_centre_activity_dislikes))
+            #     if len(common_elements) == len(dup_centre_activity_dislikes): # all non-preferred activities are part of doctor recommended activities
+            #         print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+            #         print(Fore.YELLOW + f"\t{common_elements} are scheduled because there are part of Doctor Recommended Activities" + Fore.RESET)
+            #     else: # there are some non-preferred activities that are NOT IN doctor recommended activities BUT ARE SCHEDULED
+            #         print(Fore.RED + f"(Failed)" + Fore.RESET)
+            #         print(Fore.RED + f"\t{common_elements} are scheduled because there are part of Doctor Recommended Activities" + Fore.RESET)
+            #         print(Fore.RED + f"\tHowever, {[item for item in dup_centre_activity_dislikes if item not in common_elements]} are not Doctor Recommended Activities but are still scheduled" + Fore.RESET)
+            # else:   
+            #     print(Fore.RED + f"(Failed)" + Fore.RESET)
+            #     print(Fore.RED + f"\tThe following non-preferred activities are scheduled: {dup_centre_activity_dislikes}" + Fore.RESET)
+                
+                
+        print(f"Test 3: Doctor recommended activities are scheduled ", end = '')
+        if len(dup_centre_activity_recommended) == 0:
+            print(Fore.GREEN + f"(Passed)" + Fore.RESET)
+        else:
+            common_excluded_and_recommended = list(set(ori_activities_excluded_for_patient) & set(dup_centre_activity_recommended))
+            not_in_excluded = list(set(dup_centre_activity_recommended) - set(ori_activities_excluded_for_patient))
+            
+            if len(not_in_excluded) != 0:
+                print(Fore.RED + f"(Failed)" + Fore.RESET)
+                if len(common_excluded_and_recommended) != 0:
+                    print(Fore.YELLOW + f"\t{common_excluded_and_recommended} are not scheduled because there are part of Activities Excluded"  + Fore.RESET)
+                print(Fore.RED + f"\tThe following doctor recommended activities are not scheduled: {not_in_excluded}" + Fore.RESET)
+            else:
+                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+                if len(common_excluded_and_recommended) != 0:
+                    print(Fore.YELLOW + f"\t{common_excluded_and_recommended} are not scheduled because there are part of Activities Excluded"  + Fore.RESET)
+                
+            # if any(item in ori_activities_excluded_for_patient for item in dup_centre_activity_recommended):
+            #     print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+            #     print(Fore.YELLOW + f"\t{dup_centre_activity_recommended} are not scheduled because there are part of Activities Excluded"  + Fore.RESET)
+            # else:
+            #     print(Fore.RED + f"(Failed)" + Fore.RESET)
+            #     print(Fore.RED + f"\tThe following doctor recommended activities are not scheduled: {dup_centre_activity_recommended}" + Fore.RESET)
+                
+                
+        print(f"Test 5: Doctor non-recommended activities are not scheduled ", end = '')
+        if len(dup_activity_non_recommended) == 0:
+            print(Fore.GREEN + f"(Passed)" + Fore.RESET)
+        else:
+            print(Fore.RED + f"(Failed)" + Fore.RESET)
+            print(Fore.RED + f"\tThe following doctor non-recommended activities are scheduled: {dup_activity_non_recommended}" + Fore.RESET)
+            
+            
+        print(f"Test 8: Patient routines are scheduled ", end = '')
+        if len(dup_routine_for_patient) == 0:
+            print(Fore.GREEN + f"(Passed)" + Fore.RESET)
+        else:
+            if any(item in ori_activities_excluded_for_patient for item in dup_routine_for_patient):
+                print(Fore.YELLOW + f"(Warning)" + Fore.RESET)
+                print(Fore.YELLOW + f"\t{dup_centre_activity_recommended} are not scheduled because there are part of Activities Excluded"  + Fore.RESET)
             else:
                 print(Fore.RED + f"(Failed)" + Fore.RESET)
-                print(Fore.RED + f"\tThe following doctor recommended activities are not scheduled: {remaining_centre_activity_recommended}" + Fore.RESET)
+                print(Fore.RED + f"\tThe following doctor recommended activities are not scheduled: {dup_centre_activity_recommended}" + Fore.RESET)
         
         print()
         
@@ -276,25 +431,32 @@ def adhoc_change_schedule():
     schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
     today = datetime.datetime.now()
 
-    for i, record in filteredAdHocDF.iterrows():
-        schedule_data = {
-            "UpdatedDateTime": today
-        }
-        for col in chosenDays:
-            schedule_data[col] = record[col]
+    try:
 
-        schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
-        session.execute(schedule_instance)
+        for i, record in filteredAdHocDF.iterrows():
+            schedule_data = {
+                "UpdatedDateTime": today
+            }
+            for col in chosenDays:
+                schedule_data[col] = record[col]
 
-    # Commit the changes to the database
-    session.commit()
+            schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
+            session.execute(schedule_instance)
+
+        # Commit the changes to the database
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+        return Response(
+            "Schedule update error. Check Logs",
+            status=500,
+        )
             
     return Response(
         "Updated Schedule Successfully",
         status=200,
     )
-
-
 
 
 @blueprint.route("/test2", methods=["GET"])
@@ -312,27 +474,26 @@ def test2():
     return jsonify(data) 
 
 
-
 def checkRequestBody(data):
     if "originalActivityID" not in data or "newActivityID" not in data or "patientIDList" not in data or "dayList" not in data:
         
         return Response(
             "Invalid Request Body",
-            status = 500
+            status = 400
         )
     
     if not isinstance(data["originalActivityID"], int) or not isinstance(data["newActivityID"], int):
         
         return Response(
             "Invalid Request Body",
-            status = 500
+            status = 400
         )
     
     if not isinstance(data["patientIDList"], list) or not isinstance(data["dayList"], list):
         
         return Response(
             "Invalid Request Body",
-            status = 500
+            status = 400
         )
     
 
@@ -340,7 +501,7 @@ def checkRequestBody(data):
         if not isinstance(val, int):
             return Response(
                 "Invalid Request Body",
-                status = 500
+                status = 400
             )
     
     days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
@@ -348,7 +509,7 @@ def checkRequestBody(data):
         if val not in days:
             return Response(
                 "Invalid Request Body",
-                status = 500
+                status = 400
             )
 
     return None

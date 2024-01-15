@@ -4,16 +4,48 @@ from typing import List, Mapping, Optional
 
 import pandas as pd
 
-from pear_schedule.db_views.views import ActivitiesView, PatientsView
+from pear_schedule.db_views.views import ActivitiesView, PatientsView, RecommendedActivitiesView
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 
 
 logger = logging.getLogger(__name__)
 
-
 class IndividualActivityScheduler(BaseScheduler):
     @classmethod
-    def fillSchedule(cls, schedules: Mapping[str, List[str]]):
+    def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
+        cls.fillPreferences(schedules)
+        cls.fillRecommendations(schedules)
+
+    @classmethod
+    def fillRecommendations(cls, schedules: Mapping[str, List[str]]) -> None:
+        recommendations: pd.DataFrame = RecommendedActivitiesView.get_data()
+        recommendations.sort_values(by=["PatientID"])
+        recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
+
+        # add an extra row at end for easier handling of final patient
+        dummy_row = recommendations.iloc[0:1].copy(deep=True)
+        dummy_row["PatientID"] = None
+        recommendations = pd.concat([recommendations, dummy_row]).reset_index(drop=True)
+
+        start = 0
+
+        for curr, (_, row) in enumerate(recommendations.iterrows()):  # not using iterrows directly since need range indexing later
+            if row["PatientID"] == recommendations.loc[start, "PatientID"]:
+                continue
+
+            end = curr
+
+            patient_id = recommendations["PatientID"][start]
+            curr_df: pd.DataFrame = recommendations.iloc[start: end]
+            patient_schedule = schedules[patient_id]
+            allowed_activities = curr_df[curr_df["IsAllowed"]]
+
+            cls.__fillByFixedTimeSlots(patient_schedule, allowed_activities)
+
+            start = curr
+
+    @classmethod
+    def fillPreferences(cls, schedules: Mapping[str, List[str]]):
         patients: Mapping[str, Mapping[str, set[str]]] = {}
 
         # consolidate patient data
@@ -61,7 +93,7 @@ class IndividualActivityScheduler(BaseScheduler):
                         if i >= len(day_sched):
                             break
 
-                        find_activity = partial(cls.__find_activity, day=day, slot=i, slot_size=j-i)
+                        find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
                         new_activity = \
                             find_activity(preferred_activities, curr_day_activities) or \
                             find_activity(non_preferred_activites, curr_day_activities)
@@ -72,10 +104,8 @@ class IndividualActivityScheduler(BaseScheduler):
                         day_sched[i] = new_activity
                     i += 1
 
-
-
     @classmethod
-    def __find_activity(
+    def __findActivityBySlot(
         cls, 
         activities: pd.DataFrame, 
         used_activities: set[str], 
@@ -119,3 +149,52 @@ class IndividualActivityScheduler(BaseScheduler):
             return None
 
         return activities.iloc[out[0]]["ActivityTitle"]
+
+    @classmethod
+    def __fillByFixedTimeSlots(cls, patient_schedule: List[str], allowed_activities: pd.DataFrame):
+        scheduled_idx = pd.Series(False, index=allowed_activities.index)
+        for day, day_schedule in enumerate(patient_schedule):
+
+            if scheduled_idx.all():
+                break
+
+            for slot, curr_activity in enumerate(day_schedule):
+                if curr_activity:
+                    continue
+                # scan remaining allowed activities to find most constrained
+                # not ideal but no. of activities is expected to be small so O(n2) is acceptable
+
+                least_available = -1
+                lowest_availability = float("inf")
+
+                for row, activity in allowed_activities[~scheduled_idx].iterrows():
+                    curr_availability = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
+
+                    if not curr_availability:
+                        scheduled_idx.loc[row] = True
+
+                    if curr_availability < lowest_availability:
+                        least_available = row
+                        lowest_availability = curr_availability
+
+                if least_available < 0:
+                    break
+
+                scheduled_idx.loc[least_available] = True
+
+                day_schedule[slot] = allowed_activities.loc[least_available, "ActivityTitle"]
+
+
+def calculate_activity_availabillity(day: int, slot: int, fixedTimeSlots: str):
+    if not fixedTimeSlots:
+        return 1000
+
+    time_slots = fixedTimeSlots.split(",")
+
+    def validate(ts: str):
+        d, s = ts.split("-")
+        return int(d) > day or (int(d) == day and int(s) >= slot)
+    
+    tally = sum(map(validate, time_slots))
+    
+    return tally

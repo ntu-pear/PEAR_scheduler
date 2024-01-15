@@ -36,7 +36,7 @@ def init_app(config: Mapping[str, Any]):
     # GroupActivitiesExclusionView.init_app(app.config)
     # CompulsoryActivitiesOnlyView.init_app(app.config)
 
-    app.run(host="localhost", debug=True, port=8000)
+    app.run(host="0.0.0.0", debug=True, port=8080)
 
 def main():
     # TODO: change to use click instead
