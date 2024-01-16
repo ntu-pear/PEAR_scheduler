@@ -1,6 +1,6 @@
 from copy import deepcopy
 from typing import List, Mapping
-from pear_schedule.db_views.views import PatientsOnlyView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView
+from pear_schedule.db_utils.views import PatientsOnlyView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView
 
 import logging
 

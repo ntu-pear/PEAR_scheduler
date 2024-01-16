@@ -1,11 +1,13 @@
+import logging
 from flask import Blueprint, jsonify, current_app, request, Response
 import pandas as pd
-from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView
+from pear_schedule.db_utils.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
 from sqlalchemy import Select, Table, select
 import datetime
+from pear_schedule.db_utils.writer import ScheduleWriter
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
 from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
@@ -13,6 +15,8 @@ from pear_schedule.scheduler.individualScheduling import IndividualActivitySched
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 from utils import DBTABLES
+
+logger = logging.getLogger(__name__)
 
 blueprint = Blueprint("scheduling", __name__)
 
@@ -56,90 +60,35 @@ def generate_schedule():
     
     # To print the schedule
     for p, slots in patientSchedules.items():
-            print(f"FOR PATIENT {p}")
+            logger.info(f"FOR PATIENT {p}")
             
             for day, activities in enumerate(slots):
                 if day == 0:
-                    print(f"\t Monday: ")
+                    logger.info(f"\t Monday: ")
                 elif day == 1:
-                    print(f"\t Tuesday: ")
+                    logger.info(f"\t Tuesday: ")
                 elif day == 2:
-                    print(f"\t Wednesday: ")
+                    logger.info(f"\t Wednesday: ")
                 elif day == 3:
-                    print(f"\t Thursday: ")
+                    logger.info(f"\t Thursday: ")
                 elif day == 4:
-                    print(f"\t Friday: ")
+                    logger.info(f"\t Friday: ")
                 
                 for index, hour in enumerate(activities):
-                    print(f"\t\t {index}: {hour}")
+                    logger.info(f"\t\t {index}: {hour}")
             
-            print("==============================================")
+            logger.info("==============================================")
     
-    ## ------------------------------------------------------------------------------------------------
-    # COMMENT THE FOLLOWING IF YOU DO NOT WANT TO INSERT INTO SCHEDULE TABLE
-    # Inserting into Schedule Table
-    session = Session(bind=DB.engine)
-    
-    # Reflect the database tables
-    schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
-    
-    today = datetime.datetime.now()
-    start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
-    end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
-    
-    print("hiii")
-    print(start_of_week)
-    try:
-        for p, slots in patientSchedules.items():
-            
-            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-            converted_schedule = {}
-
-            for i, day in enumerate(days):
-                activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
-                converted_schedule[day] = activities
-            
-            schedule_data = {
-                ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
-                "PatientID": p,
-                "StartDate": start_of_week,
-                "EndDate": end_of_week,
-                "Monday": converted_schedule["Monday"],
-                "Tuesday": converted_schedule["Tuesday"],
-                "Wednesday": converted_schedule["Wednesday"],
-                "Thursday": converted_schedule["Thursday"],
-                "Friday": converted_schedule["Friday"],
-                "Saturday": "",
-                "Sunday": "",
-                "IsDeleted": 0, ## Mandatory Field 
-                "CreatedDateTime": today, ## Mandatory Field 
-                "UpdatedDateTime": today ## Mandatory Field 
-            }
-
-            # check if have existing schedule, if have then just ignore
-            existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
-            if len(existingScheduleDF) > 0:
-                continue
-            
-            # Use the add method to add data to the session
-            schedule_instance = schedule_table.insert().values(schedule_data)
-            session.execute(schedule_instance)
-            
-            # Commit the changes to the database
-            session.commit()
-            
-    except Exception as e:
-        session.rollback()
-        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
-        
-    # Close the session
-    session.close()
-    ## ------------------------------------------------------------------------------------------------
-    
-    return Response(
-        "Generated Schedule Successfully",
-        status=200,
-    ) 
+    if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
+        return Response(
+            "Generated Schedule Successfully",
+            status=200,
+        )
+    else:
+        return Response(
+            "Error in writing schedule to DB. Check scheduler logs",
+            status = 500
+        )
 
 
 
@@ -216,7 +165,7 @@ def adhoc_change_schedule():
         session.commit()
     except Exception as e:
         session.rollback()
-        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+        logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
         return Response(
             "Schedule update error. Check Logs",
             status=500,
@@ -242,8 +191,23 @@ def test2():
     print(routineActivitiesDF)
 
     data = {"data": "Hello test2"} 
-    return jsonify(data) 
+    return jsonify(data)
 
+
+@blueprint.route("/refresh", methods=["GET"])
+def refresh_schedules():
+    db_tables: DBTABLES = current_app.config["DB_TABLES"]
+    patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
+
+    stmt: Select = select(patient_table).where(
+        patient_table.c["UpdateBit"] == 1,
+        patient_table.c["IsDeleted"] == False,
+    )
+
+    with DB.get_engine().begin() as conn:
+        updated_patients: pd.DataFrame = pd.read_sql(stmt, conn)
+
+    IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
 
 
 def checkRequestBody(data):
