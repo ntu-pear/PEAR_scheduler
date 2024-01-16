@@ -1,5 +1,5 @@
 from typing import List, Mapping
-from pear_schedule.db_views.views import CompulsoryActivitiesOnlyView
+from pear_schedule.db_utils.views import CompulsoryActivitiesOnlyView
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 
 class CompulsoryActivityScheduler(BaseScheduler):

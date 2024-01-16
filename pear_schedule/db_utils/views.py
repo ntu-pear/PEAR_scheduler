@@ -2,9 +2,9 @@ from operator import or_
 from typing import Mapping, Any
 import pandas as pd
 
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
-from pear_schedule.db_views.utils import compile_query
+from pear_schedule.db_utils.utils import compile_query
 from pear_schedule.utils import ConfigDependant
 from utils import DBTABLES
 import logging
@@ -21,13 +21,17 @@ class BaseView(ConfigDependant):
         cls.config = config
 
     @classmethod
-    def get_data(cls) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query()
+    def get_data(cls, conn: Connection = None) -> pd.DataFrame:
+        query: Select = cls.build_query()
 
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
+        logger.info(f"Retrieving data for {cls.__name__}")
+        logger.debug(compile_query(query))
+
+        if conn:
             result: pd.DataFrame = pd.read_sql(query, con=conn)
+        else:
+            with DB.get_engine().begin() as conn:
+                result: pd.DataFrame = pd.read_sql(query, con=conn)
         return result
 
     @classmethod
@@ -78,6 +82,8 @@ class PatientsView(BaseView):
             centre_activity.c["ActivityID"].label("PreferredActivityID")
         ).join(
             centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).where(
+            centre_activity_preference.c["IsLike"] > 0
         ).cte()
 
         query: Select = select(
