@@ -6,6 +6,8 @@ from sqlalchemy import URL
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE CONFIGS ~~~~~~~~~~~~~~~~~~~~~~~
 DB_CONN_STR = "mssql+pyodbc://(LocalDb)\\MSSQLLocalDB/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
+# DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
+# DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
 
 # connection_string = (
 #     r"Driver=ODBC Driver 18 for SQL Server;"
@@ -43,3 +45,4 @@ HOURS = 8
 GROUP_TIMESLOTS = 10
 GROUP_TIMESLOT_MAPPING = [(0,1),(1,6), (2,1), (3,6), (4,1), (2,6), (3,1), (0,6), (1,1), (4,6)] #(day, timeslot in day)
 MINWEEKLYACTIVITIES = 6
+DAY_OF_WEEK_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]

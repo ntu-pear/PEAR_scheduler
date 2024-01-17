@@ -1,7 +1,7 @@
 import datetime
 from typing import List, Mapping
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
-from pear_schedule.db_views.views import MedicationView
+from pear_schedule.db_utils.views import MedicationView
 
 class medicationScheduler(BaseScheduler):
     @classmethod

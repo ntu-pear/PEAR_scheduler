@@ -2,9 +2,9 @@ from operator import or_
 from typing import Mapping, Any
 import pandas as pd
 
-from sqlalchemy import Select, and_, func, select
+from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
-from pear_schedule.db_views.utils import compile_query
+from pear_schedule.db_utils.utils import compile_query
 from pear_schedule.utils import ConfigDependant
 from utils import DBTABLES
 import logging
@@ -21,17 +21,21 @@ class BaseView(ConfigDependant):
         cls.config = config
 
     @classmethod
-    def get_data(cls) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query()
+    def get_data(cls, conn: Connection = None, **query_kwargs) -> pd.DataFrame:
+        query: Select = cls.build_query(**query_kwargs)
 
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
+        logger.info(f"Retrieving data for {cls.__name__}")
+        logger.debug(compile_query(query))
+
+        if conn:
             result: pd.DataFrame = pd.read_sql(query, con=conn)
+        else:
+            with DB.get_engine().begin() as conn:
+                result: pd.DataFrame = pd.read_sql(query, con=conn)
         return result
 
     @classmethod
-    def build_query(cls) -> Select:
+    def build_query(cls, **query_kwargs) -> Select:
         raise NotImplementedError(f"build_query() not implemented for {cls.__name__}")
 
 
@@ -78,6 +82,8 @@ class PatientsView(BaseView):
             centre_activity.c["ActivityID"].label("PreferredActivityID")
         ).join(
             centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).where(
+            centre_activity_preference.c["IsLike"] > 0
         ).cte()
 
         query: Select = select(
@@ -306,7 +312,7 @@ class ValidRoutineActivitiesView(BaseView): #
 
 class ActivityNameView(BaseView): # get activity name from activityID
     @classmethod
-    def build_query(cls, activityID) -> Select:
+    def build_query(cls, **query_kwarg) -> Select:
         logger.info("Building valid routine activities query")
         schema = DB.schema
 
@@ -314,25 +320,15 @@ class ActivityNameView(BaseView): # get activity name from activityID
 
         query: Select = select(
             activity.c["ActivityTitle"],
-        ).where(activity.c["ActivityID"] == activityID)
+        ).where(activity.c["ActivityID"] == query_kwarg["arg1"])
 
         return query
     
-
-    @classmethod
-    def get_data(cls, activityID) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(activityID)
-
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
-        return result
     
 
 class AdHocScheduleView(BaseView): # get schedule for specific patients
     @classmethod
-    def build_query(cls, patientIDList) -> Select:
+    def build_query(cls, **query_kwarg) -> Select:
         logger.info("Building ad hoc schedule query")
         schema = DB.schema
 
@@ -349,49 +345,34 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
             schedule.c["Thursday"],
             schedule.c["Friday"],
             schedule.c["Saturday"],
-        ).where(schedule.c["PatientID"].in_(tuple(patientIDList))
+            schedule.c["StartDate"],
+            schedule.c["EndDate"],
+
+        ).where(schedule.c["PatientID"] == query_kwarg["arg1"]
         ).where(schedule.c["StartDate"] <= curDateTime
-        ).where(schedule.c["EndDate"] >= curDateTime)
+        ).where(schedule.c["EndDate"] >= curDateTime
+        ).where(schedule.c["IsDeleted"] == False)
 
         
 
         return query
     
-
-    @classmethod
-    def get_data(cls, patientIDList) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(patientIDList)
-
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
-        return result
     
-
-
 class ExistingScheduleView(BaseView): # check if have existing schedule
     @classmethod
-    def build_query(cls, start_of_week, patientID) -> Select:
+    def build_query(cls, **query_kwarg) -> Select:
+        #start_of_week, patientID
+
         logger.info("Building existing schedule query")
         schema = DB.schema
         schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
         query: Select = select(
             schedule.c["ScheduleID"],
-        ).where(schedule.c["EndDate"] >= start_of_week
-        ).where(schedule.c["PatientID"] == patientID)
+        ).where(schedule.c["EndDate"] >= query_kwarg["arg1"]
+        ).where(schedule.c["PatientID"] == query_kwarg["arg2"]
+        ).where(schedule.c["IsDeleted"] == False)
         
         return query
-    
-    @classmethod
-    def get_data(cls, start_of_week, patientID) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(start_of_week, patientID)
-
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
-        return result
     
     
 class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients

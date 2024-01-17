@@ -1,5 +1,6 @@
+import logging
 from flask import Blueprint, jsonify, current_app, request, Response
-from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView
+from pear_schedule.db_utils.views import PatientsOnlyView, ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView
 import pandas as pd
 import re
 import json
@@ -8,6 +9,7 @@ from pear_schedule.db import DB
 from sqlalchemy.orm import Session
 from sqlalchemy import Select, Table, select
 import datetime
+from pear_schedule.db_utils.writer import ScheduleWriter
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
 from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
@@ -15,6 +17,9 @@ from pear_schedule.scheduler.individualScheduling import IndividualActivitySched
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 from utils import DBTABLES
+from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates
+
+logger = logging.getLogger(__name__)
 
 from colorama import init, Fore
 
@@ -63,96 +68,35 @@ def generate_schedule():
     
     # To print the schedule
     for p, slots in patientSchedules.items():
-            print(f"FOR PATIENT {p}")
+            logger.info(f"FOR PATIENT {p}")
             
             for day, activities in enumerate(slots):
                 if day == 0:
-                    print(f"\t Monday: ")
+                    logger.info(f"\t Monday: ")
                 elif day == 1:
-                    print(f"\t Tuesday: ")
+                    logger.info(f"\t Tuesday: ")
                 elif day == 2:
-                    print(f"\t Wednesday: ")
+                    logger.info(f"\t Wednesday: ")
                 elif day == 3:
-                    print(f"\t Thursday: ")
+                    logger.info(f"\t Thursday: ")
                 elif day == 4:
-                    print(f"\t Friday: ")
+                    logger.info(f"\t Friday: ")
                 
                 for index, hour in enumerate(activities):
-                    print(f"\t\t {index}: {hour}")
+                    logger.info(f"\t\t {index}: {hour}")
             
-            print("==============================================")
+            logger.info("==============================================")
     
-    ## ------------------------------------------------------------------------------------------------
-    # COMMENT THE FOLLOWING IF YOU DO NOT WANT TO INSERT INTO SCHEDULE TABLE
-    # Inserting into Schedule Table
-    session = Session(bind=DB.engine)
-    
-    # Reflect the database tables
-    schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
-        
-    today = datetime.datetime.now()
-    start_of_week = today - datetime.timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
-    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-    end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
-    
-    try:
-        for p, slots in patientSchedules.items():
-            
-            days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-            converted_schedule = {}
-            
-            # check if have existing schedule
-            existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
-            if len(existingScheduleDF) > 0: 
-                continue   
-                # check_counter = 0
-                # for i, day in enumerate(days):
-                #     activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
-                #     converted_schedule[day] = activities
-                #     if existingScheduleDF[day].tolist() == activities: # if the existing schedule activities are the same as the new activities created -> increment counter by 1
-                #         check_counter += 1
-                # if check_counter == 5:
-                #     continue
-            for i, day in enumerate(days):
-                activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
-                converted_schedule[day] = activities
-                
-            schedule_data = {
-                ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
-                "PatientID": p,
-                "StartDate": start_of_week,
-                "EndDate": end_of_week,
-                "Monday": converted_schedule["Monday"],
-                "Tuesday": converted_schedule["Tuesday"],
-                "Wednesday": converted_schedule["Wednesday"],
-                "Thursday": converted_schedule["Thursday"],
-                "Friday": converted_schedule["Friday"],
-                "Saturday": "",
-                "Sunday": "",
-                "IsDeleted": 0, ## Mandatory Field 
-                "CreatedDateTime": today, ## Mandatory Field 
-                "UpdatedDateTime": today ## Mandatory Field 
-            }
-            
-            # Use the add method to add data to the session
-            schedule_instance = schedule_table.insert().values(schedule_data)
-            session.execute(schedule_instance)
-            
-            # Commit the changes to the database
-            session.commit()
-            
-    except Exception as e:
-        session.rollback()
-        print(f"Error occurred when inserting \n{e}Data attempted: \n{schedule_data}")
-        
-    # Close the session
-    session.close()
-    ## ------------------------------------------------------------------------------------------------
-    
-    return Response(
-        "Generated Schedule Successfully",
-        status=200,
-    ) 
+    if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
+        return Response(
+            "Generated Schedule Successfully",
+            status=200,
+        )
+    else:
+        return Response(
+            "Error in writing schedule to DB. Check scheduler logs",
+            status = 500
+        )
 
 
 @blueprint.route("/test", methods=["GET"])
@@ -554,49 +498,55 @@ def test_schedule():
         print()
         
     json_response = json.dumps(json_response, sort_keys=False, indent=2)   
-    return Response(json_response, mimetype='application/json')
+    return Response(json_response, mimetype='application/json', status=200)
 
 
 @blueprint.route("/adhoc", methods=["PUT"])
 def adhoc_change_schedule():
     # example request body = {
-    #     "originalActivityID": 0,
-    #     "newActivityID": 1,
-    #     "patientIDList": [1,3], (if empty means replace for all patients)
-    #     "dayList": ["Monday", "Tuesday"], (if empty means replace for all days)
+    #     "PatientID": 1,
+    #     "OldActivityID": 0,
+    #     "NewActivityID": 1,
+    #     "StartDate": "2021-05-26", (if empty means replace for all patients)
+    #     "EndDate": "2021-05-26",
+    #     
     # }
 
     data = request.get_json()
+    print(data)
 
     # check request body
-    errorRes = checkRequestBody(data)
+    errorRes = checkAdhocRequestBody(data)
     if errorRes != None:
         return errorRes
     
     # find original activity name
-    originalDF = ActivityNameView.get_data(data["originalActivityID"])
+    originalDF = ActivityNameView.get_data(arg1=data["OldActivityID"])
     if len(originalDF) == 0: # invalid activity
-        return Response(
-            "Invalid original activity ID",
-            status=400,
-        )
+        responseData = {"Status": "400", "Message": "Invalid old activity ID", "Data": ""} 
+        return jsonify(responseData)
+        
 
-    originalActivityName = originalDF["ActivityTitle"].iloc[0]
+    oldActivityName = originalDF["ActivityTitle"].iloc[0]
 
     # find new activity name
-    newDF = ActivityNameView.get_data(data["newActivityID"])
+    newDF = ActivityNameView.get_data(arg1=data["NewActivityID"])
     if len(newDF) == 0: # invalid activity
-        return Response(
-            "Invalid new activity ID",
-            status=400,
-        )
+        responseData = {"Status": "400", "Message": "Invalid new activity ID", "Data": ""} 
+        return jsonify(responseData)
 
     newActivityName = newDF["ActivityTitle"].iloc[0]
 
-    adHocDF = AdHocScheduleView.get_data(data["patientIDList"])
-    chosenDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    if len(data["dayList"]) != 0:
-        chosenDays = data["dayList"]
+    adHocDF = AdHocScheduleView.get_data(arg1=data["PatientID"])
+    scheduleStartDate = adHocDF["StartDate"].iloc[0]
+    scheduleEndDate = adHocDF["EndDate"].iloc[0]
+
+    if not isWithinDateRange(data["StartDate"], scheduleStartDate, scheduleEndDate) or not isWithinDateRange(data["EndDate"], scheduleStartDate, scheduleEndDate):
+        responseData = {"Status": "400", "Message": "Invalid start date or end date", "Data": ""} 
+        return jsonify(responseData)
+
+
+    chosenDays = getDaysFromDates(data["StartDate"], data["EndDate"])
 
     filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
     
@@ -605,7 +555,7 @@ def adhoc_change_schedule():
         for col in chosenDays:
             originalSchedule = record[col]
             if originalSchedule != "":
-                newSchedule = originalSchedule.replace(originalActivityName, newActivityName)
+                newSchedule = originalSchedule.replace(oldActivityName, newActivityName)
                 filteredAdHocDF.at[i,col] = newSchedule
 
     # Start transaction
@@ -630,16 +580,14 @@ def adhoc_change_schedule():
         session.commit()
     except Exception as e:
         session.rollback()
-        print(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
-        return Response(
-            "Schedule update error. Check Logs",
-            status=500,
-        )
+        logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+        responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""} 
+        return jsonify(responseData)
             
-    return Response(
-        "Updated Schedule Successfully",
-        status=200,
-    )
+    responseData = {"Status": "200", "Message": "Schedule Updated Successfully", "Data": ""} 
+    return jsonify(responseData)
+
+
 
 
 @blueprint.route("/test2", methods=["GET"])
@@ -654,45 +602,53 @@ def test2():
     print(routineActivitiesDF)
 
     data = {"data": "Hello test2"} 
-    return jsonify(data) 
+    return jsonify(data)
 
 
-def checkRequestBody(data):
-    if "originalActivityID" not in data or "newActivityID" not in data or "patientIDList" not in data or "dayList" not in data:
-        
-        return Response(
-            "Invalid Request Body",
-            status = 400
-        )
-    
-    if not isinstance(data["originalActivityID"], int) or not isinstance(data["newActivityID"], int):
-        
-        return Response(
-            "Invalid Request Body",
-            status = 400
-        )
-    
-    if not isinstance(data["patientIDList"], list) or not isinstance(data["dayList"], list):
-        
-        return Response(
-            "Invalid Request Body",
-            status = 400
-        )
-    
+@blueprint.route("/refresh", methods=["GET"])
+def refresh_schedules():
+    db_tables: DBTABLES = current_app.config["DB_TABLES"]
+    patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
 
-    for val in data["patientIDList"]:
-        if not isinstance(val, int):
-            return Response(
-                "Invalid Request Body",
-                status = 400
-            )
-    
-    days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
-    for val in data["dayList"]:
-        if val not in days:
-            return Response(
-                "Invalid Request Body",
-                status = 400
-            )
+    stmt: Select = select(patient_table).where(
+        patient_table.c["UpdateBit"] == 1,
+        patient_table.c["IsDeleted"] == False,
+    )
 
-    return None
+    with DB.get_engine().begin() as conn:
+        updated_patients: pd.DataFrame = pd.read_sql(stmt, conn)
+
+    IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
+
+
+
+# @blueprint.route('/download_csv', methods=['GET'])
+# def download_csv():
+#     # Dummy data for the CSV file
+#     data = [
+#         {'Name': 'John Doe', 'Age': 30, 'City': 'New York'},
+#         {'Name': 'Jane Doe', 'Age': 25, 'City': 'San Francisco'},
+#         {'Name': 'Bob Smith', 'Age': 35, 'City': 'Chicago'}
+#     ]
+
+#     # Create a CSV file in-memory
+#     csv_output = generate_csv(data)
+
+#     # Set up response headers for CSV download
+#     response = make_response(csv_output)
+#     response.headers["Content-Disposition"] = "attachment; filename=example.csv"
+#     response.headers["Content-type"] = "text/csv"
+
+#     return response
+
+
+# def generate_csv(data):
+#     # Create a CSV string using the csv module
+#     csv_output = io.StringIO()
+#     csv_writer = csv.DictWriter(csv_output, fieldnames=data[0].keys())
+
+#     # Write the header and data to the CSV
+#     csv_writer.writeheader()
+#     csv_writer.writerows(data)
+
+#     return csv_output.getvalue()

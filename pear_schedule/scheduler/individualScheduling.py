@@ -1,11 +1,16 @@
+import datetime
 from functools import partial
 import logging
-from typing import List, Mapping, Optional
+from typing import List, Mapping, Optional, Set
 
 import pandas as pd
+from sqlalchemy import Connection, Result, Select, and_, func, select
+from pear_schedule.db import DB
 
-from pear_schedule.db_views.views import ActivitiesView, PatientsView, RecommendedActivitiesView
+from pear_schedule.db_utils.views import ActivitiesView, PatientsView, RecommendedActivitiesView
+from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from utils import DBTABLES
 
 
 logger = logging.getLogger(__name__)
@@ -45,23 +50,11 @@ class IndividualActivityScheduler(BaseScheduler):
             start = curr
 
     @classmethod
-    def fillPreferences(cls, schedules: Mapping[str, List[str]]):
-        patients: Mapping[str, Mapping[str, set[str]]] = {}
-
-        # consolidate patient data
-        for _, p in PatientsView.get_data().iterrows():  # TODO: split patientsview into activity level view instead
-            pid = p["PatientID"]
-            if pid not in patients:
-                patients[pid] = {
-                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
-                }
-
-            # patients[pid].add(p["RecommendedActivityID"])
-            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
-            patients[pid]["preferences"].add(p["PreferredActivityID"])
+    def fillPreferences(cls, schedules: Mapping[str, List[str]], conn: Connection = None, patients: Mapping = None):
+        patients = patients or cls.__get_patient_data(conn=conn)
 
         # consolidate activity data
-        activities: pd.DataFrame = ActivitiesView.get_data()  # non compulsory individual activities
+        activities: pd.DataFrame = ActivitiesView.get_data(conn=conn)  # non compulsory individual activities
         # activities = activities.sample(frac=1)\
         #     .reset_index(drop=True)
 
@@ -71,8 +64,8 @@ class IndividualActivityScheduler(BaseScheduler):
                 continue
             patient = patients[pid]
 
-            exclusions = patient["exclusions"]
-            preferences = patient["preferences"]
+            exclusions: Set[str] = patient["exclusions"]
+            preferences: Set[str] = patient["preferences"]
 
             avail_activities = activities[~activities["ActivityID"].isin(exclusions)]
             avail_activities = avail_activities[["ActivityID", "ActivityTitle", "FixedTimeSlots", "MinDuration", "MaxDuration"]]
@@ -183,6 +176,125 @@ class IndividualActivityScheduler(BaseScheduler):
                 scheduled_idx.loc[least_available] = True
 
                 day_schedule[slot] = allowed_activities.loc[least_available, "ActivityTitle"]
+
+    @classmethod
+    def update_schedules(cls, patientIDs: List[str] = None, update_date: datetime.date = None):
+        db_tables: DBTABLES = cls.config["DB_TABLES"]
+        patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
+
+        # this entire chunk needs to be a single transaction
+        with DB.get_engine().begin() as conn:
+            if not patientIDs:
+                stmt: Select = select(
+                    patient_table.c["PatientID"]
+                ).where(patient_table.c["IsDeleted"] == False)
+
+                res: Result = conn.execute(stmt)
+                patientIDs = set(pid for (pid,) in res.all())
+
+            latest_schedules = cls.__get_most_updated_schedules(patientIDs, conn, update_date)
+
+            # use the original individual scheduler to update activities
+            patient_data = cls.__get_patient_data(conn)
+            activities = ActivitiesView.get_data(conn)
+            activities_title_lookup = {
+                row["ActivityTitle"]: row["ActivityID"] for _, row in activities.iterrows()
+            }
+
+            def check_excluded(pid, activityTitle):
+                activityTitle = activityTitle.strip()
+                return activities_title_lookup.get(activityTitle, None) in patient_data[pid]["exclusions"]
+
+            formatted_schedules = {}
+            schedule_meta = {}
+            for _, row in latest_schedules.iterrows():
+                formatted_schedules[row["PatientID"]] = [
+                    [i if not check_excluded(row["PatientID"], i.split("|")[0]) else "" 
+                        for i in row[day].split("-")
+                    ]
+                    for day in cls.config["DAY_OF_WEEK_ORDER"]
+                ]
+
+                schedule_meta[row["PatientID"]] = {\
+                    "CreatedDateTime": row["CreatedDateTime"],
+                    "ScheduleID": row["ScheduleID"],
+                    "StartDate": row["StartDate"],
+                    "EndDate": row["EndDate"],
+                }
+
+            cls.fillPreferences(formatted_schedules, conn, patient_data)
+
+            # recombine the updated and original schedules
+            for _, row in latest_schedules.iterrows():
+                new_schedule = formatted_schedules[row["PatientID"]]
+                for d, day in enumerate(cls.config["DAY_OF_WEEK_ORDER"]):
+                    old_schedule = row[day].split("-")
+                    # put medication back into the schedule
+                    new_schedule[d] = [
+                        "|".join((new_activity, *old_activity.split("|")[1:2]))
+                        for (new_activity, old_activity) in zip(new_schedule[d], old_schedule)
+                    ]
+
+            write_result = ScheduleWriter.write(
+                formatted_schedules, overwriteExisting=True, conn=conn, schedule_meta=schedule_meta,
+            )
+            if not write_result:
+                logger.error("Schedule updating failed")
+
+
+    @classmethod
+    def __get_most_updated_schedules(
+        cls, 
+        patientIDs: List[str], 
+        conn: Connection, 
+        curr_date: datetime.date = None
+    ) -> pd.DataFrame:
+        db_tables: DBTABLES = cls.config["DB_TABLES"]
+        schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
+
+        # use datetime to avoid db side issues when comparing date and datetime
+        curr_date = curr_date or datetime.date.today()
+        curr_day_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
+        next_day_start = curr_day_start + datetime.timedelta(days=1)
+
+        latest_sched_cte = select(
+            schedule_table.c["PatientID"],
+            func.max(schedule_table.c["UpdatedDateTime"]).label("UpdatedDateTime")
+        ).where(
+            schedule_table.c["StartDate"] >= curr_day_start,
+            schedule_table.c["StartDate"] < next_day_start,
+            schedule_table.c["PatientID"].in_(patientIDs),
+            schedule_table.c["IsDeleted"] == False,
+        ).group_by(schedule_table.c["PatientID"]).cte("latest_schedules")
+
+        stmt = select(schedule_table).join(
+            latest_sched_cte, and_(
+                latest_sched_cte.c["PatientID"] == schedule_table.c["PatientID"],
+                latest_sched_cte.c["UpdatedDateTime"] == schedule_table.c["UpdatedDateTime"],
+            )
+        ).where(
+            schedule_table.c["IsDeleted"] == False,
+        )
+
+        return pd.read_sql(stmt, conn)
+
+    @classmethod
+    def __get_patient_data(cls, conn: Connection = None) -> Mapping[str, Mapping[str, set[str]]]:
+        patients: Mapping[str, Mapping[str, set[str]]] = {}
+
+        # consolidate patient data
+        for _, p in PatientsView.get_data(conn=conn).iterrows():  # TODO: split patientsview into activity level view instead
+            pid = p["PatientID"]
+            if pid not in patients:
+                patients[pid] = {
+                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
+                }
+
+            # patients[pid].add(p["RecommendedActivityID"])
+            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
+            patients[pid]["preferences"].add(p["PreferredActivityID"])
+
+        return patients
 
 
 def calculate_activity_availabillity(day: int, slot: int, fixedTimeSlots: str):

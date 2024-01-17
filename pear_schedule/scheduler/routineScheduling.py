@@ -1,7 +1,7 @@
 
 from typing import List, Mapping
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
-from pear_schedule.db_views.views import PatientsOnlyView, ValidRoutineActivitiesView
+from pear_schedule.db_utils.views import PatientsOnlyView, ValidRoutineActivitiesView
 
 
 class RoutineActivityScheduler(BaseScheduler):
