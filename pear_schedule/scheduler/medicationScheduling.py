@@ -17,11 +17,13 @@ class medicationScheduler(BaseScheduler):
             pid = row["PatientID"]
             startDateTime = row["StartDateTime"]
             endDateTime = row['EndDateTime']
+            # print(f"PatientID: {pid} | Medication: {row['PrescriptionName']}")
             
             # ======== Check what is the start and end date of the medication in the given week ========
             today = datetime.datetime.now()
-            start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
-            end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
+            start_of_week = today - datetime.timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_week = start_of_week + datetime.timedelta(days=4, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
             
             if startDateTime <= start_of_week: # Medication starts either before or start of this week
                 pass
@@ -49,7 +51,7 @@ class medicationScheduler(BaseScheduler):
                     if "Give Medication" not in patientSchedules[pid][day][hour]:
                         patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})" 
                     else:
-                        patientSchedules[pid][day][hour] += f", {row['PrescriptionName']}({row['Dosage']})"
+                        patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
 
 def getTimeSlot(time):
     if (900 <= time < 1000):

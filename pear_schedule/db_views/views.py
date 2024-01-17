@@ -8,7 +8,7 @@ from pear_schedule.db_views.utils import compile_query
 from pear_schedule.utils import ConfigDependant
 from utils import DBTABLES
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -420,7 +420,22 @@ class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
         ).where(schedule.c["EndDate"] >= curDateTime)
         
         return query
-
+class MedicationTesterView(BaseView): # Just medication table view
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building prescription view query")
+        schema = DB.schema
+        curDateTime = datetime.now()
+        start_of_week = curDateTime - timedelta(days=curDateTime.weekday(), hours=0, minutes=0, seconds=0)  # Monday -> 00:00:00
+        medication = schema.tables[cls.db_tables.MEDICATION_TABLE]
+        
+        query: Select = select(
+            medication,
+        ).where(
+            medication.c["EndDateTime"] >= start_of_week 
+        )
+        return query
+    
 class CentreActivityPreferenceView(BaseView): # Get the centre activities preferences for all patients 
     @classmethod
     def build_query(cls) -> Select:
@@ -484,6 +499,7 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
         logger.info("Building activities excluded recommendation query")
         schema = DB.schema
         curDateTime = datetime.now()
+        start_of_week = curDateTime - timedelta(days=curDateTime.weekday(), hours=0, minutes=0, seconds=0)  # Monday -> 00:00:00
         
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
         activities_excluded = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
@@ -497,7 +513,7 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
         ).join(
             activity, activity.c["ActivityID"] == activities_excluded.c["ActivityID"]
         ).where(
-            activities_excluded.c["EndDateTime"] >= curDateTime
+            activities_excluded.c["EndDateTime"] >= start_of_week
         )
         
         return query
@@ -519,6 +535,24 @@ class RoutineView(BaseView): # Get the routines for all patients
             activity.c["ActivityTitle"]
         ).join(
             activity, activity.c["ActivityID"] == routine.c["ActivityID"]
+        )
+        
+        return query
+    
+class ActivityAndCentreActivityView(BaseView): # Get all the activities and centre activities 
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building activities query")
+        schema = DB.schema
+        
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+        
+        query: Select = select(
+            activity,
+            centre_activity
+        ).join(
+            centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         )
         
         return query
