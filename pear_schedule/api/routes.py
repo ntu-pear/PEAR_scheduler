@@ -114,7 +114,7 @@ def adhoc_change_schedule():
         return errorRes
     
     # find original activity name
-    originalDF = ActivityNameView.get_data(data["OldActivityID"])
+    originalDF = ActivityNameView.get_data(arg1=data["OldActivityID"])
     if len(originalDF) == 0: # invalid activity
         responseData = {"Status": "400", "Message": "Invalid old activity ID", "Data": ""} 
         return jsonify(responseData)
@@ -123,14 +123,14 @@ def adhoc_change_schedule():
     oldActivityName = originalDF["ActivityTitle"].iloc[0]
 
     # find new activity name
-    newDF = ActivityNameView.get_data(data["NewActivityID"])
+    newDF = ActivityNameView.get_data(arg1=data["NewActivityID"])
     if len(newDF) == 0: # invalid activity
         responseData = {"Status": "400", "Message": "Invalid new activity ID", "Data": ""} 
         return jsonify(responseData)
 
     newActivityName = newDF["ActivityTitle"].iloc[0]
 
-    adHocDF = AdHocScheduleView.get_data(data["PatientID"])
+    adHocDF = AdHocScheduleView.get_data(arg1=data["PatientID"])
     scheduleStartDate = adHocDF["StartDate"].iloc[0]
     scheduleEndDate = adHocDF["EndDate"].iloc[0]
 

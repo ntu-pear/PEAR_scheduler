@@ -21,8 +21,8 @@ class BaseView(ConfigDependant):
         cls.config = config
 
     @classmethod
-    def get_data(cls, conn: Connection = None) -> pd.DataFrame:
-        query: Select = cls.build_query()
+    def get_data(cls, conn: Connection = None, **query_kwargs) -> pd.DataFrame:
+        query: Select = cls.build_query(**query_kwargs)
 
         logger.info(f"Retrieving data for {cls.__name__}")
         logger.debug(compile_query(query))
@@ -35,7 +35,7 @@ class BaseView(ConfigDependant):
         return result
 
     @classmethod
-    def build_query(cls) -> Select:
+    def build_query(cls, **query_kwargs) -> Select:
         raise NotImplementedError(f"build_query() not implemented for {cls.__name__}")
 
 
@@ -309,7 +309,7 @@ class ValidRoutineActivitiesView(BaseView): #
 
 class ActivityNameView(BaseView): # get activity name from activityID
     @classmethod
-    def build_query(cls, activityID) -> Select:
+    def build_query(cls, **query_kwarg) -> Select:
         logger.info("Building valid routine activities query")
         schema = DB.schema
 
@@ -317,25 +317,15 @@ class ActivityNameView(BaseView): # get activity name from activityID
 
         query: Select = select(
             activity.c["ActivityTitle"],
-        ).where(activity.c["ActivityID"] == activityID)
+        ).where(activity.c["ActivityID"] == query_kwarg["arg1"])
 
         return query
     
-
-    @classmethod
-    def get_data(cls, activityID) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(activityID)
-
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
-        return result
     
 
 class AdHocScheduleView(BaseView): # get schedule for specific patients
     @classmethod
-    def build_query(cls, patientID) -> Select:
+    def build_query(cls, **query_kwarg) -> Select:
         logger.info("Building ad hoc schedule query")
         schema = DB.schema
 
@@ -355,7 +345,7 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
             schedule.c["StartDate"],
             schedule.c["EndDate"],
 
-        ).where(schedule.c["PatientID"] == patientID
+        ).where(schedule.c["PatientID"] == query_kwarg["arg1"]
         ).where(schedule.c["StartDate"] <= curDateTime
         ).where(schedule.c["EndDate"] >= curDateTime
         ).where(schedule.c["IsDeleted"] == False)
@@ -364,22 +354,14 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
 
         return query
     
-
-    @classmethod
-    def get_data(cls, patientID) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(patientID)
-
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
-        return result
     
 
 
 class ExistingScheduleView(BaseView): # check if have existing schedule
     @classmethod
-    def build_query(cls, start_of_week, patientID) -> Select:
+    def build_query(cls, **query_kwarg) -> Select:
+        #start_of_week, patientID
+
         logger.info("Building existing schedule query")
         schema = DB.schema
 
@@ -389,21 +371,11 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
 
         query: Select = select(
             schedule.c["ScheduleID"],
-        ).where(schedule.c["EndDate"] >= start_of_week
-        ).where(schedule.c["PatientID"] == patientID
+        ).where(schedule.c["EndDate"] >= query_kwarg["arg1"]
+        ).where(schedule.c["PatientID"] == query_kwarg["arg2"]
         ).where(schedule.c["IsDeleted"] == False)
 
         
 
         return query
     
-
-    @classmethod
-    def get_data(cls, start_of_week, patientID) -> pd.DataFrame:
-        with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(start_of_week, patientID)
-
-            logger.info(f"Retrieving data for {cls.__name__}")
-            logger.debug(compile_query(query))
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
-        return result

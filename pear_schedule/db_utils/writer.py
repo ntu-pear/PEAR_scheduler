@@ -71,7 +71,7 @@ class ScheduleWriter(ConfigDependant):
 
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
-                    existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
+                    existingScheduleDF = ExistingScheduleView.get_data(arg1=start_of_week, arg2=p)
                     if len(existingScheduleDF) > 0:
                         continue
                 
