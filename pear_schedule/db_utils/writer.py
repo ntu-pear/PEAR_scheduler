@@ -82,13 +82,21 @@ class ScheduleWriter(ConfigDependant):
                 else:
                     if schedule_meta is None:
                         raise Exception("schedule_meta must be provided when overwriteExisting is used for schedules")
+                    elif p not in schedule_meta or "ScheduleID" not in schedule_meta[p]:
+                        raise Exception(
+                            f"schedule_meta must be provided for patient {p} with corresponding ScheduleID.\n\
+                            Instead got:\n{schedule_meta}"
+                        )
+
                     schedule_data.update(schedule_meta[p])
-                    schedule_instance = schedule_table.insert().values(schedule_data)  #TODO: change to update
+                    schedule_instance = schedule_table.insert().values(schedule_data).where(schedule_table.c["ScheduleID"] == schedule_data["ScheduleID"])
                 conn.execute(schedule_instance)
         except Exception as e:
             logger.exception(e)
             logger.error(traceback.format_exc())
             logger.error(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+            # conn.get_transaction().rollback()
+            # assume conn has transaction started
 
             return False
 
