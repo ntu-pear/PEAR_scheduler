@@ -15,6 +15,8 @@ from pear_schedule.scheduler.individualScheduling import IndividualActivitySched
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 from utils import DBTABLES
+from dateutil.parser import parse
+from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates
 
 logger = logging.getLogger(__name__)
 
@@ -95,43 +97,49 @@ def generate_schedule():
 @blueprint.route("/adhoc", methods=["PUT"])
 def adhoc_change_schedule():
     # example request body = {
-    #     "originalActivityID": 0,
-    #     "newActivityID": 1,
-    #     "patientIDList": [1,3], (if empty means replace for all patients)
-    #     "dayList": ["Monday", "Tuesday"], (if empty means replace for all days)
+    #     "PatientID": 1,
+    #     "OldActivityID": 0,
+    #     "NewActivityID": 1,
+    #     "StartDate": "2021-05-26", (if empty means replace for all patients)
+    #     "EndDate": "2021-05-26",
+    #     
     # }
 
     data = request.get_json()
+    print(data)
 
     # check request body
-    errorRes = checkRequestBody(data)
+    errorRes = checkAdhocRequestBody(data)
     if errorRes != None:
         return errorRes
     
     # find original activity name
-    originalDF = ActivityNameView.get_data(data["originalActivityID"])
+    originalDF = ActivityNameView.get_data(data["OldActivityID"])
     if len(originalDF) == 0: # invalid activity
-        return Response(
-            "Invalid original activity ID",
-            status=400,
-        )
+        responseData = {"Status": "400", "Message": "Invalid old activity ID", "Data": ""} 
+        return jsonify(responseData)
+        
 
-    originalActivityName = originalDF["ActivityTitle"].iloc[0]
+    oldActivityName = originalDF["ActivityTitle"].iloc[0]
 
     # find new activity name
-    newDF = ActivityNameView.get_data(data["newActivityID"])
+    newDF = ActivityNameView.get_data(data["NewActivityID"])
     if len(newDF) == 0: # invalid activity
-        return Response(
-            "Invalid new activity ID",
-            status=400,
-        )
+        responseData = {"Status": "400", "Message": "Invalid new activity ID", "Data": ""} 
+        return jsonify(responseData)
 
     newActivityName = newDF["ActivityTitle"].iloc[0]
 
-    adHocDF = AdHocScheduleView.get_data(data["patientIDList"])
-    chosenDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    if len(data["dayList"]) != 0:
-        chosenDays = data["dayList"]
+    adHocDF = AdHocScheduleView.get_data(data["PatientID"])
+    scheduleStartDate = adHocDF["StartDate"].iloc[0]
+    scheduleEndDate = adHocDF["EndDate"].iloc[0]
+
+    if not isWithinDateRange(data["StartDate"], scheduleStartDate, scheduleEndDate) or not isWithinDateRange(data["EndDate"], scheduleStartDate, scheduleEndDate):
+        responseData = {"Status": "400", "Message": "Invalid start date or end date", "Data": ""} 
+        return jsonify(responseData)
+
+
+    chosenDays = getDaysFromDates(data["StartDate"], data["EndDate"])
 
     filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
     
@@ -140,7 +148,7 @@ def adhoc_change_schedule():
         for col in chosenDays:
             originalSchedule = record[col]
             if originalSchedule != "":
-                newSchedule = originalSchedule.replace(originalActivityName, newActivityName)
+                newSchedule = originalSchedule.replace(oldActivityName, newActivityName)
                 filteredAdHocDF.at[i,col] = newSchedule
 
     # Start transaction
@@ -166,15 +174,11 @@ def adhoc_change_schedule():
     except Exception as e:
         session.rollback()
         logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
-        return Response(
-            "Schedule update error. Check Logs",
-            status=500,
-        )
+        responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""} 
+        return jsonify(responseData)
             
-    return Response(
-        "Updated Schedule Successfully",
-        status=200,
-    )
+    responseData = {"Status": "200", "Message": "Schedule Updated Successfully", "Data": ""} 
+    return jsonify(responseData)
 
 
 
@@ -210,42 +214,34 @@ def refresh_schedules():
     IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
 
 
-def checkRequestBody(data):
-    if "originalActivityID" not in data or "newActivityID" not in data or "patientIDList" not in data or "dayList" not in data:
-        
-        return Response(
-            "Invalid Request Body",
-            status = 400
-        )
-    
-    if not isinstance(data["originalActivityID"], int) or not isinstance(data["newActivityID"], int):
-        
-        return Response(
-            "Invalid Request Body",
-            status = 400
-        )
-    
-    if not isinstance(data["patientIDList"], list) or not isinstance(data["dayList"], list):
-        
-        return Response(
-            "Invalid Request Body",
-            status = 400
-        )
-    
 
-    for val in data["patientIDList"]:
-        if not isinstance(val, int):
-            return Response(
-                "Invalid Request Body",
-                status = 400
-            )
-    
-    days = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
-    for val in data["dayList"]:
-        if val not in days:
-            return Response(
-                "Invalid Request Body",
-                status = 400
-            )
+# @blueprint.route('/download_csv', methods=['GET'])
+# def download_csv():
+#     # Dummy data for the CSV file
+#     data = [
+#         {'Name': 'John Doe', 'Age': 30, 'City': 'New York'},
+#         {'Name': 'Jane Doe', 'Age': 25, 'City': 'San Francisco'},
+#         {'Name': 'Bob Smith', 'Age': 35, 'City': 'Chicago'}
+#     ]
 
-    return None
+#     # Create a CSV file in-memory
+#     csv_output = generate_csv(data)
+
+#     # Set up response headers for CSV download
+#     response = make_response(csv_output)
+#     response.headers["Content-Disposition"] = "attachment; filename=example.csv"
+#     response.headers["Content-type"] = "text/csv"
+
+#     return response
+
+
+# def generate_csv(data):
+#     # Create a CSV string using the csv module
+#     csv_output = io.StringIO()
+#     csv_writer = csv.DictWriter(csv_output, fieldnames=data[0].keys())
+
+#     # Write the header and data to the CSV
+#     csv_writer.writeheader()
+#     csv_writer.writerows(data)
+
+#     return csv_output.getvalue()

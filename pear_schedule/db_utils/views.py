@@ -335,7 +335,7 @@ class ActivityNameView(BaseView): # get activity name from activityID
 
 class AdHocScheduleView(BaseView): # get schedule for specific patients
     @classmethod
-    def build_query(cls, patientIDList) -> Select:
+    def build_query(cls, patientID) -> Select:
         logger.info("Building ad hoc schedule query")
         schema = DB.schema
 
@@ -352,9 +352,13 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
             schedule.c["Thursday"],
             schedule.c["Friday"],
             schedule.c["Saturday"],
-        ).where(schedule.c["PatientID"].in_(tuple(patientIDList))
+            schedule.c["StartDate"],
+            schedule.c["EndDate"],
+
+        ).where(schedule.c["PatientID"] == patientID
         ).where(schedule.c["StartDate"] <= curDateTime
-        ).where(schedule.c["EndDate"] >= curDateTime)
+        ).where(schedule.c["EndDate"] >= curDateTime
+        ).where(schedule.c["IsDeleted"] == False)
 
         
 
@@ -362,9 +366,9 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
     
 
     @classmethod
-    def get_data(cls, patientIDList) -> pd.DataFrame:
+    def get_data(cls, patientID) -> pd.DataFrame:
         with DB.get_engine().begin() as conn:
-            query: Select = cls.build_query(patientIDList)
+            query: Select = cls.build_query(patientID)
 
             logger.info(f"Retrieving data for {cls.__name__}")
             logger.debug(compile_query(query))
@@ -386,7 +390,8 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
         query: Select = select(
             schedule.c["ScheduleID"],
         ).where(schedule.c["EndDate"] >= start_of_week
-        ).where(schedule.c["PatientID"] == patientID)
+        ).where(schedule.c["PatientID"] == patientID
+        ).where(schedule.c["IsDeleted"] == False)
 
         
 
