@@ -17,6 +17,7 @@ from pear_schedule.scheduler.individualScheduling import IndividualActivitySched
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates
+from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.utils import DBTABLES
 
 logger = logging.getLogger(__name__)
@@ -607,19 +608,19 @@ def test2():
 
 @blueprint.route("/refresh", methods=["GET"])
 def refresh_schedules():
-    db_tables: DBTABLES = current_app.config["DB_TABLES"]
-    patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
+    # db_tables: DBTABLES = current_app.config["DB_TABLES"]
+    # patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
 
-    stmt: Select = select(patient_table).where(
-        patient_table.c["UpdateBit"] == 1,
-        patient_table.c["IsDeleted"] == False,
-    )
+    # stmt: Select = select(patient_table).where(
+    #     patient_table.c["UpdateBit"] == 1,
+    #     patient_table.c["IsDeleted"] == False,
+    # )
 
-    with DB.get_engine().begin() as conn:
-        updated_patients: pd.DataFrame = pd.read_sql(stmt, conn)
+    # with DB.get_engine().begin() as conn:
+    #     updated_patients: pd.DataFrame = pd.read_sql(stmt, conn)
 
-    IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
-
+    # IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
+    ScheduleRefresher.refresh_schedules()
 
 
 # @blueprint.route('/download_csv', methods=['GET'])

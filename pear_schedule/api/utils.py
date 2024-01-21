@@ -1,3 +1,4 @@
+from typing import List
 from flask import Response, current_app, jsonify
 from dateutil.parser import parse
 
@@ -54,10 +55,10 @@ def isWithinDateRange(curDateString, startScheduleDate, endScheduleDate):
         
     
     
-def getDaysFromDates(startDateString, endDateString):
+def getDaysFromDates(startDateString, endDateString, week_order: List[str] = None):
     startDayIdx = parse(startDateString).weekday()
     endDayIdx = parse(endDateString).weekday()
 
-    DAY_OF_WEEK_ORDER = current_app.config["DAY_OF_WEEK_ORDER"]
+    DAY_OF_WEEK_ORDER = week_order or current_app.config["DAY_OF_WEEK_ORDER"]
 
     return DAY_OF_WEEK_ORDER[startDayIdx: endDayIdx+1]
