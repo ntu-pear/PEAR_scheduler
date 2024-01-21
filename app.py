@@ -1,4 +1,7 @@
+import argparse
+import importlib
 import logging
+import sys
 from typing import Any, Mapping
 
 from flask import Flask
@@ -7,6 +10,7 @@ from pear_schedule.db import DB
 # from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView, CompulsoryActivitiesOnlyView
 
 import config
+from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.utils import loadConfigs
 
 logging.basicConfig(format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
@@ -27,20 +31,50 @@ def init_app(config: Mapping[str, Any]):
     DB.init_app(app.config["DB_CONN_STR"])
     loadConfigs(app.config)
 
-    # PatientsOnlyView.init_app(app.config)
-    # ActivitiesView.init_app(app.config)
-    # PatientsView.init_app(app.config)
-    # GroupActivitiesOnlyView.init_app(app.config)
-    # GroupActivitiesPreferenceView.init_app(app.config)
-    # GroupActivitiesRecommendationView.init_app(app.config)
-    # GroupActivitiesExclusionView.init_app(app.config)
-    # CompulsoryActivitiesOnlyView.init_app(app.config)
-
     app.run(host="0.0.0.0", debug=True, port=8080)
 
+
+def update_schedules(config: Mapping[str, Any]):
+    config = {item: getattr(config, item) for item in dir(config)}
+
+    DB.init_app(config["DB_CONN_STR"])
+    loadConfigs(config)
+
+    ScheduleRefresher.refresh_schedules()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(required=True)
+
+    # add args for starting up server (normal operation)
+    server_parser = subparsers.add_parser("start_server", help="server start up help")
+    server_parser.add_argument("-c", "--config", required=True)
+    server_parser.set_defaults(func=init_app)
+
+    # add args for running schedule update from cli
+    update_parser = subparsers.add_parser("refresh_schedules", help="schedule updating help")
+    update_parser.add_argument("-c", "--config", required=True)
+    update_parser.set_defaults(func=update_schedules)
+
+    args = parser.parse_args()
+
+    return args
+
+
 def main():
-    # TODO: change to use click instead
-    init_app(config)
+    args = parse_args()
+
+    config_module = "config"
+
+    spec = importlib.util.spec_from_file_location(config_module, args.config)
+    config = importlib.util.module_from_spec(spec)
+
+    sys.modules[config_module] = config
+    spec.loader.exec_module(config)
+
+    args.func(config)
+    # init_app(config)
 
 
 if __name__ == "__main__":
