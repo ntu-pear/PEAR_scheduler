@@ -38,8 +38,9 @@ class ScheduleWriter(ConfigDependant):
         schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
 
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
-        end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
+        start_of_week = today - datetime.timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
@@ -70,7 +71,7 @@ class ScheduleWriter(ConfigDependant):
 
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
-                    existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
+                    existingScheduleDF = ExistingScheduleView.get_data(arg1=start_of_week, arg2=p)
                     if len(existingScheduleDF) > 0:
                         continue
                 
@@ -81,13 +82,21 @@ class ScheduleWriter(ConfigDependant):
                 else:
                     if schedule_meta is None:
                         raise Exception("schedule_meta must be provided when overwriteExisting is used for schedules")
+                    elif p not in schedule_meta or "ScheduleID" not in schedule_meta[p]:
+                        raise Exception(
+                            f"schedule_meta must be provided for patient {p} with corresponding ScheduleID.\n\
+                            Instead got:\n{schedule_meta}"
+                        )
+
                     schedule_data.update(schedule_meta[p])
-                    schedule_instance = schedule_table.insert().values(schedule_data)  #TODO: change to update
+                    schedule_instance = schedule_table.insert().values(schedule_data).where(schedule_table.c["ScheduleID"] == schedule_data["ScheduleID"])
                 conn.execute(schedule_instance)
         except Exception as e:
             logger.exception(e)
             logger.error(traceback.format_exc())
             logger.error(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+            # conn.get_transaction().rollback()
+            # assume conn has transaction started
 
             return False
 
