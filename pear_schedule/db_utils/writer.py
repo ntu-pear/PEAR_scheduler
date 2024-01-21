@@ -6,8 +6,7 @@ from typing import Mapping, List
 from sqlalchemy import Connection
 from pear_schedule.db import DB
 from pear_schedule.db_utils.views import ExistingScheduleView
-from pear_schedule.utils import ConfigDependant
-from utils import DBTABLES
+from pear_schedule.utils import ConfigDependant, DBTABLES
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +38,9 @@ class ScheduleWriter(ConfigDependant):
         schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
 
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday
-        end_of_week = start_of_week + datetime.timedelta(days=4)  # Friday
+        start_of_week = today - datetime.timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
@@ -71,7 +71,7 @@ class ScheduleWriter(ConfigDependant):
 
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
-                    existingScheduleDF = ExistingScheduleView.get_data(start_of_week, p)
+                    existingScheduleDF = ExistingScheduleView.get_data(arg1=start_of_week, arg2=p)
                     if len(existingScheduleDF) > 0:
                         continue
                 
