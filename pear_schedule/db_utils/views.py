@@ -5,8 +5,8 @@ import pandas as pd
 from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
 from pear_schedule.db_utils.utils import compile_query
-from pear_schedule.utils import ConfigDependant
-from utils import DBTABLES
+from pear_schedule.utils import ConfigDependant, DBTABLES
+
 import logging
 from datetime import datetime
 

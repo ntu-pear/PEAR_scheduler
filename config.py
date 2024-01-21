@@ -1,5 +1,7 @@
-from utils import DBTABLES
+
 from sqlalchemy import URL
+
+from pear_schedule.utils import DBTABLES
 
 # ideally all configs should be in an artifactory but PEAR doesnt have one as of yet
 

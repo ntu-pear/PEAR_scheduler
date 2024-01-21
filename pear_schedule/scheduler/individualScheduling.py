@@ -10,7 +10,8 @@ from pear_schedule.db import DB
 from pear_schedule.db_utils.views import ActivitiesView, PatientsView, RecommendedActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
-from utils import DBTABLES
+from pear_schedule.utils import DBTABLES
+
 
 
 logger = logging.getLogger(__name__)

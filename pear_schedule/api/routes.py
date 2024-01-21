@@ -14,9 +14,10 @@ from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivitySched
 from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
-from utils import DBTABLES
+
 from dateutil.parser import parse
 from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates
+from pear_schedule.utils import DBTABLES
 
 logger = logging.getLogger(__name__)
 
