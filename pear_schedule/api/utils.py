@@ -1,6 +1,5 @@
-from flask import Response, jsonify
+from flask import Response, current_app, jsonify
 from dateutil.parser import parse
-from config import DAY_OF_WEEK_ORDER
 
 def checkAdhocRequestBody(data):
     if "OldActivityID" not in data or "NewActivityID" not in data or "PatientID" not in data or "StartDate" not in data or "EndDate" not in data:
@@ -58,5 +57,7 @@ def isWithinDateRange(curDateString, startScheduleDate, endScheduleDate):
 def getDaysFromDates(startDateString, endDateString):
     startDayIdx = parse(startDateString).weekday()
     endDayIdx = parse(endDateString).weekday()
+
+    DAY_OF_WEEK_ORDER = current_app.config["DAY_OF_WEEK_ORDER"]
 
     return DAY_OF_WEEK_ORDER[startDayIdx: endDayIdx+1]
