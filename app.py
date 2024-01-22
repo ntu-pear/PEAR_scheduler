@@ -73,6 +73,11 @@ def parse_args():
     update_parser.add_argument("-c", "--config", required=True)
     update_parser.set_defaults(func=refresh_schedules)
 
+    # add args for running schedule update from cli
+    update_parser = subparsers.add_parser("generate_schedules", help="schedule updating help")
+    update_parser.add_argument("-c", "--config", required=True)
+    update_parser.set_defaults(func=generate_schedules)
+
     args = parser.parse_args()
 
     return args
