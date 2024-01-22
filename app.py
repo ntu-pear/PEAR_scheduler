@@ -7,9 +7,11 @@ from typing import Any, Mapping
 from flask import Flask
 
 from pear_schedule.db import DB
+from pear_schedule.db_utils.writer import ScheduleWriter
 # from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView, CompulsoryActivitiesOnlyView
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
+from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import loadConfigs
 
 logging.basicConfig(format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
@@ -34,13 +36,26 @@ def init_app(config: Mapping[str, Any], args):
     app.run(host="0.0.0.0", debug=True, port=args.port)
 
 
-def update_schedules(config: Mapping[str, Any], args):
+def refresh_schedules(config: Mapping[str, Any], args):
     config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(config["DB_CONN_STR"])
     loadConfigs(config)
 
     ScheduleRefresher.refresh_schedules()
+
+
+def generate_schedules(config: Mapping[str, Any], args):
+    # Set up patient schedule structure
+    patientSchedules = {} # patient id: [[],[],[],[],[]]
+
+    build_schedules(config, patientSchedules)
+
+    if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
+        logger.info("Generated schedules")
+    else:
+        logger.error("Error in writing schedule to DB. Check logs")
+        exit(1)
 
 
 def parse_args():
@@ -56,7 +71,7 @@ def parse_args():
     # add args for running schedule update from cli
     update_parser = subparsers.add_parser("refresh_schedules", help="schedule updating help")
     update_parser.add_argument("-c", "--config", required=True)
-    update_parser.set_defaults(func=update_schedules)
+    update_parser.set_defaults(func=refresh_schedules)
 
     args = parser.parse_args()
 
