@@ -88,7 +88,10 @@ class ScheduleWriter(ConfigDependant):
                         )
 
                     schedule_data.update(schedule_meta[p])
-                    schedule_instance = schedule_table.insert().values(schedule_data).where(schedule_table.c["ScheduleID"] == schedule_data["ScheduleID"])
+                    schedule_data.pop("ScheduleID")
+                    schedule_instance = schedule_table.update().values(schedule_data).where(
+                        schedule_table.c["ScheduleID"] == schedule_meta[p]["ScheduleID"]
+                    )
                 conn.execute(schedule_instance)
         except Exception as e:
             logger.exception(e)

@@ -627,6 +627,8 @@ def refresh_schedules():
     # IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
     ScheduleRefresher.refresh_schedules()
 
+    return Response("Successfully updated schedules", status=200)
+
 
 # @blueprint.route('/download_csv', methods=['GET'])
 # def download_csv():
