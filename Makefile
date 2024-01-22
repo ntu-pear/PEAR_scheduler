@@ -4,7 +4,7 @@
 ARTIFACTORY := asia-southeast1-docker.pkg.dev/pear-schedule/pear-artifactory/
 
 build: clean
-	python3.10 -m venv env && env/bin/activate && pip install -r requirements.txt
+	python3.10 -m venv env && . env/bin/activate && python3 -m pip install -r requirements.txt
 
 clean:
 	rm -rf env

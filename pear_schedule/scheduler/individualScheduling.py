@@ -10,7 +10,8 @@ from pear_schedule.db import DB
 from pear_schedule.db_utils.views import ActivitiesView, PatientsView, RecommendedActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
-from utils import DBTABLES
+from pear_schedule.utils import DBTABLES
+
 
 
 logger = logging.getLogger(__name__)
@@ -184,13 +185,15 @@ class IndividualActivityScheduler(BaseScheduler):
 
         # this entire chunk needs to be a single transaction
         with DB.get_engine().begin() as conn:
-            if not patientIDs:
+            if not len(patientIDs):
                 stmt: Select = select(
                     patient_table.c["PatientID"]
                 ).where(patient_table.c["IsDeleted"] == False)
 
                 res: Result = conn.execute(stmt)
                 patientIDs = set(pid for (pid,) in res.all())
+
+            logger.info(f"updating schedules for patients {patientIDs}")
 
             latest_schedules = cls.__get_most_updated_schedules(patientIDs, conn, update_date)
 

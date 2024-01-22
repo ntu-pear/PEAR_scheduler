@@ -6,8 +6,7 @@ from typing import Mapping, List
 from sqlalchemy import Connection
 from pear_schedule.db import DB
 from pear_schedule.db_utils.views import ExistingScheduleView
-from pear_schedule.utils import ConfigDependant
-from utils import DBTABLES
+from pear_schedule.utils import ConfigDependant, DBTABLES
 
 logger = logging.getLogger(__name__)
 
