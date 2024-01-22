@@ -66,7 +66,7 @@ class ScheduleWriter(ConfigDependant):
                     "Saturday": "",
                     "Sunday": "",
                     "IsDeleted": 0, ## Mandatory Field 
-                    "UpdatedDateTime": today ## Mandatory Field 
+                    "UpdatedDateTime": today, ## Mandatory Field 
                 }
 
                 if not overwriteExisting:
@@ -74,9 +74,8 @@ class ScheduleWriter(ConfigDependant):
                     existingScheduleDF = ExistingScheduleView.get_data(arg1=start_of_week, arg2=p)
                     if len(existingScheduleDF) > 0:
                         continue
-                
                     
-                    schedule_data["CreatedDateTime"] = today, ## Mandatory Field 
+                    schedule_data["CreatedDateTime"] = today ## Mandatory Field 
                     # Use the add method to add data to the session
                     schedule_instance = schedule_table.insert().values(schedule_data)
                 else:

@@ -215,6 +215,7 @@ def test_schedule():
             
             activities_in_a_day = row.iloc[day].split("--")
             
+            medications_to_give = []
             if (day-2) in medication_schedule:
                 medications_to_give = medication_schedule[(day-2)]
             
