@@ -6,10 +6,10 @@ from pear_schedule.utils import DBTABLES
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE CONFIGS ~~~~~~~~~~~~~~~~~~~~~~~
-# DB_CONN_STR = "mssql+pyodbc://(LocalDb)\\MSSQLLocalDB/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
+DB_CONN_STR = "mssql+pyodbc://(LocalDb)\\MSSQLLocalDB/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
 # DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
 # DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
-DB_CONN_STR = "mssql+pyodbc://fypcom_fypcom:6Tnl78v^@124.6.61.66:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
+# DB_CONN_STR = "mssql+pyodbc://fypcom_fypcom:6Tnl78v^@124.6.61.66:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
 
 # connection_string = (
 #     r"Driver=ODBC Driver 18 for SQL Server;"
