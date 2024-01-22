@@ -76,7 +76,7 @@ class ScheduleWriter(ConfigDependant):
                         continue
                 
                     
-                    schedule_data["CreatedDateTime"] = today, ## Mandatory Field 
+                    schedule_data["CreatedDateTime"] = today ## Mandatory Field 
                     # Use the add method to add data to the session
                     schedule_instance = schedule_table.insert().values(schedule_data)
                 else:
@@ -89,7 +89,7 @@ class ScheduleWriter(ConfigDependant):
                         )
 
                     schedule_data.update(schedule_meta[p])
-                    schedule_instance = schedule_table.insert().values(schedule_data).where(schedule_table.c["ScheduleID"] == schedule_data["ScheduleID"])
+                    schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == schedule_data["ScheduleID"])
                 conn.execute(schedule_instance)
         except Exception as e:
             logger.exception(e)
