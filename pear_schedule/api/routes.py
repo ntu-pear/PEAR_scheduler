@@ -539,6 +539,10 @@ def adhoc_change_schedule():
     newActivityName = newDF["ActivityTitle"].iloc[0]
 
     adHocDF = AdHocScheduleView.get_data(arg1=data["PatientID"])
+    if len(adHocDF.index) == 0:
+        responseData = {"Status": "404", "Message": "Patient Schedule not found/generated", "Data": ""} 
+        return jsonify(responseData)
+    
     scheduleStartDate = adHocDF["StartDate"].iloc[0]
     scheduleEndDate = adHocDF["EndDate"].iloc[0]
 
