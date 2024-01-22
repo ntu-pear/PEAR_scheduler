@@ -19,7 +19,8 @@ logging.basicConfig(format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)
 
 logger = logging.getLogger(__name__)
 
-def init_app(config: Mapping[str, Any]):
+
+def init_app(config: Mapping[str, Any], args):
     from pear_schedule.api.routes import blueprint as sched_bp
     logger.info("Initialising app")
 
@@ -31,10 +32,10 @@ def init_app(config: Mapping[str, Any]):
     DB.init_app(app.config["DB_CONN_STR"])
     loadConfigs(app.config)
 
-    app.run(host="0.0.0.0", debug=True, port=8080)
+    app.run(host="0.0.0.0", debug=True, port=args.port)
 
 
-def update_schedules(config: Mapping[str, Any]):
+def update_schedules(config: Mapping[str, Any], args):
     config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(config["DB_CONN_STR"])
@@ -50,6 +51,7 @@ def parse_args():
     # add args for starting up server (normal operation)
     server_parser = subparsers.add_parser("start_server", help="server start up help")
     server_parser.add_argument("-c", "--config", required=True)
+    server_parser.add_argument("-p", "--port", required=True, type=int)
     server_parser.set_defaults(func=init_app)
 
     # add args for running schedule update from cli
@@ -73,7 +75,7 @@ def main():
     sys.modules[config_module] = config
     spec.loader.exec_module(config)
 
-    args.func(config)
+    args.func(config, args)
     # init_app(config)
 
 
