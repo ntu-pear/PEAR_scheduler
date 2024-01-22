@@ -255,7 +255,7 @@ def test_schedule():
         
         # Test 2
         # ori_activity_non_recommended = ["Mahjong", "Cutting"]
-        # dup_centre_activity_likes = ["Mahjong","Cutting","Dancing","Piano", "Killing"]
+        # dup_centre_activity_likes = ["Mahjong","Cutting","Dancing","Piano", "Cooking"]
         # ori_activities_excluded_for_patient = ["Dancing", "Piano"]
         
         # Test 3

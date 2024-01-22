@@ -345,6 +345,7 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
             schedule.c["Thursday"],
             schedule.c["Friday"],
             schedule.c["Saturday"],
+            schedule.c["Sunday"],
             schedule.c["StartDate"],
             schedule.c["EndDate"],
 
