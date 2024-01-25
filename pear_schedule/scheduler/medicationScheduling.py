@@ -17,6 +17,7 @@ class medicationScheduler(BaseScheduler):
             pid = row["PatientID"]
             startDateTime = row["StartDateTime"]
             endDateTime = row['EndDateTime']
+            instruction = row['Instruction']
             # print(f"PatientID: {pid} | Medication: {row['PrescriptionName']}")
             
             # ======== Check what is the start and end date of the medication in the given week ========
@@ -49,9 +50,15 @@ class medicationScheduler(BaseScheduler):
                 for day in range(start_day_counter, end_day_counter+1):
                     
                     if "Give Medication" not in patientSchedules[pid][day][hour]:
-                        patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})" 
+                        if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]: 
+                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
+                        else:
+                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})*"
                     else:
-                        patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
+                        if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]:
+                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
+                        else:
+                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})*"
 
 def getTimeSlot(time):
     if (900 <= time < 1000):

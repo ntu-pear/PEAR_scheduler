@@ -11,7 +11,7 @@ from sqlalchemy import Select, Table, select
 import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter
 
-from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates
+from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates, date_range
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
@@ -107,19 +107,19 @@ def test_schedule():
         schedule_start_datetime = weekly_schedule_for_patient['StartDate'].min()
         schedule_end_datetime = weekly_schedule_for_patient['EndDate'].max()
         # print(f"Medication start date: {week_start_datetime} | Medication end date: {week_end_datetime}")
+        # print(f"Week start date: {week_start_datetime} | Week end date: {week_end_datetime}")
+        
+        # Assign NaT if week_end/start_datetime is NaN
+        if pd.isna(week_end_datetime):
+            week_end_datetime = pd.NaT
+        if pd.isna(week_start_datetime):
+            week_start_datetime = pd.NaT
         
         if week_end_datetime > schedule_end_datetime:
             week_end_datetime = schedule_end_datetime
             week_end_datetime -= datetime.timedelta(days=2) ## NOTE: MINUS 2 TO GET THE DATETIME FOR FRIDAY OF THE WEEK
         if week_start_datetime < schedule_start_datetime:
             week_start_datetime = schedule_start_datetime
-        
-        # print(f"Week start date: {week_start_datetime} | Week end date: {week_end_datetime}")
-        def date_range(start_date, end_date):
-            current_date = start_date
-            while current_date <= end_date:
-                yield current_date
-                current_date += datetime.timedelta(days=1)
         
         print(f"Schedule start date: {schedule_start_datetime} | Schedule end date: {schedule_end_datetime}")
         json_response[patientID]["Schedule start date"] = f"{schedule_start_datetime}"
@@ -142,6 +142,7 @@ def test_schedule():
         json_response[patientID]["Medication Schedule"] = {}
         for date in date_range(week_start_datetime, week_end_datetime):
             medication_schedule[date.weekday()] = []
+            medication_incorrect_schedule[date.weekday()] = []
             json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]] = []
             
             print(f"\t {days_of_week[date.weekday()]}: ", end = '')
@@ -149,8 +150,12 @@ def test_schedule():
                 if medication_row['StartDateTime'] <= date <= medication_row['EndDateTime']:
                     slots = medication_row['AdministerTime'].split(",")
                     for slot in slots:
-                        medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
-                        json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
+                        if medication_row['Instruction'] is None or medication_row['Instruction'].strip() == "" or medication_row['Instruction'] in ["Nil", "nil" "-"]:
+                            medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
+                            json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
+                        else:
+                            medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})*")
+                            json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})*")
             print(medication_schedule[date.weekday()])            
             
         print()
@@ -188,7 +193,7 @@ def test_schedule():
                     for match in matches:
                         if match in medications_to_give:
                             medication_schedule[(day-2)].remove(match)
-                        else:
+                        else:         
                             if medication_incorrect_schedule[(day-2)] is None:
                                 medication_incorrect_schedule[(day-2)] = []    
                             medication_incorrect_schedule[(day-2)].append(match)
@@ -222,7 +227,7 @@ def test_schedule():
         # ori_activities_excluded_for_patient = ["Clip Coupons", "Piano", "Sewing"]
         
         # Test 7
-        # medication_schedule[2] = ['Give Medication@0945: Galantamine(2 tabs)']
+        # medication_schedule[2] = ['Give Medication@0945: Galantamine(2 tabs)*']
         # medication_incorrect_schedule[2] = ['Give Medication@0930: Galantamine(2 puffs)']
         
         # =======================================================================
@@ -408,8 +413,8 @@ def test_schedule():
                 print(Fore.RED + f"\tThe following medications were scheduled incorrectly: {medication_incorrect_schedule[day]}" + Fore.RESET)
                 json_response[patientID]["Test 7"]["Reason"][f"{days_of_week[day]}"].append(f"The following medications were scheduled incorrectly: {medication_incorrect_schedule[day]}")
                 
-                print(Fore.YELLOW + f"\tThe medications that are supposed to be scheduled are: {medication_incorrect_schedule[day]}" + Fore.RESET)   
-                json_response[patientID]["Test 7"]["Reason"][f"{days_of_week[day]}"].append(f"The medications that are supposed to be scheduled are: {medication_incorrect_schedule[day]}")            
+                print(Fore.YELLOW + f"\tThe medications that are supposed to be scheduled are: {medication_schedule[day]}" + Fore.RESET)   
+                json_response[patientID]["Test 7"]["Reason"][f"{days_of_week[day]}"].append(f"The medications that are supposed to be scheduled are: {medication_schedule[day]}")            
         if correct_medications_scheduled:
             print(Fore.GREEN + f"(Passed)" + Fore.RESET)
             json_response[patientID]["Test 7"]["Result"] = "Passed"

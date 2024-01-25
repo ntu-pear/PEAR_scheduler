@@ -1,6 +1,7 @@
 from typing import List
 from flask import Response, current_app, jsonify
 from dateutil.parser import parse
+import datetime
 
 def checkAdhocRequestBody(data):
     if "OldActivityID" not in data or "NewActivityID" not in data or "PatientID" not in data or "StartDate" not in data or "EndDate" not in data:
@@ -62,3 +63,10 @@ def getDaysFromDates(startDateString, endDateString, week_order: List[str] = Non
     DAY_OF_WEEK_ORDER = week_order or current_app.config["DAY_OF_WEEK_ORDER"]
 
     return DAY_OF_WEEK_ORDER[startDayIdx: endDayIdx+1]
+
+
+def date_range(start_date, end_date):
+    current_date = start_date
+    while current_date <= end_date:
+        yield current_date
+        current_date += datetime.timedelta(days=1)
