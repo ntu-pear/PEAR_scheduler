@@ -15,7 +15,7 @@ from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, ge
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
-from config import COUNTER_FOR_DAYS
+from config import DAYS_COUNTER
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def test_schedule():
         print()
         
         
-        for day in range(2, COUNTER_FOR_DAYS+3):
+        for day in range(2, DAYS_COUNTER+3):
             print(f"{days_of_week[day-2]}: {row.iloc[day]}")
             json_response[patientID][f"{days_of_week[day-2]} Activities"] = row.iloc[day]
             

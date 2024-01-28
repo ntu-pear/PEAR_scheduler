@@ -2,7 +2,7 @@ import datetime
 from typing import List, Mapping
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.db_utils.views import MedicationView
-from config import COUNTER_FOR_DAYS
+from config import DAYS_COUNTER
 
 class medicationScheduler(BaseScheduler):
     @classmethod
@@ -13,7 +13,7 @@ class medicationScheduler(BaseScheduler):
             
             # ======== Variables ========
             start_day_counter = 0
-            end_day_counter = COUNTER_FOR_DAYS
+            end_day_counter = DAYS_COUNTER
             administerTime = row['AdministerTime']
             pid = row["PatientID"]
             startDateTime = row["StartDateTime"]
@@ -36,7 +36,7 @@ class medicationScheduler(BaseScheduler):
             # print(f"Medication starts on {start_day_counter}")
             
             if endDateTime <= end_of_week: # Medication will end sometime during the week
-                end_day_counter = COUNTER_FOR_DAYS - (end_of_week - endDateTime).days
+                end_day_counter = DAYS_COUNTER - (end_of_week - endDateTime).days
             # print(f"Medication ends on {end_day_counter}")
             
             
