@@ -2,7 +2,7 @@ from typing import List
 from flask import Response, current_app, jsonify
 from dateutil.parser import parse
 import datetime
-from config import DAYS_COUNTER
+from config import DAYS
 
 def checkAdhocRequestBody(data):
     if "OldActivityID" not in data or "NewActivityID" not in data or "PatientID" not in data or "StartDate" not in data or "EndDate" not in data:
@@ -68,10 +68,10 @@ def getDaysFromDates(startDateString, endDateString, week_order: List[str] = Non
 
 def date_range(start_date, end_date):
     current_date = start_date
-    counter = 0
+    counter = 1
     while current_date <= end_date:
         yield current_date
         counter += 1
-        if counter > DAYS_COUNTER:
+        if counter > DAYS:
             break
         current_date += datetime.timedelta(days=1)
