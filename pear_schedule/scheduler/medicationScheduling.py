@@ -2,6 +2,7 @@ import datetime
 from typing import List, Mapping
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.db_utils.views import MedicationView
+from config import DAYS
 
 class medicationScheduler(BaseScheduler):
     @classmethod
@@ -12,11 +13,12 @@ class medicationScheduler(BaseScheduler):
             
             # ======== Variables ========
             start_day_counter = 0
-            end_day_counter = 4
+            end_day_counter = DAYS - 1
             administerTime = row['AdministerTime']
             pid = row["PatientID"]
             startDateTime = row["StartDateTime"]
             endDateTime = row['EndDateTime']
+            instruction = row['Instruction']
             # print(f"PatientID: {pid} | Medication: {row['PrescriptionName']}")
             
             # ======== Check what is the start and end date of the medication in the given week ========
@@ -34,7 +36,7 @@ class medicationScheduler(BaseScheduler):
             # print(f"Medication starts on {start_day_counter}")
             
             if endDateTime <= end_of_week: # Medication will end sometime during the week
-                end_day_counter = 4 - (end_of_week - endDateTime).days
+                end_day_counter = (DAYS-1) - (end_of_week - endDateTime).days
             # print(f"Medication ends on {end_day_counter}")
             
             
@@ -49,9 +51,15 @@ class medicationScheduler(BaseScheduler):
                 for day in range(start_day_counter, end_day_counter+1):
                     
                     if "Give Medication" not in patientSchedules[pid][day][hour]:
-                        patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})" 
+                        if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]: 
+                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
+                        else:
+                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})*"
                     else:
-                        patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
+                        if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]:
+                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
+                        else:
+                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})*"
 
 def getTimeSlot(time):
     if (900 <= time < 1000):

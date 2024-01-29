@@ -11,10 +11,11 @@ from sqlalchemy import Select, Table, select
 import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter
 
-from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates
+from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates, date_range
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
+from config import DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -85,21 +86,19 @@ def test_schedule():
         centre_activity_non_recommended = centre_activity_recommendation_for_patient.loc[centre_activity_recommendation_for_patient['DoctorRecommendation'] == False]
         
         # Lists created for comparison later on
+        # TYPE 'SHOULD SCHEDULE'
         ori_centre_activity_likes = centre_activity_likes['ActivityTitle'].tolist()
         dup_centre_activity_likes = centre_activity_likes['ActivityTitle'].tolist()
-        
-        ori_centre_activity_dislikes = centre_activity_dislikes['ActivityTitle'].tolist()
-        dup_centre_activity_dislikes = []
-        
-        ori_activities_excluded_for_patient = activities_excluded_for_patient['ActivityTitle'].tolist()
-        dup_activities_excluded_for_patient = []
-        
         ori_routine_for_patient = routine_for_patient['ActivityTitle'].tolist()
         dup_routine_for_patient = routine_for_patient['ActivityTitle'].tolist()
-        
         ori_centre_activity_recommended = centre_activity_recommended['ActivityTitle'].tolist()
         dup_centre_activity_recommended = centre_activity_recommended['ActivityTitle'].tolist()
         
+        # TYPE 'SHOULD NOT SCHEDULE'
+        ori_centre_activity_dislikes = centre_activity_dislikes['ActivityTitle'].tolist()
+        dup_centre_activity_dislikes = []
+        ori_activities_excluded_for_patient = activities_excluded_for_patient['ActivityTitle'].tolist()
+        dup_activities_excluded_for_patient = []
         ori_activity_non_recommended = centre_activity_non_recommended['ActivityTitle'].tolist()
         dup_activity_non_recommended = []
         
@@ -110,19 +109,19 @@ def test_schedule():
         schedule_start_datetime = weekly_schedule_for_patient['StartDate'].min()
         schedule_end_datetime = weekly_schedule_for_patient['EndDate'].max()
         # print(f"Medication start date: {week_start_datetime} | Medication end date: {week_end_datetime}")
+        # print(f"Week start date: {week_start_datetime} | Week end date: {week_end_datetime}")
+        
+        # Assign NaT if week_end/start_datetime is NaN
+        if pd.isna(week_end_datetime):
+            week_end_datetime = pd.NaT
+        if pd.isna(week_start_datetime):
+            week_start_datetime = pd.NaT
         
         if week_end_datetime > schedule_end_datetime:
             week_end_datetime = schedule_end_datetime
             week_end_datetime -= datetime.timedelta(days=2) ## NOTE: MINUS 2 TO GET THE DATETIME FOR FRIDAY OF THE WEEK
         if week_start_datetime < schedule_start_datetime:
             week_start_datetime = schedule_start_datetime
-        
-        # print(f"Week start date: {week_start_datetime} | Week end date: {week_end_datetime}")
-        def date_range(start_date, end_date):
-            current_date = start_date
-            while current_date <= end_date:
-                yield current_date
-                current_date += datetime.timedelta(days=1)
         
         print(f"Schedule start date: {schedule_start_datetime} | Schedule end date: {schedule_end_datetime}")
         json_response[patientID]["Schedule start date"] = f"{schedule_start_datetime}"
@@ -145,6 +144,7 @@ def test_schedule():
         json_response[patientID]["Medication Schedule"] = {}
         for date in date_range(week_start_datetime, week_end_datetime):
             medication_schedule[date.weekday()] = []
+            medication_incorrect_schedule[date.weekday()] = []
             json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]] = []
             
             print(f"\t {days_of_week[date.weekday()]}: ", end = '')
@@ -152,14 +152,18 @@ def test_schedule():
                 if medication_row['StartDateTime'] <= date <= medication_row['EndDateTime']:
                     slots = medication_row['AdministerTime'].split(",")
                     for slot in slots:
-                        medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
-                        json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
+                        if medication_row['Instruction'] is None or medication_row['Instruction'].strip() == "" or medication_row['Instruction'] in ["Nil", "nil" "-"]:
+                            medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
+                            json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
+                        else:
+                            medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})*")
+                            json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})*")
             print(medication_schedule[date.weekday()])            
             
         print()
         
         
-        for day in range(2,7):
+        for day in range(2, DAYS+2):
             print(f"{days_of_week[day-2]}: {row.iloc[day]}")
             json_response[patientID][f"{days_of_week[day-2]} Activities"] = row.iloc[day]
             
@@ -170,11 +174,13 @@ def test_schedule():
                 medications_to_give = medication_schedule[(day-2)]
             
             for index, activity in enumerate(activities_in_a_day):
+                # TYPE 'SHOULD SCHEDULE'
                 # if the preferred activity/ recommended activities/ routine activities are in the activities_in_a_day, we remove that activity from the list
                 dup_centre_activity_likes = [item for item in dup_centre_activity_likes if item not in activity] 
                 dup_centre_activity_recommended = [item for item in dup_centre_activity_recommended if item not in activity] 
                 dup_routine_for_patient = [item for item in dup_routine_for_patient if item not in activity] 
                 
+                # TYPE 'SHOULD NOT SCHEDULE'                
                 # if the non-preferred activities/ non-recommended activities/ activities excluded are in the activities_in_a_day, we keep that activity in the list
                 dup_centre_activity_dislikes = [item for item in ori_centre_activity_dislikes if item in activity]
                 dup_activity_non_recommended = [item for item in ori_activity_non_recommended if item in activity]
@@ -191,7 +197,7 @@ def test_schedule():
                     for match in matches:
                         if match in medications_to_give:
                             medication_schedule[(day-2)].remove(match)
-                        else:
+                        else:         
                             if medication_incorrect_schedule[(day-2)] is None:
                                 medication_incorrect_schedule[(day-2)] = []    
                             medication_incorrect_schedule[(day-2)].append(match)
@@ -206,12 +212,12 @@ def test_schedule():
         
         # Test 2
         # ori_activity_non_recommended = ["Mahjong", "Cutting"]
-        # dup_centre_activity_likes = ["Mahjong","Cutting","Dancing","Piano", "Cooking"]
-        # ori_activities_excluded_for_patient = ["Dancing", "Piano"]
+        # dup_centre_activity_likes = ["Mahjong","Cutting","Piano", "Dancing", "Cooking"]
+        # ori_activities_excluded_for_patient = ["Mahjong", "Piano"]
         
         # Test 3
-        # dup_centre_activity_dislikes = ["Mahjong"]
-        # ori_centre_activity_recommended = ["Mahjong", "Cutting"]
+        dup_centre_activity_dislikes = ["Mahjong"]
+        ori_centre_activity_recommended = ["Mahjong", "Cutting"]
         
         # Test 4
         # dup_centre_activity_recommended = ["Clip Coupons", "Cutting"]
@@ -225,7 +231,7 @@ def test_schedule():
         # ori_activities_excluded_for_patient = ["Clip Coupons", "Piano", "Sewing"]
         
         # Test 7
-        # medication_schedule[2] = ['Give Medication@0945: Galantamine(2 tabs)']
+        # medication_schedule[2] = ['Give Medication@0945: Galantamine(2 tabs)*']
         # medication_incorrect_schedule[2] = ['Give Medication@0930: Galantamine(2 puffs)']
         
         # =======================================================================
@@ -411,8 +417,8 @@ def test_schedule():
                 print(Fore.RED + f"\tThe following medications were scheduled incorrectly: {medication_incorrect_schedule[day]}" + Fore.RESET)
                 json_response[patientID]["Test 7"]["Reason"][f"{days_of_week[day]}"].append(f"The following medications were scheduled incorrectly: {medication_incorrect_schedule[day]}")
                 
-                print(Fore.YELLOW + f"\tThe medications that are supposed to be scheduled are: {medication_incorrect_schedule[day]}" + Fore.RESET)   
-                json_response[patientID]["Test 7"]["Reason"][f"{days_of_week[day]}"].append(f"The medications that are supposed to be scheduled are: {medication_incorrect_schedule[day]}")            
+                print(Fore.YELLOW + f"\tThe medications that are supposed to be scheduled are: {medication_schedule[day]}" + Fore.RESET)   
+                json_response[patientID]["Test 7"]["Reason"][f"{days_of_week[day]}"].append(f"The medications that are supposed to be scheduled are: {medication_schedule[day]}")            
         if correct_medications_scheduled:
             print(Fore.GREEN + f"(Passed)" + Fore.RESET)
             json_response[patientID]["Test 7"]["Result"] = "Passed"
