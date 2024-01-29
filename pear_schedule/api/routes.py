@@ -33,18 +33,21 @@ def generate_schedule():
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
-    build_schedules(config, patientSchedules)
+    try:
+        build_schedules(config, patientSchedules)
 
-    if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
-        return Response(
-            "Generated Schedule Successfully",
-            status=200,
-        )
-    else:
-        return Response(
-            "Error in writing schedule to DB. Check scheduler logs",
-            status = 500
-        )
+        if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
+            responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
+            return jsonify(responseData)
+        else:
+            responseData = {"Status": "500", "Message": "Error in writing schedule to DB. Check scheduler logs", "Data": ""} 
+            return jsonify(responseData)
+            
+    except Exception as e: 
+        responseData = {"Status": "400", "Message": e , "Data": ""} 
+        return jsonify(responseData)
+    
+    
 
 
 @blueprint.route("/test", methods=["GET"])
