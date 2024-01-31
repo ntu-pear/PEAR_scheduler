@@ -455,8 +455,10 @@ def test_schedule():
         print()
         print()
         
-    json_response = json.dumps(json_response, sort_keys=False, indent=2)   
-    return Response(json_response, mimetype='application/json', status=200)
+    # json_response = json.dumps(json_response, sort_keys=False, indent=2)   
+    responseData = {"Status": "200", "Message": "Tester Ran Successfully", "Data": json_response} 
+    return jsonify(responseData)
+    # return Response(json_response, mimetype='application/json', status=200)
 
 
 @blueprint.route("/adhoc", methods=["PUT"])
