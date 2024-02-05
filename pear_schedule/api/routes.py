@@ -515,10 +515,14 @@ def adhoc_change_schedule():
     filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
     
     # replace activities
+    
     for i, record in filteredAdHocDF.iterrows():
         for col in chosenDays:
             originalSchedule = record[col]
             if originalSchedule != "":
+                if oldActivityName not in originalSchedule:
+                    responseData = {"Status": "400", "Message": f"{oldActivityName} (old activity) cannnot be found in some/all days of patient schedule for {data['StartDate'].split('T')[0]} to {data['EndDate'].split('T')[0]}", "Data": ""} 
+                    return jsonify(responseData)
                 newSchedule = originalSchedule.replace(oldActivityName, newActivityName)
                 filteredAdHocDF.at[i,col] = newSchedule
 
