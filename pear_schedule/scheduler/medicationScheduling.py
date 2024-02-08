@@ -54,12 +54,12 @@ class medicationScheduler(BaseScheduler):
                         if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]: 
                             patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
                         else:
-                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})*"
+                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})**{instruction}"
                     else:
                         if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]:
                             patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
                         else:
-                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})*"
+                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})**{instruction}"
 
 def getTimeSlot(time):
     if (900 <= time < 1000):
