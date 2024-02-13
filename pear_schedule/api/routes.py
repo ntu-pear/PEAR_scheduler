@@ -169,8 +169,16 @@ def test_schedule():
                             else:
                                 medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})**{medication_row['Instruction']}")
                                 json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})**{medication_row['Instruction']}")
-                print(medication_schedule[date.weekday()])            
-                
+                print(medication_schedule[date.weekday()])  
+            
+            # Custom sorting function to sort the medication schedules by time
+            def sort_by_time(med_schedule):
+                return int(med_schedule.split('@')[1].split(':')[0])
+
+            # Sort the medication schedules for each day based on time
+            for day, meds in medication_schedule.items():
+                json_response[patientID]["Medication Schedule"][days_of_week[day]] = sorted(meds, key=sort_by_time) 
+            
             print()
             
             
