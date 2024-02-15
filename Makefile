@@ -1,7 +1,7 @@
 # only works for unix because windows is a joke
 .PHONY: build clean docker/build docker/run deploy/gcp
 
-ARTIFACTORY := asia-southeast1-docker.pkg.dev/pear-schedule/pear-artifactory/
+ARTIFACTORY := localhost:5000/
 
 build: clean
 	python3.10 -m venv env && . env/bin/activate && python3 -m pip install -r requirements.txt

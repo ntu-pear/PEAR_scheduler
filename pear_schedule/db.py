@@ -11,11 +11,13 @@ class DB:
     def init_app(cls, conn_str: str):
         logger.info("Connecting to DB")
         cls.engine = create_engine(conn_str)
+        logger.info("Connected to DB")
         cls.schema = MetaData()
 
+        logger.info("Downloading DB schema")
         cls.schema.reflect(bind=cls.engine)
+        logger.info("DB schema loaded")
 
-        logger.info("Connected to DB")
 
         
 

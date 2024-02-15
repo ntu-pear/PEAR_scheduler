@@ -10,9 +10,8 @@ RUN ACCEPT_EULA=Y apt-get -y install msodbcsql17
 RUN apt-get -y install unixodbc-dev
 
 COPY ./requirements.txt requirements.txt
-COPY ./config.py config.py
+COPY ./configprod.py configprod.py
 COPY ./pear_schedule pear_schedule
-COPY ./utils.py utils.py
 COPY ./app.py app.py
 
 RUN pip install -r requirements.txt
