@@ -199,17 +199,25 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
         activity_exclusion = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
 
 
-        curDateTime = datetime.now()
+        today = datetime.now()
+        if today.weekday() == 6: #sunday and generate for next week
+            start_of_week = today + timedelta(days=1, hours=0, minutes=0, seconds=0, microseconds=0)
+            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)
+        else: # other weekday and generate for current week
+            start_of_week = today - timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+
         query: Select = select(
             centre_activity.c["CentreActivityID"],
             activity_exclusion.c["PatientID"],
-            
         ).join(
             activity_exclusion, centre_activity.c["ActivityID"] == activity_exclusion.c["ActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
         ).where(activity_exclusion.c["IsDeleted"] == False
-        ).where(activity_exclusion.c["StartDateTime"] <= curDateTime
-        ).where(or_(activity_exclusion.c["EndDateTime"] >= curDateTime , activity_exclusion.c["EndDateTime"] == None))
+        ).where(or_(and_( activity_exclusion.c["EndDateTime"] >= start_of_week, activity_exclusion.c["StartDateTime"] <= end_of_week) ,activity_exclusion.c["EndDateTime"] == None)
+        )
 
 
         return query
