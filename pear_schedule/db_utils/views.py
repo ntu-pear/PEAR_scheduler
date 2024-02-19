@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from operator import or_
 from typing import Mapping, Any
 import pandas as pd
@@ -28,7 +29,8 @@ class BaseView(ConfigDependant):
         logger.debug(compile_query(query))
 
         if conn:
-            result: pd.DataFrame = pd.read_sql(query, con=conn)
+            with conn.begin() if conn._transaction is None else nullcontext():
+                result: pd.DataFrame = pd.read_sql(query, con=conn)
         else:
             with DB.get_engine().begin() as conn:
                 result: pd.DataFrame = pd.read_sql(query, con=conn)
