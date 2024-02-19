@@ -1,7 +1,7 @@
 import pandas as pd
 from sqlalchemy import Select, select
 from pear_schedule.db import DB
-from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
+from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.utils import DBTABLES, ConfigDependant
 
 
@@ -19,4 +19,4 @@ class ScheduleRefresher(ConfigDependant):
         with DB.get_engine().begin() as conn:
             updated_patients: pd.DataFrame = pd.read_sql(stmt, conn)
 
-        IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
+        PreferredActivityScheduler.update_schedules(updated_patients["PatientID"])

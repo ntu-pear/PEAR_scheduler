@@ -3,7 +3,7 @@ from typing import Dict
 from pear_schedule.db_utils.views import PatientsOnlyView
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
 from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
-from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
+from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler, PreferredActivityScheduler, RecommendedActivityScheduler
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 
@@ -21,7 +21,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     CompulsoryActivityScheduler.fillSchedule(patientSchedules)
 
     # Schedule individual recommended activities
-    IndividualActivityScheduler.fillRecommendations(patientSchedules)
+    RecommendedActivityScheduler.fillSchedule(patientSchedules)
 
     # Schedule routine activities
     RoutineActivityScheduler.fillSchedule(patientSchedules)
@@ -36,7 +36,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
             patientSchedules[patientID][day][hour] = activity
 
     # Schedule individual preferred activities
-    IndividualActivityScheduler.fillPreferences(patientSchedules)
+    PreferredActivityScheduler.fillSchedule(patientSchedules)
     
     # Insert the medication schedule into scheduler
     medicationScheduler.fillSchedule(patientSchedules)

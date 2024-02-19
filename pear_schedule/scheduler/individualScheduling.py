@@ -18,12 +18,27 @@ logger = logging.getLogger(__name__)
 
 class IndividualActivityScheduler(BaseScheduler):
     @classmethod
-    def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
-        cls.fillPreferences(schedules)
-        cls.fillRecommendations(schedules)
+    def _get_patient_data(cls, conn: Connection = None) -> Mapping[str, Mapping[str, set[str]]]:
+        patients: Mapping[str, Mapping[str, set[str]]] = {}
 
+        # consolidate patient data
+        for _, p in PatientsView.get_data(conn=conn).iterrows():  # TODO: split patientsview into activity level view instead
+            pid = p["PatientID"]
+            if pid not in patients:
+                patients[pid] = {
+                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
+                }
+
+            # patients[pid].add(p["RecommendedActivityID"])
+            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
+            patients[pid]["preferences"].add(p["PreferredActivityID"])
+
+        return patients
+
+
+class RecommendedActivityScheduler(IndividualActivityScheduler):
     @classmethod
-    def fillRecommendations(cls, schedules: Mapping[str, List[str]]) -> None:
+    def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
         recommendations: pd.DataFrame = RecommendedActivitiesView.get_data()
         recommendations.sort_values(by=["PatientID"])
         recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
@@ -49,10 +64,50 @@ class IndividualActivityScheduler(BaseScheduler):
             cls.__fillByFixedTimeSlots(patient_schedule, allowed_activities)
 
             start = curr
+    
+    @classmethod
+    def __fillByFixedTimeSlots(cls, patient_schedule: List[str], allowed_activities: pd.DataFrame):
+        scheduled_idx = pd.Series(False, index=allowed_activities.index)
+        for day, day_schedule in enumerate(patient_schedule):
+
+            if scheduled_idx.all():
+                break
+
+            for slot, curr_activity in enumerate(day_schedule):
+                if curr_activity:
+                    continue
+                # scan remaining allowed activities to find most constrained
+                # not ideal but no. of activities is expected to be small so O(n2) is acceptable
+
+                least_available = -1
+                lowest_availability = float("inf")
+
+                for row, activity in allowed_activities[~scheduled_idx].iterrows():
+                    curr_availability = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
+
+                    if not curr_availability:
+                        scheduled_idx.loc[row] = True
+
+                    if curr_availability < lowest_availability:
+                        least_available = row
+                        lowest_availability = curr_availability
+
+                if least_available < 0:
+                    break
+
+                scheduled_idx.loc[least_available] = True
+
+                day_schedule[slot] = allowed_activities.loc[least_available, "ActivityTitle"]
+
+
+class PreferredActivityScheduler(IndividualActivityScheduler):
+    @classmethod
+    def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
+        cls.fillPreferences(schedules)
 
     @classmethod
     def fillPreferences(cls, schedules: Mapping[str, List[str]], conn: Connection = None, patients: Mapping = None):
-        patients = patients or cls.__get_patient_data(conn=conn)
+        patients = patients or cls._get_patient_data(conn=conn)
 
         # consolidate activity data
         activities: pd.DataFrame = ActivitiesView.get_data(conn=conn)  # non compulsory individual activities
@@ -145,38 +200,40 @@ class IndividualActivityScheduler(BaseScheduler):
         return activities.iloc[out[0]]["ActivityTitle"]
 
     @classmethod
-    def __fillByFixedTimeSlots(cls, patient_schedule: List[str], allowed_activities: pd.DataFrame):
-        scheduled_idx = pd.Series(False, index=allowed_activities.index)
-        for day, day_schedule in enumerate(patient_schedule):
+    def _get_most_updated_schedules(
+        cls, 
+        patientIDs: List[str], 
+        conn: Connection, 
+        curr_date: datetime.date = None
+    ) -> pd.DataFrame:
+        db_tables: DBTABLES = cls.config["DB_TABLES"]
+        schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
 
-            if scheduled_idx.all():
-                break
+        # use datetime to avoid db side issues when comparing date and datetime
+        curr_date = curr_date or datetime.date.today()
+        curr_day_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
+        next_day_start = curr_day_start + datetime.timedelta(days=1)
 
-            for slot, curr_activity in enumerate(day_schedule):
-                if curr_activity:
-                    continue
-                # scan remaining allowed activities to find most constrained
-                # not ideal but no. of activities is expected to be small so O(n2) is acceptable
+        latest_sched_cte = select(
+            schedule_table.c["PatientID"],
+            func.max(schedule_table.c["UpdatedDateTime"]).label("UpdatedDateTime")
+        ).where(
+            schedule_table.c["StartDate"] >= curr_day_start,
+            schedule_table.c["StartDate"] < next_day_start,
+            schedule_table.c["PatientID"].in_(patientIDs),
+            schedule_table.c["IsDeleted"] == False,
+        ).group_by(schedule_table.c["PatientID"]).cte("latest_schedules")
 
-                least_available = -1
-                lowest_availability = float("inf")
+        stmt = select(schedule_table).join(
+            latest_sched_cte, and_(
+                latest_sched_cte.c["PatientID"] == schedule_table.c["PatientID"],
+                latest_sched_cte.c["UpdatedDateTime"] == schedule_table.c["UpdatedDateTime"],
+            )
+        ).where(
+            schedule_table.c["IsDeleted"] == False,
+        )
 
-                for row, activity in allowed_activities[~scheduled_idx].iterrows():
-                    curr_availability = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
-
-                    if not curr_availability:
-                        scheduled_idx.loc[row] = True
-
-                    if curr_availability < lowest_availability:
-                        least_available = row
-                        lowest_availability = curr_availability
-
-                if least_available < 0:
-                    break
-
-                scheduled_idx.loc[least_available] = True
-
-                day_schedule[slot] = allowed_activities.loc[least_available, "ActivityTitle"]
+        return pd.read_sql(stmt, conn)
 
     @classmethod
     def update_schedules(cls, patientIDs: List[str] = None, update_date: datetime.date = None):
@@ -195,10 +252,10 @@ class IndividualActivityScheduler(BaseScheduler):
 
             logger.info(f"updating schedules for patients {patientIDs}")
 
-            latest_schedules = cls.__get_most_updated_schedules(patientIDs, conn, update_date)
+            latest_schedules = cls._get_most_updated_schedules(patientIDs, conn, update_date)
 
             # use the original individual scheduler to update activities
-            patient_data = cls.__get_patient_data(conn)
+            patient_data = cls._get_patient_data(conn)
             activities = ActivitiesView.get_data(conn)
             activities_title_lookup = {
                 row["ActivityTitle"]: row["ActivityID"] for _, row in activities.iterrows()
@@ -244,60 +301,6 @@ class IndividualActivityScheduler(BaseScheduler):
             if not write_result:
                 logger.error("Schedule updating failed")
 
-
-    @classmethod
-    def __get_most_updated_schedules(
-        cls, 
-        patientIDs: List[str], 
-        conn: Connection, 
-        curr_date: datetime.date = None
-    ) -> pd.DataFrame:
-        db_tables: DBTABLES = cls.config["DB_TABLES"]
-        schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
-
-        # use datetime to avoid db side issues when comparing date and datetime
-        curr_date = curr_date or datetime.date.today()
-        curr_day_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
-        next_day_start = curr_day_start + datetime.timedelta(days=1)
-
-        latest_sched_cte = select(
-            schedule_table.c["PatientID"],
-            func.max(schedule_table.c["UpdatedDateTime"]).label("UpdatedDateTime")
-        ).where(
-            schedule_table.c["StartDate"] >= curr_day_start,
-            schedule_table.c["StartDate"] < next_day_start,
-            schedule_table.c["PatientID"].in_(patientIDs),
-            schedule_table.c["IsDeleted"] == False,
-        ).group_by(schedule_table.c["PatientID"]).cte("latest_schedules")
-
-        stmt = select(schedule_table).join(
-            latest_sched_cte, and_(
-                latest_sched_cte.c["PatientID"] == schedule_table.c["PatientID"],
-                latest_sched_cte.c["UpdatedDateTime"] == schedule_table.c["UpdatedDateTime"],
-            )
-        ).where(
-            schedule_table.c["IsDeleted"] == False,
-        )
-
-        return pd.read_sql(stmt, conn)
-
-    @classmethod
-    def __get_patient_data(cls, conn: Connection = None) -> Mapping[str, Mapping[str, set[str]]]:
-        patients: Mapping[str, Mapping[str, set[str]]] = {}
-
-        # consolidate patient data
-        for _, p in PatientsView.get_data(conn=conn).iterrows():  # TODO: split patientsview into activity level view instead
-            pid = p["PatientID"]
-            if pid not in patients:
-                patients[pid] = {
-                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
-                }
-
-            # patients[pid].add(p["RecommendedActivityID"])
-            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
-            patients[pid]["preferences"].add(p["PreferredActivityID"])
-
-        return patients
 
 
 def calculate_activity_availabillity(day: int, slot: int, fixedTimeSlots: str):
