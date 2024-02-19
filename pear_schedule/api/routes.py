@@ -3,19 +3,16 @@ from flask import Blueprint, jsonify, current_app, request, Response
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, ExistingScheduleView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView
 import pandas as pd
 import re
-import json
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
-from sqlalchemy import Select, Table, select
+from sqlalchemy import Table
 import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter
 
 from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates, date_range
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
-from pear_schedule.utils import DBTABLES
-from config import DAYS
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +150,7 @@ def test_schedule():
             
             print(f"Medication Schedule:")
             json_response[patientID]["Medication Schedule"] = {}
-            for date in date_range(week_start_datetime, week_end_datetime):
+            for date in date_range(week_start_datetime, week_end_datetime, current_app.config["DAYS"]):
                 medication_schedule[date.weekday()] = []
                 medication_incorrect_schedule[date.weekday()] = []
                 json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]] = []
@@ -182,7 +179,7 @@ def test_schedule():
             print()
             
             
-            for day in range(2, DAYS+2):
+            for day in range(2, current_app.config["DAYS"]+2):
                 print(f"{days_of_week[day-2]}: {row.iloc[day]}")
                 json_response[patientID][f"{days_of_week[day-2]} Activities"] = row.iloc[day]
                 
