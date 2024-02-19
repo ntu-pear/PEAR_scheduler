@@ -75,7 +75,6 @@ class PatientsView(BaseView):
 
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         centre_activity_preference = schema.tables[cls.db_tables.CENTRE_ACTIVITY_PREFERENCE_TABLE]
-        activity_exclusion = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         # centre_activity_recommendation = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
 
@@ -90,12 +89,9 @@ class PatientsView(BaseView):
 
         query: Select = select(
             patient.c["PatientID"], 
-            centre_activity_cte.c["PreferredActivityID"],
-            activity_exclusion.c["ActivityID"].label("ExcludedActivityID"),
+            centre_activity_cte.c["PreferredActivityID"]
         ).join(
             centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"], isouter=True
-        ).join(
-            activity_exclusion, patient.c["PatientID"] == activity_exclusion.c["PatientID"], isouter=True
         )\
         # .join(
         #     centre_activity_recommendation, 
@@ -249,29 +245,20 @@ class RecommendedActivitiesView(BaseView):
         recommendations = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
-        exclusions = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
 
         query: Select = select(
             centre_activity.c["ActivityID"],
             centre_activity.c["IsFixed"],
             activity.c["ActivityTitle"],
             centre_activity.c["FixedTimeSlots"],
-            recommendations.c["PatientID"],
-            func.coalesce(exclusions.c["IsDeleted"], True).label("IsAllowed"),  # flipping IsDeleted can cause syntax error
+            recommendations.c["PatientID"]
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).join(
             recommendations, recommendations.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
-        ).join(
-            exclusions, and_(
-                exclusions.c["PatientID"] == recommendations.c["PatientID"],
-                exclusions.c["ActivityID"] == activity.c["ActivityID"]
-            ),
-            isouter=True
         ).where(
             recommendations.c["IsDeleted"] == False,
             recommendations.c["DoctorRecommendation"] > 0,
-            or_(exclusions.c["IsDeleted"] == False, exclusions.c["IsDeleted"] == None)
         )
 
         return query
@@ -496,11 +483,15 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
             activities_excluded.c["ActivityID"],
             activities_excluded.c["PatientID"],
             activities_excluded.c["ExclusionRemarks"],
+            activities_excluded.c["EndDateTime"],
             activity.c["ActivityTitle"]
         ).join(
             activity, activity.c["ActivityID"] == activities_excluded.c["ActivityID"]
         ).where(
-            activities_excluded.c["EndDateTime"] >= start_of_week
+            or_(
+                activities_excluded.c["EndDateTime"] >= start_of_week, 
+                activities_excluded.c["EndDateTime"] == None
+            )
         )
         
         return query

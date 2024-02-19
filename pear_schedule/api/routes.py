@@ -41,8 +41,9 @@ def generate_schedule():
             responseData = {"Status": "500", "Message": "Error in writing schedule to DB. Check scheduler logs", "Data": ""} 
             return jsonify(responseData)
             
-    except Exception as e: 
-        responseData = {"Status": "400", "Message": e , "Data": ""} 
+    except Exception as e:
+        logger.exception(e)
+        responseData = {"Status": "400", "Message": str(e), "Data": ""}
         return jsonify(responseData)
     
     

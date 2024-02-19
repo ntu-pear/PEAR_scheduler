@@ -1,13 +1,13 @@
 import datetime
 from functools import partial
 import logging
-from typing import List, Mapping, Optional, Set
+from typing import Dict, List, Mapping, Optional, Set
 
 import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
-from pear_schedule.db_utils.views import ActivitiesView, PatientsView, RecommendedActivitiesView
+from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, PatientsView, RecommendedActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.utils import DBTABLES
@@ -16,62 +16,97 @@ from pear_schedule.utils import DBTABLES
 
 logger = logging.getLogger(__name__)
 
+
+def _get_max_enddate(d1, d2):
+    if d1 is None:
+        return d1
+    if d2 is None:
+        return d2
+    return max(d1, d2)
+
+
 class IndividualActivityScheduler(BaseScheduler):
     @classmethod
-    def _get_patient_data(cls, conn: Connection = None) -> Mapping[str, Mapping[str, set[str]]]:
-        patients: Mapping[str, Mapping[str, set[str]]] = {}
+    def _get_patient_data(cls, conn: Connection = None) -> Mapping[str, Mapping[str, Dict[str, str]]]:
+        patients: Mapping[str, Mapping[str, Dict[str, str]]] = {}
 
         # consolidate patient data
-        for _, p in PatientsView.get_data(conn=conn).iterrows():  # TODO: split patientsview into activity level view instead
+        for _, p in PatientsView.get_data(conn=conn).iterrows():
             pid = p["PatientID"]
             if pid not in patients:
                 patients[pid] = {
-                    "preferences":set(), "exclusions": set()  # recommendations handled in compulsory scheduling
+                    "preferences":dict(), "exclusions": dict()  # recommendations handled in compulsory scheduling
                 }
 
-            # patients[pid].add(p["RecommendedActivityID"])
-            patients[pid]["exclusions"].add(p["ExcludedActivityID"])
-            patients[pid]["preferences"].add(p["PreferredActivityID"])
+            patients[pid]["preferences"][p["PreferredActivityID"]] = True
+
+        # add activity exclusions to patient data
+        for _ , e in ActivitiesExcludedView.get_data().iterrows():
+            pid = e["PatientID"]
+            activity_id = e["ActivityID"]
+            if e["ActivityID"] not in patients[pid]["exclusions"]:
+                patients[pid]["exclusions"][activity_id] = e["EndDateTime"]
+            else:
+                patients[pid]["exclusions"][activity_id] = _get_max_enddate(
+                    e["EndDateTime"], patients[pid]["exclusions"][activity_id]
+                )
+
 
         return patients
 
 
 class RecommendedActivityScheduler(IndividualActivityScheduler):
     @classmethod
-    def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
-        recommendations: pd.DataFrame = RecommendedActivitiesView.get_data()
-        recommendations.sort_values(by=["PatientID"])
-        recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
+    def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
+        with DB.get_engine().begin() as conn:
+            # pull recommendations
+            recommendations: pd.DataFrame = RecommendedActivitiesView.get_data(conn=conn)
+            recommendations.sort_values(by=["PatientID"])
+            recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
 
-        # add an extra row at end for easier handling of final patient
-        dummy_row = recommendations.iloc[0:1].copy(deep=True)
-        dummy_row["PatientID"] = None
-        recommendations = pd.concat([recommendations, dummy_row]).reset_index(drop=True)
+            # add an extra row at end for easier handling of final patient
+            dummy_row = recommendations.iloc[0:1].copy(deep=True)
+            dummy_row["PatientID"] = None
+            recommendations = pd.concat([recommendations, dummy_row]).reset_index(drop=True)
 
-        start = 0
+            # get patient level data
+            patients = cls._get_patient_data(conn=conn)
 
-        for curr, (_, row) in enumerate(recommendations.iterrows()):  # not using iterrows directly since need range indexing later
-            if row["PatientID"] == recommendations.loc[start, "PatientID"]:
-                continue
+            start = 0
 
-            end = curr
+            for curr, (_, row) in enumerate(recommendations.iterrows()):  # not using iterrows directly since need range indexing later
+                if row["PatientID"] == recommendations.loc[start, "PatientID"]:
+                    continue
 
-            patient_id = recommendations["PatientID"][start]
-            curr_df: pd.DataFrame = recommendations.iloc[start: end]
-            patient_schedule = schedules[patient_id]
-            allowed_activities = curr_df[curr_df["IsAllowed"]]
+                end = curr
 
-            cls.__fillByFixedTimeSlots(patient_schedule, allowed_activities)
+                patient_id = recommendations["PatientID"][start]
+                curr_df: pd.DataFrame = recommendations.iloc[start: end]
+                patient_schedule = schedules[patient_id]
 
-            start = curr
+                cls.__fillByFixedTimeSlots(patient_schedule, curr_df, patients[patient_id], week_start)
+
+                start = curr
     
     @classmethod
-    def __fillByFixedTimeSlots(cls, patient_schedule: List[str], allowed_activities: pd.DataFrame):
-        scheduled_idx = pd.Series(False, index=allowed_activities.index)
+    def __fillByFixedTimeSlots(
+        cls, 
+        patient_schedule: List[str], 
+        activities: pd.DataFrame, 
+        patient_info: Mapping[str, Dict[str, str]],
+        week_start: datetime.datetime = None
+    ):
+        # set week_start to current week monday if not given
+        week_start = week_start or \
+            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+
+        scheduled_idx = pd.Series(False, index=activities.index)
         for day, day_schedule in enumerate(patient_schedule):
 
             if scheduled_idx.all():
                 break
+
+            day_date = week_start + datetime.timedelta(days=day)
 
             for slot, curr_activity in enumerate(day_schedule):
                 if curr_activity:
@@ -82,7 +117,16 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
                 least_available = -1
                 lowest_availability = float("inf")
 
-                for row, activity in allowed_activities[~scheduled_idx].iterrows():
+                for row, activity in activities[~scheduled_idx].iterrows():
+                    if (activity["ActivityID"] in patient_info["exclusions"]):
+                        exclusion_end = patient_info["exclusions"][activity["ActivityID"]]
+
+                        # if activity exclusion has not yet ended then ignore
+                        # include current day since it can be unsafe to perform activities on the
+                        # day exclusion ends (eg remove leg cast then walk same day)
+                        if exclusion_end is None or exclusion_end >= day_date:
+                            continue
+
                     curr_availability = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
 
                     if not curr_availability:
@@ -97,7 +141,7 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
 
                 scheduled_idx.loc[least_available] = True
 
-                day_schedule[slot] = allowed_activities.loc[least_available, "ActivityTitle"]
+                day_schedule[slot] = activities.loc[least_available, "ActivityTitle"]
 
 
 class PreferredActivityScheduler(IndividualActivityScheduler):
