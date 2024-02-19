@@ -259,6 +259,7 @@ class RecommendedActivitiesView(BaseView):
         ).where(
             recommendations.c["IsDeleted"] == False,
             recommendations.c["DoctorRecommendation"] > 0,
+            centre_activity.c["IsGroup"] == False,
         )
 
         return query

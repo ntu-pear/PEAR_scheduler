@@ -48,7 +48,8 @@ class GroupActivityScheduler(BaseScheduler):
             excludedDF = groupExcludedDF.query(f"CentreActivityID == {activityID}")
             for id in excludedDF["PatientID"]:
                 activityExclusionMap[activityTitle].add(id)
-                patients.remove(id)
+                if id in patients:
+                    patients.remove(id)
 
             # Find not recommended patients
             notRecommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID} and DoctorRecommendation == False")
