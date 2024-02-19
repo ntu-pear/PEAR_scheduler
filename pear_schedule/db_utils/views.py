@@ -209,10 +209,9 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
         ).join(
             activity_exclusion, centre_activity.c["ActivityID"] == activity_exclusion.c["ActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(activity_exclusion.c["IsDeleted"] == False, activity_exclusion.c["IsDeleted"] == None
+        ).where(activity_exclusion.c["IsDeleted"] == False
         ).where(activity_exclusion.c["StartDateTime"] <= curDateTime
-        ).where(activity_exclusion.c["EndDateTime"] >= curDateTime,
-                or_(activity_exclusion.c["EndDateTime"].is_(None)))
+        ).where(or_(activity_exclusion.c["EndDateTime"] >= curDateTime , activity_exclusion.c["EndDateTime"] == None))
 
 
         return query
