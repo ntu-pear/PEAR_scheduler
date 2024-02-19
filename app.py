@@ -30,7 +30,7 @@ def init_app(config: Mapping[str, Any], args):
 
     app.register_blueprint(sched_bp, url_prefix="/schedule")
 
-    DB.init_app(app.config["DB_CONN_STR"])
+    DB.init_app(app.config["DB_CONN_STR"], app.config)
     loadConfigs(app.config)
 
     app.run(host="0.0.0.0", debug=True, port=args.port)
@@ -39,7 +39,7 @@ def init_app(config: Mapping[str, Any], args):
 def refresh_schedules(config: Mapping[str, Any], args):
     config = {item: getattr(config, item) for item in dir(config)}
 
-    DB.init_app(config["DB_CONN_STR"])
+    DB.init_app(config["DB_CONN_STR"], config)
     loadConfigs(config)
 
     ScheduleRefresher.refresh_schedules()
