@@ -159,6 +159,7 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
         ).join(
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
+        ).where(centre_activity_preference.c["IsDeleted"] == False
         )
 
 
@@ -183,6 +184,7 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
         ).join(
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
+        ).where(centre_activity_recommendation.c["IsDeleted"] == False
         )
 
 
@@ -207,8 +209,10 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
         ).join(
             activity_exclusion, centre_activity.c["ActivityID"] == activity_exclusion.c["ActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
+        ).where(activity_exclusion.c["IsDeleted"] == False, activity_exclusion.c["IsDeleted"] == None
         ).where(activity_exclusion.c["StartDateTime"] <= curDateTime
-        ).where(activity_exclusion.c["EndDateTime"] >= curDateTime)
+        ).where(activity_exclusion.c["EndDateTime"] >= curDateTime,
+                or_(activity_exclusion.c["EndDateTime"].is_(None)))
 
 
         return query
