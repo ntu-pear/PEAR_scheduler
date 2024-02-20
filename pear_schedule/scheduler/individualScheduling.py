@@ -43,6 +43,10 @@ class IndividualActivityScheduler(BaseScheduler):
         # add activity exclusions to patient data
         for _ , e in ActivitiesExcludedView.get_data().iterrows():
             pid = e["PatientID"]
+            if pid not in patients:
+                patients[pid] = {
+                    "preferences":dict(), "exclusions": dict()  # recommendations handled in compulsory scheduling
+                }
             activity_id = e["ActivityID"]
             if e["ActivityID"] not in patients[pid]["exclusions"]:
                 patients[pid]["exclusions"][activity_id] = e["EndDateTime"]
