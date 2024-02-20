@@ -201,7 +201,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
     def __findActivityBySlot(
         cls, 
         activities: pd.DataFrame, 
-        used_activities: set[str], 
+        used_activities: Set[str], 
         day: int, 
         slot: int,
         slot_size: int,
@@ -222,7 +222,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             if a["FixedTimeSlots"]:
                 timeSlots = map(lambda x: x.split("-"), a["FixedTimeSlots"].split(","))
-                timeSlots = [t for t in timeSlots if t[0] == day and t[1] >= slot and t[1] + minDuration < slot + slot_size]
+                timeSlots = [t for t in timeSlots if t[0] == day and t[1] == slot and t[1] + minDuration < slot + slot_size]
 
                 if not timeSlots:
                     continue

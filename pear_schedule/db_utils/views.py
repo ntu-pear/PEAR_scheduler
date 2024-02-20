@@ -59,10 +59,9 @@ class ActivitiesView(BaseView):
             centre_activity.c["MaxDuration"].label("MaxDuration")
         ).join(
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
-        )\
-        # .join(
-        #     routine, activity.c["ActivityID"] == routine.c["ActivityID"]
-        # )
+        ).where(
+            centre_activity.c["IsGroup"] == False,
+        )
 
         return query
 
