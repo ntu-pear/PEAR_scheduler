@@ -59,11 +59,11 @@ class GroupActivityScheduler(BaseScheduler):
                     patients.remove(id)
 
             # Find not preferred patients
-            notPreferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == -1")
-            for id in notPreferredDF["PatientID"]:
-                activityExclusionMap[activityTitle].add(id)
-                if id in patients:
-                    patients.remove(id)
+            # notPreferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == -1")
+            # for id in notPreferredDF["PatientID"]:
+            #     activityExclusionMap[activityTitle].add(id)
+            #     if id in patients:
+            #         patients.remove(id)
 
 
             # Find recommended patients of activity
@@ -89,13 +89,13 @@ class GroupActivityScheduler(BaseScheduler):
         
         toRemoveList = []
         secondRoundList = []
-
+        # Trying to get activities to hit min size requirement for first round scheduling
         for activityTitle, patientList in activityMap.items():
             activityCount = len(patientList)
             patients = totalPatientSet.copy()
-            leftOverPatients = patients.difference(patientList).difference(activityExclusionMap[activityTitle])
+            leftOverPatients = patients.difference(patientList).difference(activityExclusionMap[activityTitle]) # patients that have no preference or recommendation and can be scheduled randomly
 
-            if activityCount == 0: # schedule in second round instead
+            if activityCount == 0: # no preferred or recommended patients, schedule in second round instead
                 toRemoveList.append(activityTitle)
                 secondRoundList.append(activityTitle)
                 continue
@@ -107,7 +107,7 @@ class GroupActivityScheduler(BaseScheduler):
                     toRemoveList.append(activityTitle)
                     continue
 
-                elif len(leftOverPatients) == shortfall: # just nice enough
+                elif len(leftOverPatients) == shortfall: # just nice enough to hit min requirement
                     for id in leftOverPatients:
                         activityMap[activityTitle].add(id)
                         patientActivityCountMap[id] += 1 
@@ -126,14 +126,14 @@ class GroupActivityScheduler(BaseScheduler):
         for title in toRemoveList:
             activityMap.pop(title)
 
-        # First round scheduling
+       # Initialize timetable
         timetable = {} 
         patientCount = 0
         for id in patientDF["PatientID"]:
             patientCount += 1
             timetable[id] = ["" for _ in range(cls.config["GROUP_TIMESLOTS"])]
 
-        # Check if routine activities are scheduled at group time slot
+        # Check if routine activities are scheduled at group time slot, then indicate so we dont allocate there
         for patientID, scheduleArr in timetable.items():
             for i, activity in enumerate(scheduleArr):
                 day,hour = cls.config["GROUP_TIMESLOT_MAPPING"][i]
@@ -141,7 +141,7 @@ class GroupActivityScheduler(BaseScheduler):
                 if curActivity != "": # there is routine activity
                     timetable[patientID][i] = "-"
 
-        
+        # First round scheduling using brute force
         logger.info("First Round Scheduling")
         firstTimeTable, firstEmptySlots = cls.bruteForceGroupScheduling(
             activityMap, 
@@ -152,15 +152,24 @@ class GroupActivityScheduler(BaseScheduler):
         )
     
 
-        # Allocate for second round using secondRoundList
+        # Allocate activities for second round scheduling. 
+        # Allocate patients with no preference to activities that currently have no participants
         patientActivityCountMap = getpatientActivityCountMap(firstTimeTable)
         secondActivityMap = {}
         for activityTitle in secondRoundList:
+
+            patientSet = totalPatientSet.copy()
+            availablePatients = patientSet.difference(activityExclusionMap[activityTitle])
+            if len(availablePatients) < activityMinSizeMap[activityTitle]: # not enough available patients to hit min size
+                continue
+
+
             secondActivityMap[activityTitle] = set()
 
-            minHeap = [(patientActivityCountMap[id], id) for id in patientDF["PatientID"]]
+            minHeap = [(patientActivityCountMap[id], id) for id in availablePatients]
             minHeap.sort()
 
+            # Allocate patients with least number of group activities first
             for i in range(activityMinSizeMap[activityTitle]):
                 _, pid = minHeap[i]
                 if pid not in activityExclusionMap[activityTitle]: # not being excluded 
@@ -174,23 +183,27 @@ class GroupActivityScheduler(BaseScheduler):
             secondActivityMap, firstTimeTable, cls.config["GROUP_TIMESLOTS"], firstEmptySlots, groupActivityDF
         )
 
-        # allocate more patients to activities
+        # all activities currently scheduled have hit min size, can continue to add patients to these activities
         allScheduledActivitiesSet = getAllScheduledActivities(secondTimeTable)
         activityToTimeSlotMap = getActivityToTimeSlotMap(secondTimeTable)
         patientActivityCountMap = getpatientActivityCountMap(secondTimeTable)
         
         for pid in patientDF["PatientID"]:
-            if patientActivityCountMap[pid] >= cls.config["MINWEEKLYACTIVITIES"]:
+
+            # if hit target number of group activities, do not need to schedule already
+            if patientActivityCountMap[pid] >= cls.config["TARGET_WEEKLY_GROUP_ACTIVITIES"]:
                 continue
             
             curPatientActivitiesSet = set()
             for activity in secondTimeTable[pid]:
                 curPatientActivitiesSet.add(activity)
 
+            # find activities that can be scheduled for patient
             canBeScheduledSet = allScheduledActivitiesSet.difference(curPatientActivitiesSet)
             
-            toAdd = min(len(canBeScheduledSet), cls.config["MINWEEKLYACTIVITIES"] - patientActivityCountMap[pid])
+            toAdd = min(len(canBeScheduledSet), cls.config["TARGET_WEEKLY_GROUP_ACTIVITIES"] - patientActivityCountMap[pid])
 
+            # Add patients to activities
             while toAdd != 0 and canBeScheduledSet:
                 activity = canBeScheduledSet.pop()
                 activitySlot = activityToTimeSlotMap[activity]
@@ -212,7 +225,6 @@ class GroupActivityScheduler(BaseScheduler):
         
 
         def can_schedule(activity, time_slot, timeTable, activityMap):
-            
             for person in activityMap[activity]:
                 if timeTable[person][time_slot] != "":
                     return False
@@ -223,12 +235,12 @@ class GroupActivityScheduler(BaseScheduler):
             nonlocal emptySlots # current number of empty slots
             nonlocal optimalTimeTable #final result
 
-            # emptySlots = checkEmptySlots(timeTable)
+            # we choose the timetable that has the min empty slots in total
             if emptySlots < minEmptySlots:
-                # logger.info(numEmpty, minEmpty)
                 minEmptySlots = emptySlots
                 optimalTimeTable = deepcopy(timeTable)
 
+            # base case we finish all the activities
             if activity_index >= len(activityList):
                 return
             
@@ -238,12 +250,13 @@ class GroupActivityScheduler(BaseScheduler):
 
 
             isFixed = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['IsFixed']
-            # for flexible time activity, try all possible timeslots
+            
+            # for fixed time activity, try all given fixed timeslots
             if isFixed:
                 fixedTimeSlots = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['FixedTimeSlots']
                 possibleTimeSlots = cls.getFixedTimeArr(fixedTimeSlots)
 
-            # for fixed time activity, try all given fixed timeslots
+            # for flexible time activity, try all possible timeslots
             else:
                 possibleTimeSlots = timeSlots.copy()
 
@@ -256,17 +269,17 @@ class GroupActivityScheduler(BaseScheduler):
                         timeTable[person][ts] = activity
                         emptySlots -= 1
                     
-
+                    # schedule next activity
                     schedule_activities(activity_index + 1, activityList ,timeTable, timeSlots, activityMap,groupActivityDF)
                         
-                    # Backtrack and reset the scheduling
+                    # Backtrack and remove scheduled activity
                     for person in activityMap[activity]:
                         timeTable[person][ts] = ""  
                         emptySlots += 1
 
             
 
-            if not isScheduled: #means this activity cannot be scheduled already, go to next activity
+            if not isScheduled: # means this activity cannot be scheduled already, skip and go to next activity
                 schedule_activities(activity_index + 1, activityList ,timeTable, timeSlots, activityMap,groupActivityDF)
 
 

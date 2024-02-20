@@ -551,33 +551,33 @@ def adhoc_change_schedule():
                 newSchedule = originalSchedule.replace(oldActivityName, newActivityName)
                 filteredAdHocDF.at[i,col] = newSchedule
 
-    # Start transaction
-    session = Session(bind=DB.engine)
+    # # Start transaction
+    # session = Session(bind=DB.engine)
     # Reflect the database tables
     schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
     today = datetime.datetime.now()
 
-    try:
+    with Session(bind=DB.engine) as session:
+        try:
 
-        for i, record in filteredAdHocDF.iterrows():
-            schedule_data = {
-                "UpdatedDateTime": today
-            }
-            for col in chosenDays:
-                schedule_data[col] = record[col]
+            for i, record in filteredAdHocDF.iterrows():
+                schedule_data = {
+                    "UpdatedDateTime": today
+                }
+                for col in chosenDays:
+                    schedule_data[col] = record[col]
 
-            schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
-            session.execute(schedule_instance)
+                schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
+                session.execute(schedule_instance)
 
-        # Commit the changes to the database
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
-        responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""} 
-        return jsonify(responseData)
-            
-    responseData = {"Status": "200", "Message": "Schedule Updated Successfully", "Data": ""} 
+            # Commit the changes to the database
+            session.commit()
+            responseData = {"Status": "200", "Message": "Schedule Updated Successfully", "Data": ""} 
+        except Exception as e:
+            session.rollback()
+            logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+            responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""}       
+    
     return jsonify(responseData)
 
 
