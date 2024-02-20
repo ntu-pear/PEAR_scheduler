@@ -14,16 +14,16 @@ class DB:
     @classmethod
     def init_app(cls, conn_str: str, config: Dict):
         logger.info("Connecting to DB")
-        cls.engine = create_engine(conn_str)
+        cls.engine = create_engine(conn_str, echo=True)
         logger.info("Connected to DB")
         cls.schema = MetaData()
 
         logger.info("Downloading DB schema")
-        cls.schema.reflect(bind=cls.engine)
-        # dbTables: DBTABLES = config["DB_TABLES"]
-        # for field in fields(dbTables):
-        #     if (field.name[-5:] != "TABLE"): continue
-        #     Table(getattr(dbTables, field.name), cls.schema, autoload_with=cls.engine)
+        # cls.schema.reflect(bind=cls.engine)
+        dbTables: DBTABLES = config["DB_TABLES"]
+        for field in fields(dbTables):
+            if (field.name[-5:] != "TABLE"): continue
+            Table(getattr(dbTables, field.name), cls.schema, autoload_with=cls.engine)
 
 
         logger.info("DB schema loaded")
