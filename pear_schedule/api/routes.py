@@ -13,6 +13,8 @@ from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates, date_range
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
+from pear_schedule.utils import DBTABLES
+
 
 logger = logging.getLogger(__name__)
 
@@ -554,7 +556,9 @@ def adhoc_change_schedule():
     # # Start transaction
     # session = Session(bind=DB.engine)
     # Reflect the database tables
-    schedule_table = Table('Schedule', DB.schema, autoload=True, autoload_with= DB.engine)
+                
+    db_tables: DBTABLES = current_app.config["DB_TABLES"]
+    schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
     today = datetime.datetime.now()
 
     with Session(bind=DB.engine) as session:
