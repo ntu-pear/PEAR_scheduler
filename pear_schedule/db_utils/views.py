@@ -40,6 +40,27 @@ class BaseView(ConfigDependant):
     def build_query(cls, **query_kwargs) -> Select:
         raise NotImplementedError(f"build_query() not implemented for {cls.__name__}")
 
+class AllActivitiesView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building all activities query")
+        schema = DB.schema
+
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+       
+
+        query: Select = select(
+            activity,
+            centre_activity.c["IsFixed"].label("IsFixed"),
+            centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
+            centre_activity.c["MinDuration"].label("MinDuration"),
+            centre_activity.c["MaxDuration"].label("MaxDuration")
+        ).join(
+            centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        )
+
+        return query
 
 class ActivitiesView(BaseView):
     @classmethod
@@ -54,6 +75,7 @@ class ActivitiesView(BaseView):
 
         query: Select = select(
             activity,
+            centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
             centre_activity.c["MaxDuration"].label("MaxDuration")
