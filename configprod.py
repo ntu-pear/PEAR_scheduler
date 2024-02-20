@@ -9,7 +9,7 @@ from pear_schedule.utils import DBTABLES
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE CONFIGS ~~~~~~~~~~~~~~~~~~~~~~~
 # DB_CONN_STR = "mssql+pyodbc://(LocalDb)\\MSSQLLocalDB/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
 # DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
-DB_CONN_STR = "mssql+pyodbc://fypcom_fypcom:Fyppear%401@host.minikube.internal:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
+DB_CONN_STR = "mssql+pyodbc://fypcom_fypcom:Fyppear%401@host.minikube.internal:1433/fypcom_dev?driver=ODBC+Driver+17+for+SQL+Server"
 # DB_CONN_STR = "mssql+pyodbc://fypcom_fypcom:6Tnl78v^@124.6.61.66:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
 
 # connection_string = (

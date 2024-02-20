@@ -18,4 +18,4 @@ RUN pip install -r requirements.txt
 
 EXPOSE 8080
 
-CMD python app.py start_server -c config.py -p 8080
+CMD python app.py start_server -c configprod.py -p 8080
