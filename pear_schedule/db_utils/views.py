@@ -321,6 +321,7 @@ class ValidRoutineActivitiesView(BaseView): #
 
         query: Select = select(
             activity.c["ActivityTitle"],
+            activity.c["ActivityID"],
             routine_activity.c["FixedTimeSlots"],
             routine.c["PatientID"]
         ).join(

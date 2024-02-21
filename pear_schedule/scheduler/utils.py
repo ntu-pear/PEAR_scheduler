@@ -1,16 +1,17 @@
+import datetime
 import logging
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 from pear_schedule.db_utils.views import PatientsOnlyView
-from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
-from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
-from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler, PreferredActivityScheduler, RecommendedActivityScheduler
-from pear_schedule.scheduler.medicationScheduling import medicationScheduler
-from pear_schedule.scheduler.routineScheduling import RoutineActivityScheduler
 
 logger = logging.getLogger(__name__)
 
 
 def build_schedules(config, patientSchedules: Dict) -> Dict:
+    # local imports since the schedulers each likely import this file
+    from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
+    from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
+    from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler, RecommendedRoutineActivityScheduler
+    from pear_schedule.scheduler.medicationScheduling import medicationScheduler
     patientDF = PatientsOnlyView.get_data()
 
     for id in patientDF["PatientID"]:
@@ -20,11 +21,8 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     # Schedule compulsory activities
     CompulsoryActivityScheduler.fillSchedule(patientSchedules)
 
-    # Schedule individual recommended activities
-    RecommendedActivityScheduler.fillSchedule(patientSchedules)
-
-    # Schedule routine activities
-    RoutineActivityScheduler.fillSchedule(patientSchedules)
+    # Schedule individual recommended and routine activities
+    RecommendedRoutineActivityScheduler.fillSchedule(patientSchedules)
 
     # Schedule group activities
     groupSchedule = GroupActivityScheduler.fillSchedule(patientSchedules)
@@ -63,3 +61,41 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
             logger.info("==============================================")
 
     return patientSchedules
+
+
+def parseFixedTimeArr(fixedTimeSlots: str) -> List[Tuple[int, int]]:
+    arr = []
+    fixedTimeArr = fixedTimeSlots.split(",")
+    for str in fixedTimeArr:
+        temp = str.split("-")
+        arr.append((int(temp[0]), int(temp[1])))
+
+    return arr
+
+
+def checkActivityExcluded(
+        activityID: int, 
+        patientExclusions: Dict[int, datetime.datetime], 
+        day_slot: int, 
+        week_start: datetime.datetime
+    ) -> bool:
+        if activityID not in patientExclusions:
+            return False
+
+        exclusion_end = patientExclusions[activityID]
+        slot_datetime = week_start + datetime.timedelta(days=day_slot)
+
+        # if activity exclusion has not yet ended then ignore
+        # include current day since it can be unsafe to perform activities on the
+        # day exclusion ends (eg remove leg cast then walk same day)
+        return exclusion_end is None or exclusion_end >= slot_datetime
+
+
+def rescheduleActivity(patient_schedule: List, day: int, time: int, potential_slots: List[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
+    for slot in potential_slots:
+        slot_day, slot_time = slot
+        if patient_schedule[slot_day][slot_time]:
+            continue
+        return slot
+
+    return None

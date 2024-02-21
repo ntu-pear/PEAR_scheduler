@@ -7,9 +7,10 @@ import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
-from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, PatientsView, RecommendedActivitiesView
+from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
 from pear_schedule.utils import DBTABLES
 
 
@@ -59,7 +60,7 @@ class IndividualActivityScheduler(BaseScheduler):
         return patients
 
 
-class RecommendedActivityScheduler(IndividualActivityScheduler):
+class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
         with DB.get_engine().begin() as conn:
@@ -76,6 +77,9 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
             # get patient level data
             patients = cls._get_patient_data(conn=conn)
 
+            # get routine data
+            routines = ValidRoutineActivitiesView.get_data(conn=conn)
+
             start = 0
 
             for curr, (_, row) in enumerate(recommendations.iterrows()):  # not using iterrows directly since need range indexing later
@@ -88,9 +92,14 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
                 curr_df: pd.DataFrame = recommendations.iloc[start: end]
                 patient_schedule = schedules[patient_id]
 
-                cls.__fillByFixedTimeSlots(patient_schedule, curr_df, patients[patient_id], week_start)
+                fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
+                patient_routine = routines[routines["PatientID"] == patient_id]
 
-                start = curr
+                cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
+                cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
+                cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+
+                start = end
     
     @classmethod
     def __fillByFixedTimeSlots(
@@ -110,8 +119,6 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
             if scheduled_idx.all():
                 break
 
-            day_date = week_start + datetime.timedelta(days=day)
-
             for slot, curr_activity in enumerate(day_schedule):
                 if curr_activity:
                     continue
@@ -122,14 +129,10 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
                 lowest_availability = float("inf")
 
                 for row, activity in activities[~scheduled_idx].iterrows():
-                    if (activity["ActivityID"] in patient_info["exclusions"]):
-                        exclusion_end = patient_info["exclusions"][activity["ActivityID"]]
-
-                        # if activity exclusion has not yet ended then ignore
-                        # include current day since it can be unsafe to perform activities on the
-                        # day exclusion ends (eg remove leg cast then walk same day)
-                        if exclusion_end is None or exclusion_end >= day_date:
-                            continue
+                    if checkActivityExcluded(
+                        activity["ActivityID"], patient_info["exclusions"], day, week_start
+                    ):
+                        continue
 
                     curr_availability = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
 
@@ -146,6 +149,84 @@ class RecommendedActivityScheduler(IndividualActivityScheduler):
                 scheduled_idx.loc[least_available] = True
 
                 day_schedule[slot] = activities.loc[least_available, "ActivityTitle"]
+
+    @classmethod
+    def __fillRoutines(
+        cls, 
+        patient_schedule: List[str], 
+        activities: pd.DataFrame, 
+        patient_routine: pd.DataFrame, 
+        patient_info: Mapping[str, Dict[str, str]],
+        week_start: datetime.datetime = None
+    ):
+        # set week_start to current week monday if not given
+        week_start = week_start or \
+            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        
+        # consolidate routines for each time slot (if the routine is not excluded)
+        routine_slots = {}
+        for _, r in patient_routine.iterrows():
+            for (day, time) in parseFixedTimeArr(r["FixedTimeSlots"]):
+                if checkActivityExcluded(
+                    r["ActivityID"], patient_info["exclusions"], day, week_start
+                ):
+                    continue
+
+                # potentially if routines clash then it will be overriden
+                # but routine activities shouldnt clash for the same patient to begin with
+                routine_slots[(day, time)] = r["ActivityTitle"]
+
+        # reformate activities for easier lookup
+        activity_map = {
+            r["ActivityTitle"]: parseFixedTimeArr(r["FixedTimeSlots"]) 
+            for _, r in activities.iterrows()
+        }
+
+        # scan each routine_slot to check if it is occupied by an activity given
+        for (day, time), routine_activity_title in routine_slots.items():
+            current_activity = patient_schedule[day][time]
+
+            if not current_activity:
+                patient_schedule[day][time] = routine_activity_title
+                continue
+            
+            if new_slot := rescheduleActivity(patient_schedule, day, time, activity_map[current_activity]):
+                patient_schedule[new_slot[0]][new_slot[1]] = current_activity
+                patient_schedule[day][time] = routine_activity_title
+                continue
+
+    @classmethod
+    def __fillFlexibleActivities(
+        cls, 
+        patient_schedule: List[str], 
+        activities: pd.DataFrame, 
+        patient_info: Mapping[str, Dict[str, str]],
+        week_start: datetime.datetime = None
+    ):
+        # set week_start to current week monday if not given
+        week_start = week_start or \
+            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+
+        # prevent scheduling more than necessary
+        scheduled_activities = set()
+
+        for day, day_schedule in enumerate(patient_schedule):
+            for time, existing_activity in enumerate(day_schedule):
+                if existing_activity:
+                    continue
+
+                for _, a in activities.iterrows():
+                    if a["ActivityID"] in scheduled_activities or \
+                        checkActivityExcluded(
+                            a["ActivityID"], patient_info["exclusions"], day, week_start
+                    ):
+                        continue
+
+                    patient_schedule[day][time] = a["ActivityTitle"]
+                    scheduled_activities.add(a["ActivityTitle"])
+
+                if len(scheduled_activities) == len(activities):
+                    return
 
 
 class PreferredActivityScheduler(IndividualActivityScheduler):
