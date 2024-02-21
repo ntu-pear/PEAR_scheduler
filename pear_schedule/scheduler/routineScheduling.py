@@ -14,6 +14,8 @@ class RoutineActivityScheduler(BaseScheduler):
             fixedTimeArr = cls.getFixedTimeArr(row["FixedTimeSlots"])
 
             for day, hour in fixedTimeArr:
+                if patientSchedules[patientID][day][hour]:
+                    continue
                 patientSchedules[patientID][day][hour] = activityTitle
 
             

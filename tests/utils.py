@@ -28,3 +28,9 @@ def validateDF(result: pd.DataFrame, expected: pd.DataFrame):
         raise Exception(error_msg)
 
     return True
+
+
+def fake_fn(result):
+    def mock_fn(*args, **kwargs):
+        return result
+    return mock_fn
