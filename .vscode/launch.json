@@ -22,6 +22,16 @@
             "justMyCode": true,
             "args": ["start_server", "-c", "config.py", "-p", "8081"],
             "purpose": ["debug-in-terminal"]
-        }
+        },
+        {
+            "name": "generate debug",
+            "type": "python",
+            "request": "launch",
+            "program": "app.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": ["generate_schedules", "-c", "config.py",],
+            "purpose": ["debug-in-terminal"]
+        },
     ]
 }
