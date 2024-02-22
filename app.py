@@ -1,14 +1,15 @@
 import argparse
 import importlib
 import logging
+import os
 import sys
 from typing import Any, Mapping
 
-from flask import Flask
+import uvicorn
+from fastapi import FastAPI
 
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
-# from pear_schedule.db_views.views import ActivitiesView, PatientsOnlyView, PatientsView, GroupActivitiesOnlyView,GroupActivitiesPreferenceView,GroupActivitiesRecommendationView,GroupActivitiesExclusionView, CompulsoryActivitiesOnlyView
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -21,22 +22,36 @@ logging.basicConfig(format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)
 logger = logging.getLogger(__name__)
 
 
+def create_app():
+    from pear_schedule.api.routes import router as sched_router
+    app = FastAPI()
+    app.include_router(sched_router, prefix="/schedule")
+
+    config = import_config(os.environ["PEAR_SCHEDULER_CONFIG"])
+    app.state.config = {item: getattr(config, item) for item in dir(config)}
+
+    DB.init_app(app.state.config["DB_CONN_STR"], app.state.config)
+    loadConfigs(app.state.config)
+
+    return app
+
 def init_app(config: Mapping[str, Any], args):
-    from pear_schedule.api.routes import blueprint as sched_bp
     logger.info("Initialising app")
+    # from pear_schedule.api.routes import router as sched_router
+    # app = FastAPI()
+    # app.include_router(sched_router, prefix="/schedule")
+    # app.state.config = {item: getattr(config, item) for item in dir(config)}
 
-    app = Flask(__name__)  # TODO: might want to change to FASTAPI/starlette for ASGI and free swagger
-    app.config.from_object(config)
+    # DB.init_app(app.state.config["DB_CONN_STR"], app.state.config)
+    # loadConfigs(app.state.config)
 
-    app.register_blueprint(sched_bp, url_prefix="/schedule")
+    os.environ["PEAR_SCHEDULER_CONFIG"] = args.config
 
-    DB.init_app(app.config["DB_CONN_STR"], app.config)
-    loadConfigs(app.config)
-
-    app.run(host="0.0.0.0", debug=True, port=args.port)
+    uvicorn.run("app:create_app", host="0.0.0.0", port=args.port, workers=args.workers, factory=True)
 
 
 def refresh_schedules(config: Mapping[str, Any], args):
+    del app
     config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(config["DB_CONN_STR"], config)
@@ -46,6 +61,7 @@ def refresh_schedules(config: Mapping[str, Any], args):
 
 
 def generate_schedules(config: Mapping[str, Any], args):
+    del app
     config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(config["DB_CONN_STR"], config)
@@ -70,6 +86,7 @@ def parse_args():
     server_parser = subparsers.add_parser("start_server", help="server start up help")
     server_parser.add_argument("-c", "--config", required=True)
     server_parser.add_argument("-p", "--port", required=True, type=int)
+    server_parser.add_argument("-w", "--workers", required=False, type=int, default=1)
     server_parser.set_defaults(func=init_app)
 
     # add args for running schedule update from cli
@@ -87,16 +104,20 @@ def parse_args():
     return args
 
 
-def main():
-    args = parse_args()
-
+def import_config(filepath: str):
     config_module = "config"
-
-    spec = importlib.util.spec_from_file_location(config_module, args.config)
+    spec = importlib.util.spec_from_file_location(config_module, filepath)
     config = importlib.util.module_from_spec(spec)
 
     sys.modules[config_module] = config
     spec.loader.exec_module(config)
+
+    return config
+
+
+def main():
+    args = parse_args()
+    config = import_config(args.config)
 
     args.func(config, args)
     # init_app(config)
