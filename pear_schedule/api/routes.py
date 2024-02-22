@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
+from typing import Optional
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, GroupActivitiesOnlyView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView, CompulsoryActivitiesOnlyView,PatientsOnlyView,AllActivitiesView
 import pandas as pd
 import re
@@ -52,7 +53,7 @@ def generate_schedule(request: Request):
 
 
 @router.api_route("/patientTest/", methods=["GET"])
-def test_schedule(request: Request, patientID: int): 
+def test_schedule(request: Request, patientID: Optional[int] = None): 
     try:
         json_response = {}
         days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
@@ -590,7 +591,7 @@ def refresh_schedules():
     return PlainTextResponse("Successfully updated schedules", status=200)
 
 
-@router.api_route("/systemReport/", methods=["GET"])
+@router.api_route("/systemTest/", methods=["GET"])
 def system_report(request: Request): 
     # 4. check conflicting fixed time slots
     
@@ -705,7 +706,7 @@ def system_report(request: Request):
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = set([(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots])
         routineActivityMap[routineRecord["ActivityTitle"]] = fixedTimeSlots
-       
+    
 
     result = True
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
