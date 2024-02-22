@@ -7,6 +7,8 @@ from sqlalchemy import Connection
 from pear_schedule.db import DB
 from pear_schedule.db_utils.views import ExistingScheduleView
 from pear_schedule.utils import ConfigDependant, DBTABLES
+from sqlalchemy.orm import Session
+
 
 logger = logging.getLogger(__name__)
 
@@ -103,3 +105,33 @@ class ScheduleWriter(ConfigDependant):
             return False
 
         return True
+
+
+    @classmethod
+    def updateDB(cls, schedule_table,filteredAdHocDF, chosenDays):
+        
+        today = datetime.datetime.now()
+
+        with Session(bind=DB.engine) as session:
+            try:
+
+                for i, record in filteredAdHocDF.iterrows():
+                    schedule_data = {
+                        "UpdatedDateTime": today
+                    }
+                    for col in chosenDays:
+                        schedule_data[col] = record[col]
+
+                    schedule_instance = schedule_table.update().values(schedule_data).where(schedule_table.c["ScheduleID"] == record["ScheduleID"])
+                    session.execute(schedule_instance)
+
+                # Commit the changes to the database
+                session.commit()
+                responseData = {"Status": "200", "Message": "Schedule Updated Successfully", "Data": ""} 
+            except Exception as e:
+                session.rollback()
+                logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
+                responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""}   
+
+        return responseData    
+        

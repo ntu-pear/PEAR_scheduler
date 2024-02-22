@@ -58,13 +58,6 @@ class GroupActivityScheduler(BaseScheduler):
                 if id in patients:
                     patients.remove(id)
 
-            # Find not preferred patients
-            # notPreferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == -1")
-            # for id in notPreferredDF["PatientID"]:
-            #     activityExclusionMap[activityTitle].add(id)
-            #     if id in patients:
-            #         patients.remove(id)
-
 
             # Find recommended patients of activity
             recommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID} and DoctorRecommendation == True")
@@ -83,9 +76,6 @@ class GroupActivityScheduler(BaseScheduler):
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
 
-            
-
-            
         
         toRemoveList = []
         secondRoundList = []
