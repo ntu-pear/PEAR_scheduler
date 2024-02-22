@@ -1,16 +1,18 @@
 import logging
-from flask import Blueprint, jsonify, current_app, request, Response
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.encoders import jsonable_encoder
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, GroupActivitiesOnlyView, WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView, CompulsoryActivitiesOnlyView,PatientsOnlyView,AllActivitiesView
 import pandas as pd
 import re
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
-from sqlalchemy import Table
 import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter
 
-from pear_schedule.api.utils import checkAdhocRequestBody, isWithinDateRange, getDaysFromDates, date_range
+from pear_schedule.api.utils import AdHocRequest, isWithinDateRange, getDaysFromDates, date_range
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
@@ -23,12 +25,12 @@ from colorama import init, Fore
 init(autoreset=True)
 
 
-blueprint = Blueprint("scheduling", __name__)
+router = APIRouter()
 
 
-@blueprint.route("/generate", methods=["GET"])
-def generate_schedule():
-    config = current_app.config
+@router.api_route("/generate/", methods=["GET"])
+def generate_schedule(request: Request):
+    config = request.app.state.config
     
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
@@ -38,24 +40,20 @@ def generate_schedule():
 
         if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
-            return jsonify(responseData)
+            return JSONResponse(jsonable_encoder(responseData))
         else:
             responseData = {"Status": "500", "Message": "Error in writing schedule to DB. Check scheduler logs", "Data": ""} 
-            return jsonify(responseData)
+            return JSONResponse(jsonable_encoder(responseData))
             
     except Exception as e:
         logger.exception(e)
         responseData = {"Status": "400", "Message": str(e), "Data": ""}
-        return jsonify(responseData)
-    
-    
+        return JSONResponse(jsonable_encoder(responseData))
 
 
-@blueprint.route("/patientTest", methods=["GET"])
-def test_schedule(): 
+@router.api_route("/patientTest/", methods=["GET"])
+def test_schedule(request: Request, patientID: int): 
     try:
-        patientID = request.args.get('patientID')
-        
         json_response = {}
         days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
         weeklyScheduleViewDF = WeeklyScheduleView.get_data()
@@ -74,7 +72,7 @@ def test_schedule():
                 weeklyScheduleViewDF = weeklyScheduleViewDF.loc[weeklyScheduleViewDF['PatientID'] == int(patientID)]
             else:
                 responseData = {"Status": "400", "Message": f"Patient {patientID} does not exist in the schedule", "Data": ""} 
-                return jsonify(responseData)
+                return JSONResponse(jsonable_encoder(responseData))
             
         
         for index, row, in weeklyScheduleViewDF.iterrows():
@@ -153,7 +151,7 @@ def test_schedule():
             
             print(f"Medication Schedule:")
             json_response[patientID]["Medication Schedule"] = {}
-            for date in date_range(week_start_datetime, week_end_datetime, current_app.config["DAYS"]):
+            for date in date_range(week_start_datetime, week_end_datetime, request.app.state.config["DAYS"]):
                 medication_schedule[date.weekday()] = []
                 medication_incorrect_schedule[date.weekday()] = []
                 json_response[patientID]["Medication Schedule"][days_of_week[date.weekday()]] = []
@@ -182,7 +180,7 @@ def test_schedule():
             print()
             
             
-            for day in range(2, current_app.config["DAYS"]+2):
+            for day in range(2, request.app.state.config["DAYS"]+2):
                 print(f"{days_of_week[day-2]}: {row.iloc[day]}")
                 json_response[patientID][f"{days_of_week[day-2]} Activities"] = row.iloc[day]
                 
@@ -479,65 +477,49 @@ def test_schedule():
         # json_response = json.dumps(json_response, sort_keys=False, indent=2)   
         # return Response(json_response, mimetype='application/json', status=200)
         responseData = {"Status": "200", "Message": "Tester Ran Successfully", "Data": json_response} 
-        return jsonify(responseData)
+        return JSONResponse(jsonable_encoder(responseData))
     
     except Exception as e:
         logger.exception(f"Error occurred when conducting patientTest: {e}")
         responseData = {"Status": "400", "Message": "Patient Test Error", "Data": ""} 
-        return jsonify(responseData)
-        
+        return JSONResponse(jsonable_encoder(responseData))
 
 
-@blueprint.route("/adhoc", methods=["PUT"])
-def adhoc_change_schedule():
-    # example request body = {
-    #     "PatientID": 1,
-    #     "OldActivityID": 0,
-    #     "NewActivityID": 1,
-    #     "StartDate": "2021-05-26", (if empty means replace for all patients)
-    #     "EndDate": "2021-05-26",
-    #     
-    # }
-
-    data = request.get_json()
-    print(data)
-
-    # check request body
-    errorRes = checkAdhocRequestBody(data)
-    if errorRes != None:
-        return errorRes
+@router.api_route("/adhoc/", methods=["PUT"])
+def adhoc_change_schedule(request: Request, data: AdHocRequest):
+    print(request.json())
     
     # find original activity name
-    originalDF = ActivityNameView.get_data(arg1=data["OldActivityID"])
+    originalDF = ActivityNameView.get_data(arg1=data.OldActivityID)
     if len(originalDF) == 0: # invalid activity
         responseData = {"Status": "400", "Message": "Invalid old activity ID", "Data": ""} 
-        return jsonify(responseData)
+        return JSONResponse(jsonable_encoder(responseData))
         
 
     oldActivityName = originalDF["ActivityTitle"].iloc[0]
 
     # find new activity name
-    newDF = ActivityNameView.get_data(arg1=data["NewActivityID"])
+    newDF = ActivityNameView.get_data(arg1=data.NewActivityID)
     if len(newDF) == 0: # invalid activity
         responseData = {"Status": "400", "Message": "Invalid new activity ID", "Data": ""} 
-        return jsonify(responseData)
+        return JSONResponse(jsonable_encoder(responseData))
 
     newActivityName = newDF["ActivityTitle"].iloc[0]
 
-    adHocDF = AdHocScheduleView.get_data(arg1=data["PatientID"])
+    adHocDF = AdHocScheduleView.get_data(arg1=data.PatientID)
     if len(adHocDF.index) == 0:
         responseData = {"Status": "404", "Message": "Patient Schedule not found/generated", "Data": ""} 
-        return jsonify(responseData)
+        return JSONResponse(jsonable_encoder(responseData))
     
     scheduleStartDate = adHocDF["StartDate"].iloc[0]
     scheduleEndDate = adHocDF["EndDate"].iloc[0]
 
-    if not isWithinDateRange(data["StartDate"], scheduleStartDate, scheduleEndDate) or not isWithinDateRange(data["EndDate"], scheduleStartDate, scheduleEndDate):
+    if not isWithinDateRange(data.StartDate, scheduleStartDate, scheduleEndDate) or not isWithinDateRange(data.EndDate, scheduleStartDate, scheduleEndDate):
         responseData = {"Status": "400", "Message": "Invalid start date or end date", "Data": ""} 
-        return jsonify(responseData)
+        return JSONResponse(jsonable_encoder(responseData))
 
 
-    chosenDays = getDaysFromDates(data["StartDate"], data["EndDate"])
+    chosenDays = getDaysFromDates(data.StartDate, data.EndDate)
 
     filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
     
@@ -549,7 +531,7 @@ def adhoc_change_schedule():
             if originalSchedule != "":
                 if oldActivityName not in originalSchedule:
                     responseData = {"Status": "400", "Message": f"{oldActivityName} (old activity) cannnot be found in some/all days of patient schedule for {data['StartDate'].split('T')[0]} to {data['EndDate'].split('T')[0]}", "Data": ""} 
-                    return jsonify(responseData)
+                    return JSONResponse(jsonable_encoder(responseData))
                 newSchedule = originalSchedule.replace(oldActivityName, newActivityName)
                 filteredAdHocDF.at[i,col] = newSchedule
 
@@ -557,7 +539,7 @@ def adhoc_change_schedule():
     # session = Session(bind=DB.engine)
     # Reflect the database tables
                 
-    db_tables: DBTABLES = current_app.config["DB_TABLES"]
+    db_tables: DBTABLES = request.app.state.config["DB_TABLES"]
     schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
     today = datetime.datetime.now()
 
@@ -582,12 +564,11 @@ def adhoc_change_schedule():
             logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
             responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""}       
     
-    return jsonify(responseData)
+    return JSONResponse(jsonable_encoder(responseData))
 
 
 
-
-@blueprint.route("/test2", methods=["GET"])
+@router.api_route("/test2/", methods=["GET"])
 def test2():
     routineActivitiesDF = ValidRoutineActivitiesView.get_data()
     # x = GroupActivitiesRecommendationView.get_data()
@@ -599,64 +580,19 @@ def test2():
     print(routineActivitiesDF)
 
     data = {"data": "Hello test2"} 
-    return jsonify(data)
+    return JSONResponse(jsonable_encoder(data))
 
 
-@blueprint.route("/refresh", methods=["GET"])
+@router.api_route("/refresh/", methods=["GET"])
 def refresh_schedules():
-    # db_tables: DBTABLES = current_app.config["DB_TABLES"]
-    # patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
-
-    # stmt: Select = select(patient_table).where(
-    #     patient_table.c["UpdateBit"] == 1,
-    #     patient_table.c["IsDeleted"] == False,
-    # )
-
-    # with DB.get_engine().begin() as conn:
-    #     updated_patients: pd.DataFrame = pd.read_sql(stmt, conn)
-
-    # IndividualActivityScheduler.update_schedules(updated_patients["PatientID"])
     ScheduleRefresher.refresh_schedules()
 
-    return Response("Successfully updated schedules", status=200)
+    return PlainTextResponse("Successfully updated schedules", status=200)
 
 
-# @blueprint.route('/download_csv', methods=['GET'])
-# def download_csv():
-#     # Dummy data for the CSV file
-#     data = [
-#         {'Name': 'John Doe', 'Age': 30, 'City': 'New York'},
-#         {'Name': 'Jane Doe', 'Age': 25, 'City': 'San Francisco'},
-#         {'Name': 'Bob Smith', 'Age': 35, 'City': 'Chicago'}
-#     ]
-
-#     # Create a CSV file in-memory
-#     csv_output = generate_csv(data)
-
-#     # Set up response headers for CSV download
-#     response = make_response(csv_output)
-#     response.headers["Content-Disposition"] = "attachment; filename=example.csv"
-#     response.headers["Content-type"] = "text/csv"
-
-#     return response
-
-
-# def generate_csv(data):
-#     # Create a CSV string using the csv module
-#     csv_output = io.StringIO()
-#     csv_writer = csv.DictWriter(csv_output, fieldnames=data[0].keys())
-
-#     # Write the header and data to the CSV
-#     csv_writer.writeheader()
-#     csv_writer.writerows(data)
-
-#     return csv_output.getvalue()
-
-
-@blueprint.route("/systemReport", methods=["GET"])
-def system_report(): 
-
-# 4. check conflicting fixed time slots
+@router.api_route("/systemReport/", methods=["GET"])
+def system_report(request: Request): 
+    # 4. check conflicting fixed time slots
     
     systemTestArray = []
     statisticsArray = []
@@ -671,7 +607,7 @@ def system_report():
 
     if len(weeklyScheduleViewDF) == 0:
         responseData = {"Status": "404", "Message": "No schedule for the week found", "Data": ""} 
-        return jsonify(responseData)
+        return JSONResponse(jsonable_encoder(responseData))
     
 
     # 1. All patient weekly schedule is generated"
@@ -712,7 +648,7 @@ def system_report():
             for day, timeslot in fixedTimeSlots:
                 if compActivityName not in patientSchedule[day][timeslot]:
                     allCompulsoryScheduled = False
-                    testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {current_app.config['DAY_OF_WEEK_ORDER'][day]} {current_app.config['DAY_TIMESLOTS'][timeslot]}")
+                    testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
 
     if not allCompulsoryScheduled:
         testResult = "Fail"
@@ -781,7 +717,7 @@ def system_report():
                 activityTitle = activity.split(" |")[0]
                 if activityTitle in fixedActivityMap and (day, timeslot) not in fixedActivityMap[activityTitle] and activityTitle in routineActivityMap and (day, timeslot) not in routineActivityMap[activityTitle]:
                     result = False
-                    testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of its fixed time slots. Scheduled Time Slot is {current_app.config['DAY_OF_WEEK_ORDER'][day]} {current_app.config['DAY_TIMESLOTS'][timeslot]}")
+                    testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of its fixed time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
 
     if not result:
         testResult = "Fail"
@@ -831,7 +767,7 @@ def system_report():
     for _, grpActivityRecord in groupActivitiesDF.iterrows():
         groupActivitySet.add(grpActivityRecord["ActivityTitle"])
 
-    timeSlotSet = set(current_app.config["GROUP_TIMESLOT_MAPPING"])
+    timeSlotSet = set(request.app.state.config["GROUP_TIMESLOT_MAPPING"])
 
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
         patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
@@ -843,7 +779,7 @@ def system_report():
                 if activityTitle in groupActivitySet:
                     if (day, timeslot) not in timeSlotSet:
                         result = False
-                        testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of the fixed group time slots. Scheduled Time Slot is {current_app.config['DAY_OF_WEEK_ORDER'][day]} {current_app.config['DAY_TIMESLOTS'][timeslot]}")
+                        testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of the fixed group time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
 
     if not result:
         testResult = "Fail"
@@ -914,7 +850,7 @@ def system_report():
     for timeslot, activityList in timeSlotMap.items():
         warningStatement = ""
         if len(activityList) > 1:
-            warningStatement += f"These activities have clashing fixed timeslots on {current_app.config['DAY_OF_WEEK_ORDER'][timeslot[0]]} {current_app.config['DAY_TIMESLOTS'][timeslot[1]]}: "
+            warningStatement += f"These activities have clashing fixed timeslots on {request.app.state.config['DAY_OF_WEEK_ORDER'][timeslot[0]]} {request.app.state.config['DAY_TIMESLOTS'][timeslot[1]]}: "
             for activity in activityList:
                 warningStatement += f"{activity}, "
 
@@ -924,7 +860,7 @@ def system_report():
     warningArray.append({"warningName": warningName, "warningRemarks": warningRemarks})
 
     responseData = {"Status": "200", "Message": "System Report Generated", "Data": {"SystemTest": systemTestArray, "Statistics": statisticsArray, "Warnings": warningArray}} 
-    return jsonify(responseData)
+    return JSONResponse(jsonable_encoder(responseData))
 
 
             
