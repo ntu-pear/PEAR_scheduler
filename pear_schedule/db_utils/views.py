@@ -113,7 +113,8 @@ class PatientsView(BaseView):
 
         query: Select = select(
             patient.c["PatientID"], 
-            centre_activity_cte.c["PreferredActivityID"]
+            centre_activity_cte.c["PreferredActivityID"],
+            centre_activity_cte.c["ActivityEndDate"]
         ).join(
             centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"], isouter=True
         )\
