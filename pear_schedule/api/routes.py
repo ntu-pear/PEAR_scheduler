@@ -51,8 +51,31 @@ def generate_schedule(request: Request):
         return JSONResponse(jsonable_encoder(responseData))
 
 
+@router.api_route("/regenerate/", methods=["GET"])
+def generate_schedule(request: Request):
+    config = request.app.state.config
+    
+    # Set up patient schedule structure
+    patientSchedules = {} # patient id: [[],[],[],[],[]]
+
+    try:
+        build_schedules(config, patientSchedules)
+
+        if ScheduleWriter.write(patientSchedules, overwriteExisting=True):
+            responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
+            return JSONResponse(jsonable_encoder(responseData))
+        else:
+            responseData = {"Status": "500", "Message": "Error in writing schedule to DB. Check scheduler logs", "Data": ""} 
+            return JSONResponse(jsonable_encoder(responseData))
+            
+    except Exception as e:
+        logger.exception(e)
+        responseData = {"Status": "400", "Message": str(e), "Data": ""}
+        return JSONResponse(jsonable_encoder(responseData))
+
+
 @router.api_route("/patientTest/", methods=["GET"])
-def test_schedule(request: Request, patientID: Optional[int] = None): 
+async def test_schedule(request: Request, patientID: Optional[int] = None): 
     try:
         # 1) Prepare necessary tables and lists 
         tablesDF = getTablesDF() 
@@ -223,7 +246,7 @@ def refresh_schedules():
 
 
 @router.api_route("/systemTest/", methods=["GET"])
-def system_report(request: Request): 
+async def system_report(request: Request): 
     
     systemTestArray = []
     statisticsArray = []

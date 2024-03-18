@@ -28,7 +28,12 @@ def _get_max_enddate(d1, d2):
 
 class IndividualActivityScheduler(BaseScheduler):
     @classmethod
-    def _get_patient_data(cls, conn: Connection = None) -> Mapping[str, Mapping[str, Dict[str, str]]]:
+    def _get_patient_data(cls, conn: Connection = None, week_end: datetime.datetime = None) -> Mapping[str, Mapping[str, Dict[str, str]]]:
+        if not week_end:
+            today = datetime.datetime.now()
+            week_end = today - datetime.timedelta(days=today.weekday()) + datetime.timedelta(days=6)
+            week_end = week_end.replace(hour=23, minute=59, second=59)
+
         patients: Mapping[str, Mapping[str, Dict[str, str]]] = {}
 
         # consolidate patient data
@@ -38,6 +43,9 @@ class IndividualActivityScheduler(BaseScheduler):
                 patients[pid] = {
                     "preferences":dict(), "exclusions": dict()  # recommendations handled in compulsory scheduling
                 }
+
+            if p["ActivityEndDate"] <= week_end:
+                continue
 
             patients[pid]["preferences"][p["PreferredActivityID"]] = True
 
@@ -63,11 +71,19 @@ class IndividualActivityScheduler(BaseScheduler):
 class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
+        week_start = week_start or datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        today = datetime.datetime.now()
+        week_end = today - datetime.timedelta(days=today.weekday()) + datetime.timedelta(days=6)
+        week_end = week_end.replace(hour=23, minute=59, second=59)
+
         with DB.get_engine().begin() as conn:
             # pull recommendations
             recommendations: pd.DataFrame = RecommendedActivitiesView.get_data(conn=conn)
             recommendations.sort_values(by=["PatientID"])
             recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
+
+            # filter out activities that are not available this week
+            recommendations = recommendations[recommendations["ActivityEndDate"] > week_end]
 
             # add an extra row at end for easier handling of final patient
             dummy_row = recommendations.iloc[0:1].copy(deep=True)
@@ -366,6 +382,10 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
     @classmethod
     def update_schedules(cls, patientIDs: List[str] = None, update_date: datetime.date = None):
+        update_date = update_date or datetime.date.today()
+        week_end = update_date - datetime.timedelta(days=update_date.weekday()) + datetime.timedelta(days=6)
+        week_end = datetime.datetime.combine(week_end, datetime.time(23, 59, 59))
+        
         db_tables: DBTABLES = cls.config["DB_TABLES"]
         patient_table = DB.schema.tables[db_tables.PATIENT_TABLE]
 
@@ -386,6 +406,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             # use the original individual scheduler to update activities
             patient_data = cls._get_patient_data(conn)
             activities = ActivitiesView.get_data(conn)
+            activities = activities[activities["EndDate"] > week_end]
             activities_title_lookup = {
                 row["ActivityTitle"]: row["ActivityID"] for _, row in activities.iterrows()
             }
