@@ -104,7 +104,8 @@ class PatientsView(BaseView):
             centre_activity.c["ActivityID"].label("PreferredActivityID"),
             activity.c["EndDate"].label("ActivityEndDate")
         ).join(
-            centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"],
+            centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             centre_activity_preference.c["IsLike"] > 0
