@@ -51,7 +51,6 @@ def init_app(config: Mapping[str, Any], args):
 
 
 def refresh_schedules(config: Mapping[str, Any], args):
-    del app
     config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(config["DB_CONN_STR"], config)
@@ -61,7 +60,6 @@ def refresh_schedules(config: Mapping[str, Any], args):
 
 
 def generate_schedules(config: Mapping[str, Any], args):
-    del app
     config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(config["DB_CONN_STR"], config)

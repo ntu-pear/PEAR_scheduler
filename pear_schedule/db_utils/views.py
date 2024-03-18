@@ -97,13 +97,15 @@ class PatientsView(BaseView):
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         centre_activity_preference = schema.tables[cls.db_tables.CENTRE_ACTIVITY_PREFERENCE_TABLE]
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
-        # centre_activity_recommendation = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
 
         centre_activity_cte = select(
             centre_activity_preference.c["PatientID"],
-            centre_activity.c["ActivityID"].label("PreferredActivityID")
+            centre_activity.c["ActivityID"].label("PreferredActivityID"),
+            activity.c["EndDate"].label("ActivityEndDate")
         ).join(
-            centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+            centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"],
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             centre_activity_preference.c["IsLike"] > 0
         ).cte()
@@ -280,7 +282,8 @@ class RecommendedActivitiesView(BaseView):
             centre_activity.c["IsFixed"],
             activity.c["ActivityTitle"],
             centre_activity.c["FixedTimeSlots"],
-            recommendations.c["PatientID"]
+            recommendations.c["PatientID"],
+            activity.c["EndDate"].label("ActivityEndDate")
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).join(
