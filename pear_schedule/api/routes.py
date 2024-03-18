@@ -229,38 +229,38 @@ def system_report(request: Request):
     statisticsArray = []
     warningArray = []
 
-    tablesDF['weeklyScheduleViewDF'] = WeeklyScheduleView.get_data()
+    weeklyScheduleViewDF = WeeklyScheduleView.get_data()
     compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.get_data()
     patientsDF = PatientsOnlyView.get_data()
     activitiesDF = AllActivitiesView.get_data()
     groupActivitiesDF = GroupActivitiesOnlyView.get_data()
     validRoutinesDF = ValidRoutineActivitiesView.get_data()
 
-    if len(tablesDF['weeklyScheduleViewDF']) == 0:
+    if len(weeklyScheduleViewDF) == 0:
         responseData = {"Status": "404", "Message": "No schedule for the week found", "Data": ""} 
         return JSONResponse(jsonable_encoder(responseData))
     
 
     # 1. All patient weekly schedule is generated"
-    systemTestArray.append(allPatientScheduleGeneratedSystemTest(tablesDF['weeklyScheduleViewDF'], patientsDF))
+    systemTestArray.append(allPatientScheduleGeneratedSystemTest(weeklyScheduleViewDF, patientsDF))
 
     # 2. All compulsory activities are scheduled at correct time slots  
-    systemTestArray.append(allCompulsoryActivitiesAtCorrectSlotSystemTest(tablesDF['weeklyScheduleViewDF'], compulsoryActivitiesDF, request))
+    systemTestArray.append(allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request))
 
     # 3. Only centre activities "not expired" are scheduled
-    systemTestArray.append(nonExpiredCentreActivitiesSystemTest(activitiesDF, tablesDF['weeklyScheduleViewDF']))
+    systemTestArray.append(nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF))
 
     # 4. Fixed time centre activities are scheduled in the correct timeslot (fixed and routine activities)
-    systemTestArray.append(fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, tablesDF['weeklyScheduleViewDF'], request))
+    systemTestArray.append(fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request))
 
     # 5. Group activities meet the minimum number of people   
-    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, tablesDF['weeklyScheduleViewDF']))
+    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF))
 
     # 6. Group activities are scheduled in the correct timeslot
-    systemTestArray.append(groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, tablesDF['weeklyScheduleViewDF'], request))
+    systemTestArray.append(groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))
 
     # statistics
-    statsResult, minActivities, maxActivities = systemLevelStatistics(activitiesDF, tablesDF['weeklyScheduleViewDF'])
+    statsResult, minActivities, maxActivities = systemLevelStatistics(activitiesDF, weeklyScheduleViewDF)
 
     statisticsArray.append({"statsName": "Number of patients scheduled per activity", "statsResult": statsResult})
     statisticsArray.append({"statsName": "Most scheduled activities", "statsResult": [activity for activity in maxActivities]})
@@ -271,9 +271,4 @@ def system_report(request: Request):
 
     responseData = {"Status": "200", "Message": "System Report Generated", "Data": {"SystemTest": systemTestArray, "Statistics": statisticsArray, "Warnings": warningArray}} 
     return JSONResponse(jsonable_encoder(responseData))
-
-
-            
-
-
 
