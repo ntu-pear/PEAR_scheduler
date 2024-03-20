@@ -1,9 +1,9 @@
 import logging
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
-from typing import Optional
+from typing import List, Optional
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, GroupActivitiesOnlyView, WeeklyScheduleView, CompulsoryActivitiesOnlyView,PatientsOnlyView,AllActivitiesView
 import pandas as pd
 
@@ -75,7 +75,7 @@ def generate_schedule(request: Request):
 
 
 @router.api_route("/patientTest/", methods=["GET"])
-async def test_schedule(request: Request, patientID: Optional[int] = None): 
+async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Query(None)): 
     try:
         # 1) Prepare necessary tables and lists 
         tablesDF = getTablesDF() 
@@ -88,12 +88,15 @@ async def test_schedule(request: Request, patientID: Optional[int] = None):
         }
         
         # 2) Checks if 'patientID' provided by the user is valid or not
-        if patientID is not None:
-            if int(patientID) in tablesDF['weeklyScheduleViewDF']['PatientID'].unique().tolist():
-                tablesDF['weeklyScheduleViewDF'] = tablesDF['weeklyScheduleViewDF'].loc[tablesDF['weeklyScheduleViewDF']['PatientID'] == int(patientID)]
-            else:
-                responseData = {"Status": "400", "Message": f"Patient {patientID} does not exist in the schedule", "Data": ""} 
+        if patientIDs is not None:
+            valid_patientIDs = tablesDF['weeklyScheduleViewDF']['PatientID'].unique().tolist()
+            invalid_patientIDs = [patientID for patientID in patientIDs if patientID not in valid_patientIDs]
+            
+            if invalid_patientIDs:
+                responseData = {"Status": "400", "Message": f"Patient IDs {invalid_patientIDs} do not exist in the schedule", "Data": ""}
                 return JSONResponse(jsonable_encoder(responseData))
+            
+            tablesDF['weeklyScheduleViewDF'] = tablesDF['weeklyScheduleViewDF'][tablesDF['weeklyScheduleViewDF']['PatientID'].isin(patientIDs)]
         
         # 3) Iterate over every patient
         for index, patientInfo in tablesDF['weeklyScheduleViewDF'].iterrows():
