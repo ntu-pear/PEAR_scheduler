@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter
 
-from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generatePatientTestReport, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
+from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
@@ -82,6 +82,10 @@ async def test_schedule(request: Request, patientID: Optional[int] = None):
         json_response = {} # json data to be returned to caller
         activity_count_dict = {activity: 0 for activity in tablesDF['activitiesAndCentreActivityViewDF']['ActivityTitle'].unique()} # dictionary to keep track of each activity count
         mondayIndex = tablesDF['weeklyScheduleViewDF'].columns.get_loc("Monday")
+        config = {
+            "DAY_OF_WEEK_ORDER": request.app.state.config['DAY_OF_WEEK_ORDER'],
+            "DAYS": request.app.state.config['DAYS']
+        }
         
         # 2) Checks if 'patientID' provided by the user is valid or not
         if patientID is not None:
@@ -115,7 +119,7 @@ async def test_schedule(request: Request, patientID: Optional[int] = None):
                     'preferred': preferred_activities,
                     'recommended': recommended_activities,
                     'routines': routines,
-                    'duplicates': {  # Duplicate lists for further processing
+                    'error_check': {  # Duplicate lists for further processing
                         'preferred': preferred_activities,
                         'recommended': recommended_activities,
                         'routines': routines,
@@ -125,7 +129,7 @@ async def test_schedule(request: Request, patientID: Optional[int] = None):
                     'non_preferred': non_preferred_activities,
                     'non_recommended': non_recommended_activities,
                     'excluded': activities_excluded,
-                    'duplicates': {  # Initializing empty lists for further processing
+                    'error_check': {  # Initializing empty lists for further processing
                         'non_preferred': [],
                         'non_recommended': [],
                         'excluded': [],
@@ -133,13 +137,13 @@ async def test_schedule(request: Request, patientID: Optional[int] = None):
                 },
                 'medication_info': {
                     'medication_schedule' : medication_schedule,
-                    'duplicates': { # Initializing empty dictionary for further processing
+                    'error_check': { # Initializing empty dictionary for further processing
                         "medication_schedule" : medication_incorrect_schedule
                     }
                 }
             }
             '''
-            patient_wellness_plan = getPatientWellnessPlan(tablesDF, patientID, request)
+            patient_wellness_plan = getPatientWellnessPlan(tablesDF, patientID, config)
             
             # 5) Updates the json_response with patient_wellness_plan
             prepareJsonResponse(json_response, patient_wellness_plan)
@@ -174,7 +178,7 @@ async def test_schedule(request: Request, patientID: Optional[int] = None):
             medicationPatientTest(patient_wellness_plan, json_response)
             
             # 8) Generate Patient Test Report
-            generatePatientTestReport(tablesDF, patient_wellness_plan, json_response, activity_count_dict)
+            generateStatistics(tablesDF, patient_wellness_plan, json_response, activity_count_dict)
             
         responseData = {"Status": "200", "Message": "Tester Ran Successfully", "Data": json_response} 
         return JSONResponse(jsonable_encoder(responseData))
