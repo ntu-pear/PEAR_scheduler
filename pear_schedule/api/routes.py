@@ -13,6 +13,7 @@ import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter
 
 from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generatePatientTestReport, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
+from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
@@ -60,8 +61,16 @@ def generate_schedule(request: Request):
 
     try:
         build_schedules(config, patientSchedules)
+        with DB.get_engine().begin() as conn:
+            latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
+        
+        scheduleMeta = {}
+        for _, row in latestSchedules.iterrows():
+            scheduleMeta[row["PatientID"]] = {
+                "ScheduleID": row["ScheduleID"],
+            }
 
-        if ScheduleWriter.write(patientSchedules, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -242,7 +251,7 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
 def refresh_schedules():
     ScheduleRefresher.refresh_schedules()
 
-    return PlainTextResponse("Successfully updated schedules", status=200)
+    return PlainTextResponse("Successfully updated schedules", status_code=200)
 
 
 @router.api_route("/systemTest/", methods=["GET"])

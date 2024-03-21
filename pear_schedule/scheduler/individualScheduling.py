@@ -345,7 +345,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         return activities.iloc[out[0]]["ActivityTitle"]
 
     @classmethod
-    def _get_most_updated_schedules(
+    def getMostUpdatedSchedules(
         cls, 
         patientIDs: List[str], 
         conn: Connection, 
@@ -401,7 +401,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             logger.info(f"updating schedules for patients {patientIDs}")
 
-            latest_schedules = cls._get_most_updated_schedules(patientIDs, conn, update_date)
+            latest_schedules = cls.getMostUpdatedSchedules(patientIDs, conn, update_date)
 
             # use the original individual scheduler to update activities
             patient_data = cls._get_patient_data(conn)
