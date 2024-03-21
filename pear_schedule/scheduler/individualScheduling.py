@@ -356,15 +356,16 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
         # use datetime to avoid db side issues when comparing date and datetime
         curr_date = curr_date or datetime.date.today()
-        curr_day_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
-        next_day_start = curr_day_start + datetime.timedelta(days=1)
+        curr_week_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
+        curr_week_start = curr_week_start - datetime.timedelta(days = datetime.datetime.now().weekday())
+        next_week_start = curr_week_start + datetime.timedelta(days=7)
 
         latest_sched_cte = select(
             schedule_table.c["PatientID"],
             func.max(schedule_table.c["UpdatedDateTime"]).label("UpdatedDateTime")
         ).where(
-            schedule_table.c["StartDate"] >= curr_day_start,
-            schedule_table.c["StartDate"] < next_day_start,
+            schedule_table.c["StartDate"] >= curr_week_start,
+            schedule_table.c["EndDate"] < next_week_start,
             schedule_table.c["PatientID"].in_(patientIDs),
             schedule_table.c["IsDeleted"] == False,
         ).group_by(schedule_table.c["PatientID"]).cte("latest_schedules")
