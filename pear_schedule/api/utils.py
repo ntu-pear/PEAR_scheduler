@@ -68,7 +68,7 @@ def getTablesDF():
     return tablesDF
     
     
-def getPatientWellnessPlan(tablesDF, patientID, request):
+def getPatientWellnessPlan(tablesDF, patientID, config):
     # Extract information from tables
     weekly_schedule = tablesDF['weeklyScheduleViewDF'].loc[tablesDF['weeklyScheduleViewDF']['PatientID'] == patientID]
     schedule_start_datetime = weekly_schedule['StartDate'].min()
@@ -79,28 +79,28 @@ def getPatientWellnessPlan(tablesDF, patientID, request):
     medications = tablesDF['medicationViewDF'].loc[tablesDF['medicationViewDF']['PatientID'] == patientID]
 
     # TYPE 'SHOULD SCHEDULE'
-    preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == True]
+    preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == 1]
     preferred_activities = preferred_activities['ActivityTitle'].tolist()
-    recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == True]
+    recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == 1]
     recommended_activities = recommended_activities['ActivityTitle'].tolist()
     routines = tablesDF['routineViewDF'].loc[(tablesDF['routineViewDF']['PatientID'] == patientID) & tablesDF['routineViewDF']["IncludeInSchedule"]]
     routines = routines['ActivityTitle'].tolist()
     
     # TYPE 'SHOULD NOT SCHEDULE'
-    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == False]
+    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == 0]
     non_preferred_activities = non_preferred_activities['ActivityTitle'].tolist()
-    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == False]
+    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == 0]
     non_recommended_activities = non_recommended_activities['ActivityTitle'].tolist()
     activities_excluded = tablesDF['activitiesExcludedViewDF'].loc[tablesDF['activitiesExcludedViewDF']['PatientID'] == patientID]
     activities_excluded = activities_excluded['ActivityTitle'].tolist()
     
     # TYPE 'MEDICATION'
-    medication_schedule, medication_incorrect_schedule = prepareMedicationSchedule(medications, schedule_start_datetime, schedule_end_datetime, request.app.state.config['DAYS'])
+    medication_schedule, medication_incorrect_schedule = prepareMedicationSchedule(medications, schedule_start_datetime, schedule_end_datetime, config['DAYS'])
     
     patient_wellness_plan = {
         'patientID' : patientID,
-        'DAYS' : request.app.state.config['DAYS'],
-        'DAY_OF_WEEK_ORDER' : request.app.state.config['DAY_OF_WEEK_ORDER'],
+        'DAYS' : config['DAYS'],
+        'DAY_OF_WEEK_ORDER' : config['DAY_OF_WEEK_ORDER'],
         'weekly_schedule': weekly_schedule,
         'schedule_start_datetime' : schedule_start_datetime,
         'schedule_end_datetime': schedule_end_datetime,
@@ -108,7 +108,7 @@ def getPatientWellnessPlan(tablesDF, patientID, request):
             'preferred': preferred_activities,
             'recommended': recommended_activities,
             'routines': routines,
-            'duplicates': {  # Duplicate lists for further processing
+            'error_check': {  # Duplicate lists for further processing
                 'preferred': preferred_activities,
                 'recommended': recommended_activities,
                 'routines': routines,
@@ -118,7 +118,7 @@ def getPatientWellnessPlan(tablesDF, patientID, request):
             'non_preferred': non_preferred_activities,
             'non_recommended': non_recommended_activities,
             'excluded': activities_excluded,
-            'duplicates': {  # Initializing empty lists for further processing
+            'error_check': {  # Initializing empty lists for further processing
                 'non_preferred': [],
                 'non_recommended': [],
                 'excluded': [],
@@ -126,7 +126,7 @@ def getPatientWellnessPlan(tablesDF, patientID, request):
         },
         'medication_info': {
             'medication_schedule' : medication_schedule,
-            'duplicates': { # Initializing empty dictionary for further processing
+            'error_check': { # Initializing empty dictionary for further processing
                 "medication_schedule" : medication_incorrect_schedule
             }
         }
@@ -235,43 +235,32 @@ def printWellnessPlan(patient_wellness_plan):
     
 def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_plan, json_response, activity_count_dict):
     """
-    Validates the correctness of a patient's weekly schedule based on predefined wellness plans (assumed to be the ground truth).
-    
-    This function iterates over each day in the patient's weekly schedule, starting from the provided mondayIndex, and processes activities and medication schedules. 
-    It checks each activity against the patient's wellness plan to determine whether it should be scheduled (preferred/recommended/routine activities) or should not be scheduled (non-preferred/non-recommended/excluded activities), updating duplicated lists in the wellness plan to reflect activities that are scheduled or need to be scheduled.
-    
-    FOR SHOULD SCHEDULE ACTIVITIES:
-    For activities that are part of the wellness plan, it removes them from the duplicated list if they are found in the day's activities, aiming for an empty list as an indicator that all necessary activities were scheduled. 
-    
-    FOR SHOULD NOT SCHEDULE ACTIVITIES:
-    Conversely, for activities that should not be scheduled according to the wellness plan, it adds them to a duplicated list if they are found, indicating a discrepancy in scheduling.
-    
-    FOR MEDICATION
-    The function also handles medication schedules, validating that medications are given according to the schedule and tracking any discrepancies in medication administration. Activities related to medication administration are checked for their presence in the scheduled medications for the day, and discrepancies are recorded in a separate list for further analysis.
-
-    Operations:
-    1. Iterates over each day in the patient's schedule, starting from the provided mondayIndex.
-    2. Splits daily entries into individual activities and identifies scheduled medications.
-    3. For each activity:
-       a. Checks if it should be scheduled based on the wellness plan and removes it from the corresponding duplicated list if found.
-       b. Checks if it should not be scheduled and adds it to the corresponding duplicated list if found.
-    4. For medication administration activities:
-       a. Validates against the scheduled medications for the day, removing correctly administered medications from the schedule.
-       b. Adds incorrectly administered or unscheduled medications to an incorrect schedule list for further analysis.
-    5. Updates the json_response with daily activities and tracks the occurrence of each activity, including medication administration, in the activity_count_dict.
+    Validates the scheduled daily activities and medication of a patient against the patient's wellness plan.
+    This function iterates through each day of the patient's schedule, comparing scheduled activities and medications
+    against what is recommended or not recommended within the wellness plan. It updates the json_response with the
+    activities scheduled for each day and performs error checking for both activities and medications, identifying
+    discrepancies between the wellness plan and the actual schedule.
 
     Parameters:
-    - mondayIndex: The index or position of Monday within the weekly schedule to align with DAY_OF_WEEK_ORDER.
-    - patientInfo: A Series object containing the patient's weekly schedule activities and medications.
-    - patient_wellness_plan: A dictionary containing the patient's wellness plan, including activities and medication schedules.
-    - json_response: A dictionary to be updated with the patient's weekly schedule details for response purposes.
-    - activity_count_dict: A dictionary to track the count of each activity during the week for validation and analysis.
+    - mondayIndex: The index representing the start of the week within the patient's schedule data.
+    - patientInfo: A series object containing the patient's weekly schedule, where each entry represents a day's activities and possibly medication instructions.
+    - patient_wellness_plan: A structured dictionary detailing the patient's wellness plan, including which activities should or should not be scheduled, and the planned medication schedule.
+    - json_response: A dictionary intended to be populated with the patient's schedule details for external output, structured by day of the week.
+    - activity_count_dict: A dictionary used to count occurrences of each activity and medication administration event, aiding in validation and error reporting.
 
-    Returns:
-    None. The function directly modifies the json_response and activity_count_dict based on the validation of the patient's weekly schedule.
-
-    Note:
-    The function assumes the structure of patient_wellness_plan and relies on specific key names within it. Any changes to this structure may require adjustments to the function's implementation.
+    The function performs the following operations:
+    - Splits daily schedules into individual activities and checks them against the wellness plan's recommendations.
+    - Differentiates between activities that should be scheduled (e.g., preferred, recommended, routines) and those that should not (e.g., non-preferred, non-recommended, excluded).
+    - Tracks medications that are to be administered each day and validates these against the actual activities scheduled for medication administration.
+    - Updates an 'error_check' sub-dictionary within both activity categories in the wellness plan to reflect any discrepancies found during the validation process.
+    - Records any incorrectly scheduled medications in a dedicated error list for further analysis.
+    
+    For activities that are found and correctly scheduled, it removes them from the 'error_check' list of the corresponding category (indicating they were successfully planned). 
+    Conversely, activities found that should not have been scheduled, or medications incorrectly administered, are added to their respective 'error_check' lists, highlighting scheduling errors.
+    
+    This detailed check aims to ensure adherence to the wellness plan, facilitating adjustments to the patient's schedule where necessary and improving the overall management of the patient's health and activities.
+    
+    Note: This function directly modifies the json_response and activity_count_dict parameters to reflect its findings and does not return any value.
     """
     DAYS = patient_wellness_plan['DAYS']
     DAY_OF_WEEK_ORDER = patient_wellness_plan['DAY_OF_WEEK_ORDER']
@@ -280,7 +269,7 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
     should_be_scheduled_activities = patient_wellness_plan['should_be_scheduled_activities']
     should_not_be_scheduled_activities = patient_wellness_plan['should_not_be_scheduled_activities']
     medication_schedule = patient_wellness_plan['medication_info']['medication_schedule']
-    medication_incorrect_schedule = patient_wellness_plan['medication_info']['duplicates']['medication_schedule']
+    medication_incorrect_schedule = patient_wellness_plan['medication_info']['error_check']['medication_schedule']
     
     ## ITERATE OVER EVERYDAY IN THE WEEKLY SCHEDULE 
     for day in range(mondayIndex, DAYS+mondayIndex):
@@ -296,52 +285,56 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
         ## ITERATE OVER EACH ACTIVITY IN THE DAY AND VALIDATE IT AGAINST THE PATIENT WELLNESS PLAN
         for activity in activities_in_a_day:
             '''
-            TYPE 'SHOULD SCHEDULE': If the preferred/ recommended / routine activities are in the activities_in_a_day, we remove the activity from their respective duplicated list. This means that 
-            if all 'should_be_scheduled_activities' are scheduled, the duplicated lists should be empty.
+            FOR SHOULD SCHEDULE ACTIVITIES:
+                The error_check lists (initially a duplicated list of its original) is meant to store only the activities that are meant to be scheduled but are somehow not scheduled.
+                Therefore, when we iterate through each item in the should_be_scheduled_activities, if the item corresponds to the current activity, 
+                it suggests that it has been scheduled and hence we will remove it from the error_check lists. This means that whatever activities that are left in the 
+                error_check lists, there are not scheduled when they should be.
             
             'should_be_scheduled_activities': {
                 'preferred': preferred_activities,
                 'recommended': recommended_activities,
                 'routines': routines,
-                'duplicates': {  # Duplicate lists for further processing
+                'error_check': {  # Duplicate lists for further processing
                     'preferred': preferred_activities,
                     'recommended': recommended_activities,
                     'routines': routines,
                     }
                 }
                 
-            # dup_centre_activity_likes = [item for item in dup_centre_activity_likes if item not in activity] 
-            # dup_centre_activity_recommended = [item for item in dup_centre_activity_recommended if item not in activity] 
-            # dup_routine_for_patient = [item for item in dup_routine_for_patient if item not in activity] 
             '''
-            for activity_type in should_be_scheduled_activities['duplicates']:
-                should_be_scheduled_activities['duplicates'][activity_type] = [item for item in should_be_scheduled_activities['duplicates'][activity_type] if item not in activity]
+            for activity_type in should_be_scheduled_activities['error_check']:
+                for item in should_be_scheduled_activities['error_check'][activity_type]:
+                    if (item in activity) and (item in should_be_scheduled_activities['error_check'][activity_type]):
+                        should_be_scheduled_activities['error_check'][activity_type].remove(item)
             
             '''
-            TYPE 'SHOULD NOT SCHEDULE': If the non-preferred / non-recommended / excluded activities are in the activities_in_a_day, we place that activity in their respective duplicated list. This means that 
-            if all 'should_not_be_scheduled_activities' are properly excluded, the duplicated lists should be empty.
-            
+            FOR SHOULD NOT SCHEDULE ACTIVITIES:
+                The error_check lists (initially an empty list) is meant to store only the activities that are meant to NOT be scheduled but are somehow scheduled.
+                Therefore, when we iterate through each item in the should_not_be_scheduled_activities, if the item corresponds to the current activity, 
+                it suggests that it HAS been wrongly scheduled and hence we will add it to the error_check lists. This means that whatever activities that are left in the 
+                error_check lists, are activities that are scheduled when they should not be.
+                
             'should_not_be_scheduled_activities':{
                 'non_preferred': non_preferred_activities,
                 'non_recommended': non_recommended_activities,
                 'excluded': activities_excluded,
-                'duplicates': {  # Initializing empty lists for further processing
+                'error_check': {  # Initializing empty lists for further processing
                     'non_preferred': [],
                     'non_recommended': [],
                     'excluded': [],
                 }
             }
-            
-            # dup_centre_activity_dislikes = [item for item in ori_centre_activity_dislikes if item in activity]
-            # dup_activity_non_recommended = [item for item in ori_activity_non_recommended if item in activity]
-            # dup_activities_excluded_for_patient = [item for item in ori_activities_excluded_for_patient if item in activity]
             '''
-            for activity_type in should_not_be_scheduled_activities['duplicates']:
-                should_not_be_scheduled_activities['duplicates'][activity_type] = [item for item in should_not_be_scheduled_activities[activity_type] if item in activity]
+            for activity_type in should_not_be_scheduled_activities['error_check']:
+                for item in should_not_be_scheduled_activities[activity_type]:
+                    if (item in activity) and (item not in should_not_be_scheduled_activities['error_check'][activity_type]):
+                        should_not_be_scheduled_activities['error_check'][activity_type].append(item)
             
             '''
-            TYPE 'MEDICATION': Checks the scheduled medications against the medications_to_give and if it is correctly scheduled, we remove it from medication_schedule. This means that
-            if all medications are given correctly, medication_schedule should be empty. Conversely, if an incorrect medication has been scheduled, we add it to medication_incorrect_schedule
+            FOR MEDICATION: 
+                Checks the scheduled medications against the medications_to_give and if it is correctly scheduled, we remove it from medication_schedule. This means that
+                if all medications are given correctly, medication_schedule should be empty. Conversely, if an incorrect medication has been scheduled, we add it to medication_incorrect_schedule
             '''
             if len(medications_to_give) != 0 and "Give Medication" in activity:
                 activity_name = activity.split(' | ')[0]  # "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses"
@@ -367,12 +360,12 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
 def activitiesExcludedPatientTest(patient_wellness_plan, json_response):
     patientID = patient_wellness_plan['patientID']
     activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['excluded']
-    duplicated_activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['duplicates']['excluded']
+    duplicated_activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['error_check']['excluded']
     
     print("Test 1: Activities excluded are not scheduled ", end = '')
     json_response[patientID]["Test 1"] = {"Title" : "Activities excluded are not scheduled", "Result" : None, "Reason":[]}
     
-    patient_wellness_plan['should_not_be_scheduled_activities']['duplicates']['excluded']
+    patient_wellness_plan['should_not_be_scheduled_activities']['error_check']['excluded']
     if len(duplicated_activities_excluded) == 0:
         print(Fore.GREEN + f"(Passed)" + Fore.RESET)
         json_response[patientID]["Test 1"]["Result"] = "Passed"
@@ -389,7 +382,7 @@ def preferredActivitiesPatientTest(patient_wellness_plan, json_response):
     preferred_activities = patient_wellness_plan['should_be_scheduled_activities']['preferred']
     activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['excluded']
     non_recommended_activities = patient_wellness_plan['should_not_be_scheduled_activities']['non_recommended']
-    duplicated_preferred_activities = patient_wellness_plan['should_be_scheduled_activities']['duplicates']['preferred']
+    duplicated_preferred_activities = patient_wellness_plan['should_be_scheduled_activities']['error_check']['preferred']
     
     print(f"Test 2: Patient preferred activities are scheduled ", end = '')
     json_response[patientID]["Test 2"] = {"Title" : "Patient preferred activities are scheduled", "Result" : None, "Reason":[]}
@@ -432,7 +425,7 @@ def preferredActivitiesPatientTest(patient_wellness_plan, json_response):
 def nonPreferredActivitiesPatientTest(patient_wellness_plan, json_response):
     patientID = patient_wellness_plan['patientID']
     recommended_activities = patient_wellness_plan['should_be_scheduled_activities']['recommended']
-    duplicated_non_preferred_activities = patient_wellness_plan['should_not_be_scheduled_activities']['duplicates']['non_preferred']
+    duplicated_non_preferred_activities = patient_wellness_plan['should_not_be_scheduled_activities']['error_check']['non_preferred']
     
     print(f"Test 3: Patient non-preferred activities are not scheduled ", end = '')
     json_response[patientID]["Test 3"] = {"Title" : "Patient non-preferred activities are not scheduled", "Result" : None, "Reason":[]}
@@ -467,7 +460,7 @@ def nonPreferredActivitiesPatientTest(patient_wellness_plan, json_response):
 def recommendedActivitiesPatientTest(patient_wellness_plan, json_response):   
     patientID = patient_wellness_plan['patientID']
     activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['excluded']
-    duplicated_recommended_activities = patient_wellness_plan['should_be_scheduled_activities']['duplicates']['recommended']
+    duplicated_recommended_activities = patient_wellness_plan['should_be_scheduled_activities']['error_check']['recommended']
     
     print(f"Test 4: Doctor recommended activities are scheduled ", end = '')
     json_response[patientID]["Test 4"] = {"Title" : "Doctor recommended activities are scheduled", "Result" : None, "Reason":[]}
@@ -500,7 +493,7 @@ def recommendedActivitiesPatientTest(patient_wellness_plan, json_response):
 # Test 5: Doctor non-recommended activities are not scheduled
 def nonRecommendedActivitiesPatientTest(patient_wellness_plan, json_response):  
     patientID = patient_wellness_plan['patientID']
-    duplicated_non_recommended_activities = patient_wellness_plan['should_not_be_scheduled_activities']['duplicates']['non_recommended']
+    duplicated_non_recommended_activities = patient_wellness_plan['should_not_be_scheduled_activities']['error_check']['non_recommended']
     
     print(f"Test 5: Doctor non-recommended activities are not scheduled ", end = '')
     json_response[patientID]["Test 5"] = {"Title" : "Doctor non-recommended activities are not scheduled", "Result" : None, "Reason":[]}
@@ -519,7 +512,7 @@ def nonRecommendedActivitiesPatientTest(patient_wellness_plan, json_response):
 def routinesPatientTest(patient_wellness_plan, json_response):
     patientID = patient_wellness_plan['patientID']
     activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['excluded']
-    duplicated_routines = patient_wellness_plan['should_be_scheduled_activities']['duplicates']['routines']
+    duplicated_routines = patient_wellness_plan['should_be_scheduled_activities']['error_check']['routines']
 
     print(f"Test 6: Patient routines are scheduled ", end = '')
     json_response[patientID]["Test 6"] = {"Title" : "Patient routines are scheduled", "Result" : None, "Reason":[]}
@@ -554,7 +547,7 @@ def medicationPatientTest(patient_wellness_plan, json_response):
     DAY_OF_WEEK_ORDER = patient_wellness_plan['DAY_OF_WEEK_ORDER']
     patientID = patient_wellness_plan['patientID']
     medication_schedule = patient_wellness_plan['medication_info']['medication_schedule']
-    medication_incorrect_schedule = patient_wellness_plan['medication_info']['duplicates']['medication_schedule']
+    medication_incorrect_schedule = patient_wellness_plan['medication_info']['error_check']['medication_schedule']
     
     print(f"Test 7: All medications are administered correctly ", end = '')
     json_response[patientID]["Test 7"] = {"Title" : "All medications are administered correctly", "Result" : None, "Reason":{}}
@@ -579,7 +572,7 @@ def medicationPatientTest(patient_wellness_plan, json_response):
         json_response[patientID]["Test 7"]["Result"] = "Passed"                
     
     
-def generatePatientTestReport(tablesDF, patient_wellness_plan, json_response, activity_count_dict):
+def generateStatistics(tablesDF, patient_wellness_plan, json_response, activity_count_dict):
     patientID = patient_wellness_plan['patientID']
     
     print(Fore.CYAN + "PATIENT REPORT" + Fore.RESET)

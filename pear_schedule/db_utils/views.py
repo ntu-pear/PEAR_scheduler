@@ -5,7 +5,7 @@ import pandas as pd
 
 from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
-from pear_schedule.db_utils.utils import compile_query
+from pear_schedule.db_utils.utils import compile_query, get_next_sunday
 from pear_schedule.utils import ConfigDependant, DBTABLES
 
 import logging
@@ -159,7 +159,8 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity.c["IsCompulsory"] == False)
+        ).where(centre_activity.c["IsCompulsory"] == False
+        ).where(activity.c["EndDate"] > get_next_sunday())
 
         return query
     
@@ -264,7 +265,8 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
             centre_activity.c["FixedTimeSlots"],
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
-        ).where(centre_activity.c["IsCompulsory"] == True)
+        ).where(centre_activity.c["IsCompulsory"] == True
+        ).where(activity.c["EndDate"] > get_next_sunday())
 
         return query
     
