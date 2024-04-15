@@ -472,6 +472,7 @@ class CentreActivityPreferenceView(BaseView): # Get the centre activities prefer
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).where(centre_activity_preference.c["IsDeleted"] == False
         )
         
         return query
