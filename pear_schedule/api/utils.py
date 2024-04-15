@@ -109,9 +109,9 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
             'recommended': recommended_activities,
             'routines': routines,
             'error_check': {  # Duplicate lists for further processing
-                'preferred': preferred_activities,
-                'recommended': recommended_activities,
-                'routines': routines,
+                'preferred': preferred_activities.copy(),
+                'recommended': recommended_activities.copy(),
+                'routines': routines.copy(),
             }
         },
         'should_not_be_scheduled_activities':{
@@ -307,7 +307,7 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
                 for item in should_be_scheduled_activities['error_check'][activity_type]:
                     if (item in activity) and (item in should_be_scheduled_activities['error_check'][activity_type]):
                         should_be_scheduled_activities['error_check'][activity_type].remove(item)
-            
+                        
             '''
             FOR SHOULD NOT SCHEDULE ACTIVITIES:
                 The error_check lists (initially an empty list) is meant to store only the activities that are meant to NOT be scheduled but are somehow scheduled.
@@ -425,6 +425,7 @@ def preferredActivitiesPatientTest(patient_wellness_plan, json_response):
 def nonPreferredActivitiesPatientTest(patient_wellness_plan, json_response):
     patientID = patient_wellness_plan['patientID']
     recommended_activities = patient_wellness_plan['should_be_scheduled_activities']['recommended']
+    routines = patient_wellness_plan['should_be_scheduled_activities']['routines']
     duplicated_non_preferred_activities = patient_wellness_plan['should_not_be_scheduled_activities']['error_check']['non_preferred']
     
     print(f"Test 3: Patient non-preferred activities are not scheduled ", end = '')
@@ -435,18 +436,23 @@ def nonPreferredActivitiesPatientTest(patient_wellness_plan, json_response):
         json_response[patientID]["Test 3"]["Result"] = "Passed"
     else:
         common_recommended_and_non_preferred = list(set(recommended_activities) & set(duplicated_non_preferred_activities))
-        not_in_recommended = list(set(duplicated_non_preferred_activities) - set(recommended_activities))
+        common_routines_and_non_preferred = list(set(routines) & set(duplicated_non_preferred_activities))
+        not_in_recommended_or_routines = list(set(duplicated_non_preferred_activities) - (set(recommended_activities) | set(routines)))
         
-        if len(not_in_recommended) != 0:
+        if len(not_in_recommended_or_routines) != 0:
             print(Fore.RED + f"(Failed)" + Fore.RESET)
             json_response[patientID]["Test 3"]["Result"] = "Failed"
             
             if len(common_recommended_and_non_preferred) != 0:
                 print(Fore.YELLOW + f"\t(Exception) {common_recommended_and_non_preferred} are scheduled because there are part of Doctor Recommended Activities" + Fore.RESET)
                 json_response[patientID]["Test 3"]["Reason"].append(f"(Exception) {common_recommended_and_non_preferred} are scheduled because there are part of Doctor Recommended Activities")
+            
+            if len(common_routines_and_non_preferred) != 0:
+                print(Fore.YELLOW + f"\t(Exception) {common_routines_and_non_preferred} are scheduled because there are part of Routines Activities" + Fore.RESET)
+                json_response[patientID]["Test 3"]["Reason"].append(f"(Exception) {common_routines_and_non_preferred} are scheduled because there are part of Routines Activities")
                 
-            print(Fore.RED + f"\tThe following non-preferred activities are scheduled: {not_in_recommended}" + Fore.RESET)
-            json_response[patientID]["Test 3"]["Reason"].append(f"The following non-preferred activities are scheduled: {not_in_recommended}")
+            print(Fore.RED + f"\tThe following non-preferred activities are scheduled: {not_in_recommended_or_routines}" + Fore.RESET)
+            json_response[patientID]["Test 3"]["Reason"].append(f"The following non-preferred activities are scheduled: {not_in_recommended_or_routines}")
             
         else:
             print(Fore.GREEN + f"(Passed)" + Fore.RESET)
@@ -512,6 +518,7 @@ def nonRecommendedActivitiesPatientTest(patient_wellness_plan, json_response):
 def routinesPatientTest(patient_wellness_plan, json_response):
     patientID = patient_wellness_plan['patientID']
     activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['excluded']
+    non_recommended_activities = patient_wellness_plan['should_not_be_scheduled_activities']['non_recommended']
     duplicated_routines = patient_wellness_plan['should_be_scheduled_activities']['error_check']['routines']
 
     print(f"Test 6: Patient routines are scheduled ", end = '')
@@ -522,18 +529,23 @@ def routinesPatientTest(patient_wellness_plan, json_response):
         json_response[patientID]["Test 6"]["Result"] = "Passed"
     else:
         common_excluded_and_routines = list(set(activities_excluded) & set(duplicated_routines))
-        not_in_excluded = list(set(duplicated_routines) - set(activities_excluded))
+        common_non_recommend_and_routines = list(set(non_recommended_activities) & set(duplicated_routines))
+        not_in_excluded_or_non_recommended = list(set(duplicated_routines) - (set(activities_excluded) | set(non_recommended_activities)))
         
-        if len(not_in_excluded) != 0:
+        if len(not_in_excluded_or_non_recommended) != 0:
             print(Fore.RED + f"(Failed)" + Fore.RESET)
             json_response[patientID]["Test 6"]["Result"] = "Failed"
             
             if len(common_excluded_and_routines) != 0:
                 print(Fore.YELLOW + f"\t(Exception) {common_excluded_and_routines} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
                 json_response[patientID]["Test 6"]["Reason"].append(f"(Exception) {common_excluded_and_routines} are not scheduled because there are part of Activities Excluded")
-                
-            print(Fore.RED + f"\tThe following routines are not scheduled: {not_in_excluded}" + Fore.RESET)
-            json_response[patientID]["Test 6"]["Reason"].append(f"The following routines are not scheduled: {not_in_excluded}")
+            
+            if len(common_non_recommend_and_routines) != 0:
+                print(Fore.YELLOW + f"\t(Exception) {common_non_recommend_and_routines} are not scheduled because there are part of Doctor Non Recommended Activities" + Fore.RESET)
+                json_response[patientID]["Test 6"]["Reason"].append(f"(Exception) {common_non_recommend_and_routines} are not scheduled because there are part of Doctor Non Recommended Activities")
+            
+            print(Fore.RED + f"\tThe following routines are not scheduled: {not_in_excluded_or_non_recommended}" + Fore.RESET)
+            json_response[patientID]["Test 6"]["Reason"].append(f"The following routines are not scheduled: {not_in_excluded_or_non_recommended}")
         else:
             print(Fore.GREEN + f"(Passed)" + Fore.RESET)
             json_response[patientID]["Test 6"]["Result"] = "Passed"
