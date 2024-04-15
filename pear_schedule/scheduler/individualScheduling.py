@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
-from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
+from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
@@ -41,7 +41,7 @@ class IndividualActivityScheduler(BaseScheduler):
             pid = p["PatientID"]
             if pid not in patients:
                 patients[pid] = {
-                    "preferences":dict(), "exclusions": dict()  # recommendations handled in compulsory scheduling
+                    "preferences":dict(), "exclusions": dict(), "dispreferences": dict()  # recommendations handled in compulsory scheduling
                 }
 
             if p["ActivityEndDate"] <= week_end:
@@ -49,12 +49,22 @@ class IndividualActivityScheduler(BaseScheduler):
 
             patients[pid]["preferences"][p["PreferredActivityID"]] = True
 
+        # add unpreferred activities
+        for _, p in PatientsUnpreferredView.get_data(conn=conn).iterrows():
+            pid = p["PatientID"]
+            if pid not in patients:
+                patients[pid] = {
+                    "preferences":dict(), "exclusions": dict(), "dispreferences": dict()  # recommendations handled in compulsory scheduling
+                }
+
+            patients[pid]["dispreferences"][p["DispreferredActivityID"]] = True
+
         # add activity exclusions to patient data
-        for _ , e in ActivitiesExcludedView.get_data().iterrows():
+        for _ , e in ActivitiesExcludedView.get_data(conn=conn).iterrows():
             pid = e["PatientID"]
             if pid not in patients:
                 patients[pid] = {
-                    "preferences":dict(), "exclusions": dict()  # recommendations handled in compulsory scheduling
+                    "preferences":dict(), "exclusions": dict(), "dispreferences": dict()  # recommendations handled in compulsory scheduling
                 }
             activity_id = e["ActivityID"]
             if e["ActivityID"] not in patients[pid]["exclusions"]:
@@ -63,7 +73,6 @@ class IndividualActivityScheduler(BaseScheduler):
                 patients[pid]["exclusions"][activity_id] = _get_max_enddate(
                     e["EndDateTime"], patients[pid]["exclusions"][activity_id]
                 )
-
 
         return patients
 
@@ -267,13 +276,15 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             exclusions: Set[str] = patient["exclusions"]
             preferences: Set[str] = patient["preferences"]
+            dispreferences: Set[str] = patient["dispreferences"]
 
             avail_activities = activities[~activities["ActivityID"].isin(exclusions)]
             avail_activities = avail_activities[["ActivityID", "ActivityTitle", "FixedTimeSlots", "MinDuration", "MaxDuration"]]
 
             preference_idx = avail_activities["ActivityID"].isin(preferences)
+            non_preference_idx = (~avail_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
             preferred_activities = avail_activities[preference_idx]
-            non_preferred_activites = avail_activities[~preference_idx]
+            non_preferred_activites = avail_activities[non_preference_idx]
 
             for day, day_sched in enumerate(sched):
                 curr_day_activities = set()

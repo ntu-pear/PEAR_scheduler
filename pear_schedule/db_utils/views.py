@@ -108,7 +108,8 @@ class PatientsView(BaseView):
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
-            centre_activity_preference.c["IsLike"] > 0
+            centre_activity_preference.c["IsLike"] > 0,
+            centre_activity_preference.c["IsDeleted"] == False,
         ).cte()
 
         query: Select = select(
@@ -124,7 +125,45 @@ class PatientsView(BaseView):
         # )
 
         return query
-    
+
+
+class PatientsUnpreferredView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building patients query")
+        schema = DB.schema
+
+        patient = schema.tables[cls.db_tables.PATIENT_TABLE]
+        centre_activity_preference = schema.tables[cls.db_tables.CENTRE_ACTIVITY_PREFERENCE_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+
+        centre_activity_cte = select(
+            centre_activity_preference.c["PatientID"],
+            centre_activity.c["ActivityID"].label("DispreferredActivityID"),
+            activity.c["EndDate"].label("ActivityEndDate")
+        ).join(
+            centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).join(
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).where(
+            centre_activity_preference.c["IsLike"] < 0,
+            centre_activity_preference.c["IsDeleted"] == False,
+        ).cte()
+
+        query: Select = select(
+            patient.c["PatientID"], 
+            centre_activity_cte.c["DispreferredActivityID"],
+            centre_activity_cte.c["ActivityEndDate"]
+        ).join(
+            centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"], isouter=True
+        )\
+        # .join(
+        #     centre_activity_recommendation, 
+        #     patient.c["PatientID"] == centre_activity_recommendation.c["PatientID"]
+        # )
+
+        return query
 
 class PatientsOnlyView(BaseView): # Just patients only
     @classmethod
