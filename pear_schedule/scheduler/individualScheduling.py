@@ -314,7 +314,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                             find_activity(non_preferred_activites, curr_day_activities)
 
                         if not new_activity:
-                            new_activity = "[Free and Easy]"
+                            new_activity = "Free and Easy"
                         curr_day_activities.add(new_activity)
                         day_sched[i] = new_activity
                     i += 1
