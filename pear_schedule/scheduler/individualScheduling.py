@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
-from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
+from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, DisrecommendedActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
@@ -73,6 +73,16 @@ class IndividualActivityScheduler(BaseScheduler):
                 patients[pid]["exclusions"][activity_id] = _get_max_enddate(
                     e["EndDateTime"], patients[pid]["exclusions"][activity_id]
                 )
+
+        # for the purposes of individual scheduling disrecommendations classified as exclusions also
+        for _, r in DisrecommendedActivitiesView.get_data(conn=conn).iterrows():
+            pid = r["PatientID"]
+            if pid not in patients:
+                patients[pid] = {
+                    "preferences":dict(), "exclusions": dict(), "dispreferences": dict()  # recommendations handled in compulsory scheduling
+                }
+            activity_id = r["ActivityID"]
+            patients[pid]["exclusions"][activity_id] = week_end
 
         return patients
 
@@ -304,7 +314,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                             find_activity(non_preferred_activites, curr_day_activities)
 
                         if not new_activity:
-                            continue
+                            new_activity = "[Free and Easy]"
                         curr_day_activities.add(new_activity)
                         day_sched[i] = new_activity
                     i += 1

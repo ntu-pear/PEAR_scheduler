@@ -147,7 +147,7 @@ class PatientsUnpreferredView(BaseView):
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
-            centre_activity_preference.c["IsLike"] < 0,
+            centre_activity_preference.c["IsLike"] == 0,
             centre_activity_preference.c["IsDeleted"] == False,
         ).cte()
 
@@ -156,7 +156,7 @@ class PatientsUnpreferredView(BaseView):
             centre_activity_cte.c["DispreferredActivityID"],
             centre_activity_cte.c["ActivityEndDate"]
         ).join(
-            centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"], isouter=True
+            centre_activity_cte, patient.c["PatientID"] == centre_activity_cte.c["PatientID"]
         )\
         # .join(
         #     centre_activity_recommendation, 
@@ -334,6 +334,34 @@ class RecommendedActivitiesView(BaseView):
         ).where(
             recommendations.c["IsDeleted"] == False,
             recommendations.c["DoctorRecommendation"] > 0,
+            centre_activity.c["IsGroup"] == False,
+        )
+
+        return query
+    
+class DisrecommendedActivitiesView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building recommended activities query")
+        schema = DB.schema
+
+        recommendations = schema.tables[cls.db_tables.CENTRE_ACTIVITY_RECOMMENDATION_TABLE]
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
+
+        query: Select = select(
+            centre_activity.c["ActivityID"],
+            centre_activity.c["IsFixed"],
+            activity.c["ActivityTitle"],
+            recommendations.c["PatientID"],
+            activity.c["EndDate"].label("ActivityEndDate")
+        ).join(
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).join(
+            recommendations, recommendations.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
+        ).where(
+            recommendations.c["IsDeleted"] == False,
+            recommendations.c["DoctorRecommendation"] == 0,
             centre_activity.c["IsGroup"] == False,
         )
 
