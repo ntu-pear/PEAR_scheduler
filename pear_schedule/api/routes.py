@@ -90,6 +90,8 @@ async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Quer
         tablesDF = getTablesDF() 
         json_response = {} # json data to be returned to caller
         activity_count_dict = {activity: 0 for activity in tablesDF['activitiesAndCentreActivityViewDF']['ActivityTitle'].unique()} # dictionary to keep track of each activity count
+        activity_count_dict['Free and Easy'] = 0 # adding free and easy as an activity 
+        
         mondayIndex = tablesDF['weeklyScheduleViewDF'].columns.get_loc("Monday")
         config = {
             "DAY_OF_WEEK_ORDER": request.app.state.config['DAY_OF_WEEK_ORDER'],
@@ -127,6 +129,7 @@ async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Quer
                 'weekly_schedule': weekly_schedule,
                 'schedule_start_datetime' : schedule_start_datetime,
                 'schedule_end_datetime': schedule_end_datetime,
+                'routines_timeslot' : routines_timeslot,
                 'should_be_scheduled_activities': {
                     'preferred': preferred_activities,
                     'recommended': recommended_activities,

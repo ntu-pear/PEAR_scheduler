@@ -36,7 +36,8 @@ class TestPatientTestUtils:
             patch('pear_schedule.db_utils.views.RoutineView.get_data', return_value=pd.DataFrame({
                 "PatientID" : [1], 
                 "IncludeInSchedule" : [1],
-                "ActivityTitle" : ["Cup Stacking Game"]
+                "ActivityTitle" : ["Cup Stacking Game"],
+                "FixedTimeSlots": "0-2,4-2"
                 })), \
             patch('pear_schedule.db_utils.views.MedicationTesterView.get_data', return_value=pd.DataFrame({
                 'PatientID' : [1],

@@ -512,6 +512,8 @@ class MedicationTesterView(BaseView): # Just medication table view
             medication,
         ).where(
             medication.c["EndDateTime"] >= start_of_week 
+        ).where(
+            medication.c['IsDeleted'] == False
         )
         return query
     
@@ -569,6 +571,7 @@ class CentreActivityRecommendationView(BaseView): # Get the centre activities re
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).where(centre_activity_recommendation.c['IsDeleted'] == False
         )
         
         return query
@@ -598,6 +601,8 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
                 activities_excluded.c["EndDateTime"] >= start_of_week, 
                 activities_excluded.c["EndDateTime"] == None
             )
+        ).where(
+            activities_excluded.c['IsDeleted'] == False
         )
         
         return query
@@ -610,15 +615,23 @@ class RoutineView(BaseView): # Get the routines for all patients
         
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
         routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
+        routine_activity = schema.tables[cls.db_tables.ROUTINE_ACTIVITY_TABLE]
         
         query: Select = select(
             routine.c["RoutineID"], 
             routine.c["ActivityID"],
             routine.c["PatientID"],
             routine.c["IncludeInSchedule"],
-            activity.c["ActivityTitle"]
+            activity.c["ActivityTitle"],
+            routine_activity.c["FixedTimeSlots"]
         ).join(
             activity, activity.c["ActivityID"] == routine.c["ActivityID"]
+        ).join(
+            routine_activity, routine.c["RoutineID"] == routine_activity.c["RoutineID"]
+        ).where(
+            routine.c["IncludeInSchedule"] == True
+        ).where(
+            routine.c["IsDeleted"] == False
         )
         
         return query

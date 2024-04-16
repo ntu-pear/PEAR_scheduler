@@ -73,7 +73,7 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
     weekly_schedule = tablesDF['weeklyScheduleViewDF'].loc[tablesDF['weeklyScheduleViewDF']['PatientID'] == patientID]
     schedule_start_datetime = weekly_schedule['StartDate'].min()
     schedule_end_datetime = weekly_schedule['EndDate'].max()
-    
+        
     centre_activity_preference = tablesDF['centreActivityPreferenceViewDF'].loc[tablesDF['centreActivityPreferenceViewDF']['PatientID'] == patientID]
     centre_activity_recommendation = tablesDF['centreActivityRecommendationViewDF'].loc[tablesDF['centreActivityRecommendationViewDF']['PatientID'] == patientID]
     medications = tablesDF['medicationViewDF'].loc[tablesDF['medicationViewDF']['PatientID'] == patientID]
@@ -83,8 +83,13 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
     preferred_activities = preferred_activities['ActivityTitle'].tolist()
     recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == 1]
     recommended_activities = recommended_activities['ActivityTitle'].tolist()
-    routines = tablesDF['routineViewDF'].loc[(tablesDF['routineViewDF']['PatientID'] == patientID) & tablesDF['routineViewDF']["IncludeInSchedule"]]
-    routines = routines['ActivityTitle'].tolist()
+    routines_df = tablesDF['routineViewDF'].loc[(tablesDF['routineViewDF']['PatientID'] == patientID) & tablesDF['routineViewDF']["IncludeInSchedule"]]
+    routines = routines_df['ActivityTitle'].tolist()
+    
+    # To get the fixedtimeslots for each routine activity
+    routines_timeslot = {}
+    for routine in routines:
+        routines_timeslot[routine] = routines_df.loc[routines_df['ActivityTitle'] == routine, 'FixedTimeSlots'].iloc[0]
     
     # TYPE 'SHOULD NOT SCHEDULE'
     non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == 0]
@@ -104,6 +109,7 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
         'weekly_schedule': weekly_schedule,
         'schedule_start_datetime' : schedule_start_datetime,
         'schedule_end_datetime': schedule_end_datetime,
+        'routines_timeslot' : routines_timeslot,
         'should_be_scheduled_activities': {
             'preferred': preferred_activities,
             'recommended': recommended_activities,
@@ -520,7 +526,7 @@ def routinesPatientTest(patient_wellness_plan, json_response):
     activities_excluded = patient_wellness_plan['should_not_be_scheduled_activities']['excluded']
     non_recommended_activities = patient_wellness_plan['should_not_be_scheduled_activities']['non_recommended']
     duplicated_routines = patient_wellness_plan['should_be_scheduled_activities']['error_check']['routines']
-
+    
     print(f"Test 6: Patient routines are scheduled ", end = '')
     json_response[patientID]["Test 6"] = {"Title" : "Patient routines are scheduled", "Result" : None, "Reason":[]}
     
@@ -535,7 +541,7 @@ def routinesPatientTest(patient_wellness_plan, json_response):
         if len(not_in_excluded_or_non_recommended) != 0:
             print(Fore.RED + f"(Failed)" + Fore.RESET)
             json_response[patientID]["Test 6"]["Result"] = "Failed"
-            
+                
             if len(common_excluded_and_routines) != 0:
                 print(Fore.YELLOW + f"\t(Exception) {common_excluded_and_routines} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
                 json_response[patientID]["Test 6"]["Reason"].append(f"(Exception) {common_excluded_and_routines} are not scheduled because there are part of Activities Excluded")
@@ -543,7 +549,7 @@ def routinesPatientTest(patient_wellness_plan, json_response):
             if len(common_non_recommend_and_routines) != 0:
                 print(Fore.YELLOW + f"\t(Exception) {common_non_recommend_and_routines} are not scheduled because there are part of Doctor Non Recommended Activities" + Fore.RESET)
                 json_response[patientID]["Test 6"]["Reason"].append(f"(Exception) {common_non_recommend_and_routines} are not scheduled because there are part of Doctor Non Recommended Activities")
-            
+                        
             print(Fore.RED + f"\tThe following routines are not scheduled: {not_in_excluded_or_non_recommended}" + Fore.RESET)
             json_response[patientID]["Test 6"]["Reason"].append(f"The following routines are not scheduled: {not_in_excluded_or_non_recommended}")
         else:
@@ -553,7 +559,7 @@ def routinesPatientTest(patient_wellness_plan, json_response):
             if len(common_excluded_and_routines) != 0:
                 print(Fore.YELLOW + f"\t(Exception) {common_excluded_and_routines} are not scheduled because there are part of Activities Excluded" + Fore.RESET)
                 json_response[patientID]["Test 6"]["Reason"].append(f"(Exception) {common_excluded_and_routines} are not scheduled because there are part of Activities Excluded")      
-                
+
 # Test 7: All medications are administered correctly
 def medicationPatientTest(patient_wellness_plan, json_response):
     DAY_OF_WEEK_ORDER = patient_wellness_plan['DAY_OF_WEEK_ORDER']
