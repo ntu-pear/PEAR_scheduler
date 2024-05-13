@@ -1,3 +1,4 @@
+from collections import defaultdict
 import copy
 from typing import List
 from colorama import Fore
@@ -708,7 +709,10 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
 
             for activity in daySchedule:
                 activityTitle = activity.split(" |")[0]
-
+                
+                if activityTitle == "Free and Easy":
+                    continue
+                
                 if not (validityMap[activityTitle][0] <= dateOfActivity <= validityMap[activityTitle][1]):
                     result = False
                     testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} on {dateOfActivity.strftime('%Y-%m-%d')} has expired and is not valid")
@@ -822,7 +826,8 @@ def groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleVi
 
 
 def systemLevelStatistics(activitiesDF, weeklyScheduleViewDF):
-    activityCountMap = {}
+    activityCountMap = defaultdict(int)
+    activityCountMap['Free and Easy'] = 0
     for _, activityRecord, in activitiesDF.iterrows():
         activityCountMap[activityRecord["ActivityTitle"]] = 0
 
