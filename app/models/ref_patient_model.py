@@ -1,0 +1,28 @@
+from sqlalchemy import Column, Integer, String, DateTime, Numeric, ForeignKey
+from sqlalchemy.orm import relationship
+from app.database import Base
+from datetime import datetime, timezone
+
+
+class RefPatient(Base):
+    __tablename__ = "REF_PATIENT"
+
+    Id = Column(Integer, primary_key=True, index=True)
+    IsDeleted = Column(String(1), default='0', nullable=False)
+    Name = Column(String(255), nullable=False)
+    PreferredName = Column(String(255))
+    UpdateBit = Column(String(1), default="1", nullable=False)
+    StartDate = Column(DateTime, nullable=False)
+    EndDate = Column(DateTime)
+    IsActive = Column(String(1), default="1", nullable=False)
+
+    CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    CreatedById = Column(String, nullable=False)
+    ModifiedById = Column(String, nullable=False) 
+
+    exclusions = relationship("RefActivityExclusion", back_populates="patient")
+    preferences = relationship("RefActivityPreference", back_populates="patient")
+    recommendations = relationship("RefActivityRecommendation", back_populates="patient")
+    routines = relationship("RefActivityRoutine", back_populates="patient")
+    prescriptions = relationship("RefPatientPrescription", back_populates="patient")
