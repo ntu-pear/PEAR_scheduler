@@ -40,16 +40,16 @@ from urllib.parse import unquote
 # ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE TABLES/VIEWS ~~~~~~~~~~~~~~~~~~~~~~~
 DB_TABLES = DBTABLES(
     DB_SCHEMA = "",
-    ACTIVITY_TABLE = "Activity",
-    ACTIVITY_AVAILABILITY_TABLE = "ActivityAvailability",
-    ACTIVITY_EXCLUSION_TABLE = "ActivityExclusion",
-    CENTRE_ACTIVITY_TABLE = "Centre_Activity",
-    CENTRE_ACTIVITY_PREFERENCE_TABLE = "CentreActivityPreference",
-    CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "CentreActivityRecommendation",
-    PATIENT_TABLE = "Patient",
-    ROUTINE_TABLE = "Routine",
-    ROUTINE_ACTIVITY_TABLE= "RoutineActivity", 
-    MEDICATION_TABLE = "Medication",
+    ACTIVITY_TABLE = "ref_Activity",
+    ACTIVITY_AVAILABILITY_TABLE = "ref_ActivityAvailability",
+    ACTIVITY_EXCLUSION_TABLE = "ref_ActivityExclusion",
+    CENTRE_ACTIVITY_TABLE = "ref_Centre_Activity",
+    CENTRE_ACTIVITY_PREFERENCE_TABLE = "ref_CentreActivityPreference",
+    CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "ref_CentreActivityRecommendation",
+    PATIENT_TABLE = "ref_Patient",
+    ROUTINE_TABLE = "ref_Routine",
+    ROUTINE_ACTIVITY_TABLE= "ref_RoutineActivity", 
+    MEDICATION_TABLE = "ref_Medication",
     SCHEDULE_TABLE = "Schedule",
 )
 
