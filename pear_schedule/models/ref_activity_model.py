@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
-from app.database import Base
+from pear_schedule.database import Base
 
 class RefActivity(Base):
     __tablename__ = "REF_ACTIVITY"

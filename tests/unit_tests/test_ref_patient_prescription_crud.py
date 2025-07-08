@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
-from app.crud.ref_patient_prescription_crud import (
+from pear_schedule.crud.ref_patient_prescription_crud import (
     create_or_update_ref_patient_prescription,
     update_ref_patient_prescription_idempotent,
     soft_delete_ref_patient_prescription_idempotent,
@@ -12,7 +12,7 @@ from app.crud.ref_patient_prescription_crud import (
     get_prescriptions_ending_soon,
     get_patient_medication_schedule
 )
-from app.schemas.ref_patient_prescription import RefPatientPrescriptionCreate, RefPatientPrescriptionUpdate
+from pear_schedule.schemas.ref_patient_prescription import RefPatientPrescriptionCreate, RefPatientPrescriptionUpdate
 
 
 class TestRefPatientPrescriptionCrud:

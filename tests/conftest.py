@@ -2,14 +2,14 @@ import pytest
 from unittest.mock import Mock, MagicMock
 from datetime import datetime
 from tests.utils.mock_db import get_db_session_mock
-from app.models.ref_patient_model import RefPatient
-from app.models.ref_activity_model import RefActivity
-from app.models.ref_activity_exclusion_model import RefActivityExclusion
-from app.models.ref_activity_preference_model import RefActivityPreference
-from app.models.ref_activity_recommendation_model import RefActivityRecommendation
-from app.models.ref_activity_routine_model import RefActivityRoutine
-from app.models.ref_patient_prescription_model import RefPatientPrescription
-from app.models.schedule_model import Schedule
+from pear_schedule.models.ref_patient_model import RefPatient
+from pear_schedule.models.ref_activity_model import RefActivity
+from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
+from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
+from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
+from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
+from pear_schedule.models.ref_patient_prescription_model import RefPatientPrescription
+from pear_schedule.models.schedule_model import Schedule
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from app.crud.ref_activity_routine_crud import (
+from pear_schedule.crud.ref_activity_routine_crud import (
     create_or_update_ref_activity_routine,
     update_ref_activity_routine_idempotent,
     soft_delete_ref_activity_routine_idempotent,
@@ -12,7 +12,7 @@ from app.crud.ref_activity_routine_crud import (
     get_patient_excluded_routines,
     get_activity_routines_by_time_slot
 )
-from app.schemas.ref_activity_routine import RefActivityRoutineCreate, RefActivityRoutineUpdate
+from pear_schedule.schemas.ref_activity_routine import RefActivityRoutineCreate, RefActivityRoutineUpdate
 
 
 class TestRefActivityRoutineCrud:

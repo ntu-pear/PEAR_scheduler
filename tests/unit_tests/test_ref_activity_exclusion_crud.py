@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from app.crud.ref_activity_exclusion_crud import (
+from pear_schedule.crud.ref_activity_exclusion_crud import (
     create_or_update_ref_activity_exclusion,
     update_ref_activity_exclusion_idempotent,
     soft_delete_ref_activity_exclusion_idempotent,
@@ -9,7 +9,7 @@ from app.crud.ref_activity_exclusion_crud import (
     get_ref_activity_exclusion_by_id,
     get_exclusions_by_patient_and_activity
 )
-from app.schemas.ref_activity_exclusion import RefActivityExclusionCreate, RefActivityExclusionUpdate
+from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionCreate, RefActivityExclusionUpdate
 
 
 class TestRefActivityExclusionCrud:

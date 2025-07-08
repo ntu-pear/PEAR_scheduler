@@ -1,9 +1,9 @@
 from sqlalchemy.orm import clear_mappers
-from app.database import engine, Base
+from pear_schedule.database import engine, Base
 
 clear_mappers()
 
-from app.models import (
+from pear_schedule.models import (
     ref_activity_exclusion_model,
     ref_activity_model,
     ref_activity_recommendation_model,

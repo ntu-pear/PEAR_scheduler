@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from app.crud.ref_activity_recommendation_crud import (
+from pear_schedule.crud.ref_activity_recommendation_crud import (
     create_or_update_ref_activity_recommendation,
     update_ref_activity_recommendation_idempotent,
     soft_delete_ref_activity_recommendation_idempotent,
@@ -11,7 +11,7 @@ from app.crud.ref_activity_recommendation_crud import (
     get_doctor_recommendations_for_patient,
     get_recommended_activities_for_patient
 )
-from app.schemas.ref_activity_recommendation import RefActivityRecommendationCreate, RefActivityRecommendationUpdate
+from pear_schedule.schemas.ref_activity_recommendation import RefActivityRecommendationCreate, RefActivityRecommendationUpdate
 
 
 class TestRefActivityRecommendationCrud:

@@ -1,13 +1,13 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from app.crud.ref_patient_crud import (
+from pear_schedule.crud.ref_patient_crud import (
     create_or_update_ref_patient,
     update_ref_patient_idempotent,
     soft_delete_ref_patient_idempotent,
     get_ref_patients
 )
-from app.schemas.ref_patient import RefPatientCreate, RefPatientUpdate
+from pear_schedule.schemas.ref_patient import RefPatientCreate, RefPatientUpdate
 
 
 class TestRefPatientCrud:

@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
 from fastapi import HTTPException
-from app.crud.schedule_crud import (
+from pear_schedule.crud.schedule_crud import (
     create_schedule,
     update_schedule,
     delete_schedule,
@@ -16,7 +16,7 @@ from app.crud.schedule_crud import (
     get_day_schedule_for_patient,
     update_day_schedule
 )
-from app.schemas.schedule import ScheduleCreate, ScheduleUpdate
+from pear_schedule.schemas.schedule import ScheduleCreate, ScheduleUpdate
 
 
 class TestScheduleCrud:

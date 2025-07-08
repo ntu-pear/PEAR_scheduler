@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from app.crud.ref_activity_crud import (
+from pear_schedule.crud.ref_activity_crud import (
     create_or_update_ref_activity,
     update_ref_activity_idempotent,
     soft_delete_ref_activity_idempotent,
     get_ref_activities,
     get_ref_activity_by_id
 )
-from app.schemas.ref_activity import RefActivityCreate, RefActivityUpdate
+from pear_schedule.schemas.ref_activity import RefActivityCreate, RefActivityUpdate
 
 
 class TestRefActivityCrud:

@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime
-from app.crud.ref_activity_preference_crud import (
+from pear_schedule.crud.ref_activity_preference_crud import (
     create_or_update_ref_activity_preference,
     update_ref_activity_preference_idempotent,
     soft_delete_ref_activity_preference_idempotent,
@@ -11,7 +11,7 @@ from app.crud.ref_activity_preference_crud import (
     get_patient_liked_activities,
     get_patient_disliked_activities
 )
-from app.schemas.ref_activity_preference import RefActivityPreferenceCreate, RefActivityPreferenceUpdate
+from pear_schedule.schemas.ref_activity_preference import RefActivityPreferenceCreate, RefActivityPreferenceUpdate
 
 
 class TestRefActivityPreferenceCrud:
