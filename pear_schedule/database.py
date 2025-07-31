@@ -4,9 +4,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 
 # Load environment variables from .env file
 load_dotenv()
+
 # Get the database URL from environment variables
 DB_URL_LOCAL = os.getenv("DB_URL_LOCAL")
 DB_DRIVER_DEV = os.getenv("DB_DRIVER_DEV")
@@ -28,17 +30,26 @@ DB_DATABASE_PORT = os.getenv("DB_DATABASE_PORT")
 DB_USERNAME = os.getenv("DB_USERNAME")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 
+# Create encoded password for use in raw connection strings (like FastAPI app)
+DB_PASSWORD_DEV_ENCODED = quote_plus(DB_PASSWORD_DEV) if DB_PASSWORD_DEV else ""
+
 ##### Note that this connection is to the DEV environment ####
 # COMMMENT out this section when doing local development
+
+# For consumer/SQLAlchemy URL.create() - uses raw password (auto-encoded)
 connection_url = sa.URL.create(
     "mssql+pyodbc",
     username=DB_USERNAME_DEV,
-    password=DB_PASSWORD_DEV,
+    password=DB_PASSWORD_DEV,  # Raw password - SQLAlchemy handles encoding
     host=DB_SERVER_DEV,
     port=DB_DATABASE_PORT,
     database=DB_DATABASE_DEV,
     query={"driver": DB_DRIVER_DEV, "TrustServerCertificate": "yes"},
 )
+
+# For FastAPI app/raw connection strings - uses encoded password
+DB_CONN_STR_RAW = f"mssql+pyodbc://{DB_USERNAME_DEV}:{DB_PASSWORD_DEV_ENCODED}@{DB_SERVER_DEV}:{DB_DATABASE_PORT}/{DB_DATABASE_DEV}?driver={DB_DRIVER_DEV.replace(' ', '+')}&TrustServerCertificate=yes"
+
 ###############################################################
 
 ########## LOCAL DOCKER DEVELOPMENT ##########

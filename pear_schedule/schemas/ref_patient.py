@@ -13,20 +13,20 @@ class RefPatientBase(BaseModel):
     IsActive: str = Field(..., pattern="^[01]$", json_schema_extra={"example": "1"})
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
 
-class RefPatientCreate(RefPatientBase):
-    CreatedDateTime: datetime
-    UpdatedDateTime: datetime
-    CreatedById: str = Field(json_schema_extra={"example": "1"})
-    ModifiedById: str = Field(json_schema_extra={"example": "1"})
 
-class RefPatientUpdate(RefPatientBase):
-    UpdatedDateTime: datetime
-    ModifiedById: str = Field(json_schema_extra={"example": "1"})
+class RefPatientUpdate(BaseModel):
+    # Only include fields that can be updated and exist in database
+    Id: Optional[int] = None
+    Name: Optional[str] = None
+    PreferredName: Optional[str] = None
+    UpdateBit: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "1"})
+    StartDate: Optional[datetime] = None
+    EndDate: Optional[datetime] = None
+    IsActive: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "1"})
+    IsDeleted: Optional[str] = Field(None, json_schema_extra={"example": "0"})
+    # UpdatedDateTime: datetime
+    # ModifiedById: str = Field(json_schema_extra={"example": "1"})
 
 
 class RefPatient(RefPatientBase):
-    CreatedDateTime: datetime
-    UpdatedDateTime: datetime
-    CreatedById: str = Field(json_schema_extra={"example": "1"})
-    ModifiedById: str = Field(json_schema_extra={"example": "1"})
     model_config = {"from_attributes": True}

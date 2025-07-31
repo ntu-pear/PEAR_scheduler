@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
-from ..models.ref_patient_model import RefPatient
+from ..models import RefPatient
 from ..schemas.ref_patient import RefPatientCreate, RefPatientUpdate
 from datetime import datetime
 import math
@@ -11,6 +11,7 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
     """
     Idempotent create/update for message queue usage
     Creates if doesn't exist, updates if exists
+    Updated to handle IDENTITY column properly
     """
     current_time = datetime.utcnow()
     
@@ -23,23 +24,21 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
             if hasattr(existing_patient, key):
                 setattr(existing_patient, key, value)
         
-        existing_patient.UpdatedDateTime = current_time
-        existing_patient.ModifiedById = user
-        
         db.commit()
         db.refresh(existing_patient)
         return existing_patient
     
     else:
-        # Create new patient using MERGE for true upsert
+        # For IDENTITY columns, we need to use IDENTITY_INSERT ON
+        # or create without specifying ID. Let's try updating approach first.
         query = text("""
+            SET IDENTITY_INSERT [REF_PATIENT] ON;
+            
             MERGE [REF_PATIENT] AS target
             USING (VALUES (
-                :Id, :Name, :PreferredName, :UpdateBit, :StartDate, :EndDate, :IsActive,
-                :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById, :IsDeleted
+                :Id, :Name, :PreferredName, :UpdateBit, :StartDate, :EndDate, :IsActive, :IsDeleted
             )) AS source (
-                Id, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive,
-                CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById, IsDeleted
+                Id, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive, IsDeleted
             )
             ON target.Id = source.Id
             WHEN MATCHED THEN
@@ -50,16 +49,13 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
                     StartDate = source.StartDate,
                     EndDate = source.EndDate,
                     IsActive = source.IsActive,
-                    UpdatedDateTime = source.UpdatedDateTime,
-                    ModifiedById = source.ModifiedById,
                     IsDeleted = source.IsDeleted
             WHEN NOT MATCHED THEN
-                INSERT (Id, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive,
-                       CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById, IsDeleted)
+                INSERT (Id, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive, IsDeleted)
                 VALUES (source.Id, source.Name, source.PreferredName, source.UpdateBit,
-                       source.StartDate, source.EndDate, source.IsActive,
-                       source.CreatedDateTime, source.UpdatedDateTime, source.CreatedById,
-                       source.ModifiedById, source.IsDeleted);
+                       source.StartDate, source.EndDate, source.IsActive, source.IsDeleted);
+                       
+            SET IDENTITY_INSERT [REF_PATIENT] OFF;
         """)
         
         params = {
@@ -70,10 +66,6 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
             "StartDate": patient.StartDate,
             "EndDate": patient.EndDate,
             "IsActive": patient.IsActive,
-            "CreatedDateTime": current_time,
-            "UpdatedDateTime": current_time,
-            "CreatedById": user,
-            "ModifiedById": user,
             "IsDeleted": patient.IsDeleted or "0",
         }
         
@@ -86,6 +78,7 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
 def update_ref_patient_idempotent(db: Session, patient_id: str, patient: RefPatientUpdate, user: str):
     """
     Idempotent update - won't fail if patient doesn't exist
+    Updated to only use columns that exist in database
     """
     db_patient = db.query(RefPatient).filter(
         RefPatient.Id == patient_id, 
@@ -102,8 +95,9 @@ def update_ref_patient_idempotent(db: Session, patient_id: str, patient: RefPati
         if hasattr(db_patient, key):
             setattr(db_patient, key, value)
     
-    db_patient.UpdatedDateTime = datetime.utcnow()
-    db_patient.ModifiedById = user
+    # Don't update audit columns since they don't exist
+    # db_patient.UpdatedDateTime = datetime.utcnow()
+    # db_patient.ModifiedById = user
     
     db.commit()
     db.refresh(db_patient)
@@ -113,6 +107,7 @@ def update_ref_patient_idempotent(db: Session, patient_id: str, patient: RefPati
 def soft_delete_ref_patient_idempotent(db: Session, patient_id: str, user_id: str):
     """
     Idempotent soft delete - won't fail if patient doesn't exist or already deleted
+    Updated to only use columns that exist in database
     """
     db_patient = db.query(RefPatient).filter(RefPatient.Id == patient_id).first()
     
@@ -126,8 +121,9 @@ def soft_delete_ref_patient_idempotent(db: Session, patient_id: str, user_id: st
     
     # Perform soft delete
     db_patient.IsDeleted = "1"
-    db_patient.UpdatedDateTime = datetime.utcnow()
-    db_patient.ModifiedById = user_id
+    # Don't update audit columns since they don't exist
+    # db_patient.UpdatedDateTime = datetime.utcnow()
+    # db_patient.ModifiedById = user_id
     
     db.commit()
     db.refresh(db_patient)
