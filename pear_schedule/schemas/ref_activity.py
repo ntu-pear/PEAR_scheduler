@@ -1,31 +1,36 @@
 from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
-import re
 
 class RefActivityBase(BaseModel):
-    Id: int
-    Title: str
-    Desc: str
+    ActivityTitle: Optional[str] = None
+    ActivityDesc: Optional[str] = None
     StartDate: datetime 
-    EndDate: Optional[datetime] = None
+    EndDate: datetime
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
+
 
 class RefActivityCreate(RefActivityBase):
     CreatedDateTime: datetime
     UpdatedDateTime: datetime
-    CreatedById: str = Field(json_schema_extra={"example": "1"})
-    ModifiedById: str = Field(json_schema_extra={"example": "1"})
+    CreatedById: str = Field(json_schema_extra={"example": "activity_service"})
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 
-class RefActivityUpdate(RefActivityBase):
+
+class RefActivityUpdate(BaseModel):
+    ActivityTitle: Optional[str] = None
+    ActivityDesc: Optional[str] = None
+    StartDate: Optional[datetime] = None
+    EndDate: Optional[datetime] = None
     UpdatedDateTime: datetime
-    ModifiedById: str = Field(json_schema_extra={"example": "1"})
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 
 
 class RefActivity(RefActivityBase):
-    IncludeInScheduled: int
+    Id: int
     CreatedDateTime: datetime
     UpdatedDateTime: datetime 
-    CreatedById: str = Field(json_schema_extra={"example": "1"})
-    ModifiedById: str = Field(json_schema_extra={"example": "1"})
-    model_config = {"from_attributes": True}
+    CreatedById: str = Field(json_schema_extra={"example": "activity_service"})
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
+    
+    model_config = ConfigDict(from_attributes=True)

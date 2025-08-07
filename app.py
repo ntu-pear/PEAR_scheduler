@@ -20,10 +20,47 @@ from pear_schedule.utils import loadConfigs
 # Import messaging components
 from messaging.consumer_manager import create_scheduler_consumer_manager
 
-logging.basicConfig(format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
-    datefmt='%Y-%m-%d:%H:%M:%S',
-    level=logging.DEBUG)
+# Configure logging to reduce Pika spam
+def setup_logging():
+    """Setup logging with reduced Pika verbosity"""
+    logging.basicConfig(
+        format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+        datefmt='%Y-%m-%d:%H:%M:%S',
+        level=logging.INFO
+    )
+    
+    # Reduce Pika/RabbitMQ logging verbosity
+    pika_loggers = [
+        'pika',
+        'pika.adapters',
+        'pika.adapters.blocking_connection',
+        'pika.adapters.utils.selector_ioloop_adapter',
+        'pika.adapters.utils.io_services_utils', 
+        'pika.adapters.utils.connection_workflow',
+        'pika.adapters.select_connection',
+        'pika.connection',
+        'pika.channel',
+        'pika.callback'
+    ]
+    
+    for logger_name in pika_loggers:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+    
+    # These are particularly spammy - set to ERROR only
+    spam_loggers = [
+        'pika.adapters.utils.selector_ioloop_adapter',
+        'pika.adapters.utils.io_services_utils'
+    ]
+    
+    for logger_name in spam_loggers:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
+    
+    # Also reduce SQLAlchemy verbosity if needed
+    logging.getLogger('sqlalchemy.engine').setLevel(logging.WARNING)
+    logging.getLogger('sqlalchemy.pool').setLevel(logging.WARNING)
 
+# Setup logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Global consumer manager instance

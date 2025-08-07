@@ -13,7 +13,7 @@ class MapperUtil:
     def __init__(self):
         # Mapping configurations - easily add new ones here
         self.mapping_configs = {
-            # Patient Service → Scheduler Service (PRIORITY)
+            # Patient Service → Scheduler Service
             'patient_service_to_scheduler': {
                 'source_service': 'patient-service',
                 'target_service': 'scheduler-service', 

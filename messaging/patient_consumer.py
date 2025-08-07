@@ -14,7 +14,11 @@ class PatientConsumer:
     
     def __init__(self):
         self.client = RabbitMQClient("scheduler-patient-consumer")
-        self.consumer_queue_name = "scheduler.patient_updates"
+        self.patient_queues = [
+            "patient.created",
+            "patient.updated", 
+            "patient.deleted"
+        ]
         
         # Import here to avoid circular imports
         from pear_schedule.crud.ref_patient_crud import (
@@ -23,7 +27,6 @@ class PatientConsumer:
             soft_delete_ref_patient_idempotent
         )
         from pear_schedule.database import get_db
-        # Import the new simplified mapper functions
         from messaging.mappers.mapper_util import (
             map_patient_create,
             map_patient_update
@@ -34,12 +37,11 @@ class PatientConsumer:
         self.soft_delete_ref_patient_idempotent = soft_delete_ref_patient_idempotent
         self.get_db = get_db
         
-        # Store mapper functions
         self.map_patient_create = map_patient_create
         self.map_patient_update = map_patient_update
     
     def setup_consumer(self):
-        """Set up consumer to listen to patient.updates exchange"""
+        """Set up consumer to listen to existing patient queues"""
         try:
             self.client.connect()
             
@@ -50,34 +52,12 @@ class PatientConsumer:
                 durable=True
             )
             
-            # Declare our consumer queue
-            self.client.channel.queue_declare(
-                queue=self.consumer_queue_name,
-                durable=True,
-                arguments={
-                    'x-message-ttl': 300000,
-                    'x-dead-letter-exchange': 'system.dlx',
-                    'x-dead-letter-routing-key': 'failed.scheduler.patient'
-                }
-            )
-            
-            # Bind to patient update routing keys
-            routing_keys = [
-                'patient.created.*',
-                'patient.updated.*',
-                'patient.deleted.*'
-            ]
-            
-            for routing_key in routing_keys:
-                self.client.channel.queue_bind(
-                    exchange='patient.updates',
-                    queue=self.consumer_queue_name,
-                    routing_key=routing_key
-                )
-                logger.info(f"Bound {self.consumer_queue_name} to {routing_key}")
-            
-            # Set up consumer
-            self.client.consume(self.consumer_queue_name, self.handle_patient_message)
+            # Set up consumers for each existing patient queue
+            for queue_name in self.patient_queues:
+                # Don't declare the queue - it already exists as quorum queue
+                # Just set up the consumer
+                self.client.consume(queue_name, self.handle_patient_message)
+                logger.info(f"Set up consumer for existing queue: {queue_name}")
             
             logger.info("Scheduler patient consumer setup complete")
             
