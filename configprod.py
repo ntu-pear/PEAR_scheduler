@@ -41,19 +41,18 @@ from urllib.parse import unquote
 DB_TABLES = DBTABLES(
     DB_SCHEMA = "",
     ACTIVITY_TABLE = "ref_Activity",
-    ACTIVITY_AVAILABILITY_TABLE = "ref_ActivityAvailability",
-    ACTIVITY_EXCLUSION_TABLE = "ref_ActivityExclusion",
-    CENTRE_ACTIVITY_TABLE = "ref_Centre_Activity",
-    CENTRE_ACTIVITY_PREFERENCE_TABLE = "ref_CentreActivityPreference",
-    CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "ref_CentreActivityRecommendation",
+    ACTIVITY_EXCLUSION_TABLE = "ref_Activity_Exclusion",
+    CENTRE_ACTIVITY_TABLE = "Centre_Activity",
+    CENTRE_ACTIVITY_PREFERENCE_TABLE = "ref_Activity_Preference",
+    CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "ref_Activity_Recommendation",
     PATIENT_TABLE = "ref_Patient",
-    ROUTINE_TABLE = "ref_Routine",
-    ROUTINE_ACTIVITY_TABLE= "ref_RoutineActivity", 
-    MEDICATION_TABLE = "ref_Medication",
+    # ROUTINE_TABLE = "ref_Routine",
+    # ROUTINE_ACTIVITY_TABLE= "ref_RoutineActivity", 
+    MEDICATION_TABLE = "ref_Patient_Prescription",
     SCHEDULE_TABLE = "Schedule",
 )
 
-
+    # ACTIVITY_AVAILABILITY_TABLE = "ref_ActivityAvailability",
 # Scheduling Configs
 DAYS = 5
 HOURS = 8

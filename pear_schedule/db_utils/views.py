@@ -52,7 +52,7 @@ class AllActivitiesView(BaseView):
 
         query: Select = select(
             activity,
-            centre_activity.c["IsFixed"].label("IsFixed"),
+            centre_activity.c["is_fixed"].label("is_fixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
             centre_activity.c["MaxDuration"].label("MaxDuration")
@@ -75,7 +75,7 @@ class ActivitiesView(BaseView):
 
         query: Select = select(
             activity,
-            centre_activity.c["IsFixed"].label("IsFixed"),
+            centre_activity.c["is_fixed"].label("is_fixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
             centre_activity.c["MaxDuration"].label("MaxDuration")
@@ -174,7 +174,7 @@ class PatientsOnlyView(BaseView): # Just patients only
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
 
         query: Select = select(
-            patient.c.PatientID
+            patient.c.Id
         )
 
         return query
@@ -192,7 +192,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
         query: Select = select(
             centre_activity.c["ActivityID"],
             activity.c["ActivityTitle"],
-            centre_activity.c["IsFixed"],
+            centre_activity.c["is_fixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinPeopleReq"],
         ).join(
@@ -298,9 +298,9 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
 
         query: Select = select(
-            centre_activity.c["ActivityID"],
+            centre_activity.c["id"],
             activity.c["ActivityTitle"],
-            centre_activity.c["IsFixed"],
+            centre_activity.c["is_fixed"],
             centre_activity.c["FixedTimeSlots"],
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
@@ -322,7 +322,7 @@ class RecommendedActivitiesView(BaseView):
 
         query: Select = select(
             centre_activity.c["ActivityID"],
-            centre_activity.c["IsFixed"],
+            centre_activity.c["is_fixed"],
             activity.c["ActivityTitle"],
             centre_activity.c["FixedTimeSlots"],
             recommendations.c["PatientID"],
@@ -351,7 +351,7 @@ class DisrecommendedActivitiesView(BaseView):
 
         query: Select = select(
             centre_activity.c["ActivityID"],
-            centre_activity.c["IsFixed"],
+            centre_activity.c["is_fixed"],
             activity.c["ActivityTitle"],
             recommendations.c["PatientID"],
             activity.c["EndDate"].label("ActivityEndDate")
@@ -534,7 +534,7 @@ class CentreActivityPreferenceView(BaseView): # Get the centre activities prefer
             centre_activity_preference.c["PatientID"],
             centre_activity_preference.c["IsLike"],
             centre_activity.c["IsCompulsory"],
-            centre_activity.c["IsFixed"],
+            centre_activity.c["is_fixed"],
             centre_activity.c["IsGroup"],
             activity.c["ActivityTitle"]
         ).join(
@@ -564,7 +564,7 @@ class CentreActivityRecommendationView(BaseView): # Get the centre activities re
             centre_activity_recommendation.c["DoctorID"],
             centre_activity_recommendation.c["DoctorRecommendation"],
             centre_activity.c["IsCompulsory"],
-            centre_activity.c["IsFixed"],
+            centre_activity.c["is_fixed"],
             centre_activity.c["IsGroup"],
             activity.c["ActivityTitle"]
         ).join(
