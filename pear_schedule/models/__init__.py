@@ -1,5 +1,6 @@
 from .ref_patient_model import RefPatient
 from .ref_activity_model import RefActivity
+from .ref_centre_activity_model import RefCentreActivity
 from .ref_activity_exclusion_model import RefActivityExclusion
 from .ref_activity_preference_model import RefActivityPreference
 from .ref_activity_recommendation_model import RefActivityRecommendation

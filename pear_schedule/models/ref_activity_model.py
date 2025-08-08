@@ -22,3 +22,4 @@ class RefActivity(Base):
     preferences = relationship("RefActivityPreference", back_populates="activity")
     recommendations = relationship("RefActivityRecommendation", back_populates="activity")
     routines = relationship("RefActivityRoutine", back_populates="activity")
+    centre_activities = relationship("RefCentreActivity", back_populates="activity")

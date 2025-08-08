@@ -29,6 +29,7 @@ class MICROSERVICE_TABLES:
     """New dataclass specifically for the microservices ref tables"""
     REF_PATIENT: str = "REF_PATIENT"
     REF_ACTIVITY: str = "REF_ACTIVITY"
+    REF_CENTRE_ACTIVITY: str = "REF_CENTRE_ACTIVITY"
     REF_ACTIVITY_EXCLUSION: str = "REF_ACTIVITY_EXCLUSION"
     REF_ACTIVITY_PREFERENCE: str = "REF_ACTIVITY_PREFERENCE"
     REF_ACTIVITY_RECOMMENDATION: str = "REF_ACTIVITY_RECOMMENDATION"
@@ -59,7 +60,8 @@ def get_ref_table_mapping():
     """Returns mapping from old table names to new ref table names"""
     return {
         "Patient": "REF_PATIENT",
-        "Activity": "REF_ACTIVITY", 
+        "Activity": "REF_ACTIVITY",
+        "CentreActivity": "REF_CENTRE_ACTIVITY", 
         "ActivityExclusion": "REF_ACTIVITY_EXCLUSION",
         "CentreActivityPreference": "REF_ACTIVITY_PREFERENCE",
         "CentreActivityRecommendation": "REF_ACTIVITY_RECOMMENDATION",
@@ -79,6 +81,7 @@ def get_model_for_table(table_name: str):
     """Get the SQLAlchemy model class for a given table name"""
     from pear_schedule.models.ref_patient_model import RefPatient
     from pear_schedule.models.ref_activity_model import RefActivity
+    from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
     from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
     from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
     from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
@@ -89,6 +92,7 @@ def get_model_for_table(table_name: str):
     model_mapping = {
         "REF_PATIENT": RefPatient,
         "REF_ACTIVITY": RefActivity,
+        "REF_CENTRE_ACTIVITY": RefCentreActivity,
         "REF_ACTIVITY_EXCLUSION": RefActivityExclusion,
         "REF_ACTIVITY_PREFERENCE": RefActivityPreference,
         "REF_ACTIVITY_RECOMMENDATION": RefActivityRecommendation,

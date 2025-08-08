@@ -8,8 +8,8 @@ class RefActivityRecommendation(Base):
 
     Id = Column(Integer, primary_key=True, index=True) 
     IsDeleted = Column(String(1), default='0', nullable=False)
-    PatientId = Column(Integer, ForeignKey('REF_PATIENT.Id')) 
-    ActivityId = Column(Integer, ForeignKey('REF_ACTIVITY.Id'))
+    PatientId = Column(Integer, ForeignKey('REF_PATIENT.Id'))
+    CentreActivityId = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.Id'))
     DoctorId = Column(String(255))
     DoctorRecommendation = Column(String(1), default='1', nullable=False)
     DoctorRemarks = Column(String(255))
@@ -20,4 +20,4 @@ class RefActivityRecommendation(Base):
     ModifiedById = Column(String, nullable=False)  
 
     patient = relationship("RefPatient", back_populates="recommendations")
-    activity = relationship("RefActivity", back_populates="recommendations")
+    centre_activity = relationship("RefCentreActivity", back_populates="recommendations")

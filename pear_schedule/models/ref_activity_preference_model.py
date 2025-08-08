@@ -9,8 +9,8 @@ class RefActivityPreference(Base):
     Id = Column(Integer, primary_key=True, index=True) 
     IsDeleted = Column(String(1), default='0', nullable=False)
     PatientId = Column(Integer, ForeignKey('REF_PATIENT.Id')) 
-    ActivityId = Column(Integer, ForeignKey('REF_ACTIVITY.Id'))
-    IsLike = Column(String(1), default='0', nullable=False)
+    CentreActivityId = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.Id'))
+    IsLike = Column(String(2), default='0', nullable=False)
 
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
     UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
@@ -18,4 +18,4 @@ class RefActivityPreference(Base):
     ModifiedById = Column(String, nullable=False)  
 
     patient = relationship("RefPatient", back_populates="preferences")
-    activity = relationship("RefActivity", back_populates="preferences")
+    centre_activity = relationship("RefCentreActivity", back_populates="preferences")
