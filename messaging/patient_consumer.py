@@ -15,9 +15,9 @@ class PatientConsumer:
     def __init__(self):
         self.client = RabbitMQClient("scheduler-patient-consumer")
         self.patient_queues = [
-            "patient.created",
-            "patient.updated", 
-            "patient.deleted"
+            "scheduler.patient.created",
+            "scheduler.patient.updated",
+            "scheduler.patient.deleted"
         ]
         
         # Import here to avoid circular imports
@@ -57,7 +57,7 @@ class PatientConsumer:
                 # Don't declare the queue - it already exists as quorum queue
                 # Just set up the consumer
                 self.client.consume(queue_name, self.handle_patient_message)
-                logger.info(f"Set up consumer for existing queue: {queue_name}")
+                logger.info(f"Set up consumer for scheduler queue: {queue_name}")
             
             logger.info("Scheduler patient consumer setup complete")
             
