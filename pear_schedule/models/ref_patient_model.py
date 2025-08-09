@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 class RefPatient(Base):
     __tablename__ = "REF_PATIENT"
 
-    Id = Column(Integer, primary_key=True, index=True)
+    PatientID = Column(Integer, primary_key=True, index=True)
     IsDeleted = Column(String(1), default='0', nullable=False)
     Name = Column(String(255), nullable=False)
     PreferredName = Column(String(255))

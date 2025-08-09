@@ -6,8 +6,8 @@ from pear_schedule.database import Base
 class RefCentreActivity(Base):
     __tablename__ = "REF_CENTRE_ACTIVITY"
 
-    Id = Column(Integer, primary_key=True, index=True)
-    ActivityId = Column(Integer, ForeignKey('REF_ACTIVITY.Id'), nullable=False)
+    CentreActivityID = Column(Integer, primary_key=True, index=True)
+    ActivityID = Column(Integer, ForeignKey('REF_ACTIVITY.ActivityID'), nullable=False)
     IsDeleted = Column(String(1), default='0', nullable=False)
     IsCompulsory = Column(String(1), default='0', nullable=False)
     IsFixed = Column(String(1), default='0', nullable=False) 
@@ -25,6 +25,6 @@ class RefCentreActivity(Base):
     ModifiedById = Column(String, nullable=True)
 
     # Relationships
-    activity = relationship("RefActivity", back_populates="centre_activities")
-    preferences = relationship("RefActivityPreference", back_populates="centre_activity")
-    recommendations = relationship("RefActivityRecommendation", back_populates="centre_activity")
+    activity = relationship("RefActivity", back_populates="centre_activities", foreign_keys="[RefActivity.ActivityID]")
+    preferences = relationship("RefActivityPreference", back_populates="centre_activity", foreign_keys="[RefActivityPreference.CentreActivityPreferenceID]")
+    recommendations = relationship("RefActivityRecommendation", back_populates="centre_activity", foreign_keys="[RefActivityRecommendation.CentreActivityRecommendationID]")

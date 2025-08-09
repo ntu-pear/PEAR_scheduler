@@ -6,12 +6,12 @@ from pear_schedule.database import Base
 class RefActivityExclusion(Base):
     __tablename__ = "REF_ACTIVITY_EXCLUSION"
 
-    Id = Column(Integer, primary_key=True, index=True) 
+    ActivityExclusionID = Column(Integer, primary_key=True, index=True) 
     IsDeleted = Column(String(1), default='0', nullable=False)
-    PatientId = Column(Integer, ForeignKey('REF_PATIENT.Id')) 
-    ActivityId = Column(Integer, ForeignKey('REF_ACTIVITY.Id')) 
-    StartDate = Column(DateTime, nullable=False, default=datetime.now)
-    EndDate = Column(DateTime, nullable=False, default=datetime.now)
+    PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID')) 
+    ActivityID = Column(Integer, ForeignKey('REF_ACTIVITY.ActivityID')) 
+    StartDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    EndDateTime = Column(DateTime, nullable=False, default=datetime.now)
     ExclusionRemarks = Column(String(255))
     
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
@@ -19,5 +19,5 @@ class RefActivityExclusion(Base):
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)
 
-    patient = relationship("RefPatient", back_populates="exclusions")
-    activity = relationship("RefActivity", back_populates="exclusions")
+    patient = relationship("RefPatient", back_populates="exclusions", foreign_keys="[RefPatient.PatientID]")
+    activity = relationship("RefActivity", back_populates="exclusions", foreign_keys="[RefActivity.ActivityID]")

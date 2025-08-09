@@ -6,11 +6,11 @@ from pear_schedule.database import Base
 class RefActivityRecommendation(Base):
     __tablename__ = "REF_ACTIVITY_RECOMMENDATION"
 
-    Id = Column(Integer, primary_key=True, index=True) 
+    CentreActivityRecommendationID = Column(Integer, primary_key=True, index=True) 
     IsDeleted = Column(String(1), default='0', nullable=False)
-    PatientId = Column(Integer, ForeignKey('REF_PATIENT.Id'))
-    CentreActivityId = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.Id'))
-    DoctorId = Column(String(255))
+    PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID'))
+    CentreActivityID = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.CentreActivityID'))
+    DoctorID = Column(String(255))
     DoctorRecommendation = Column(String(1), default='1', nullable=False)
     DoctorRemarks = Column(String(255))
 
