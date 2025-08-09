@@ -19,5 +19,5 @@ class RefActivityExclusion(Base):
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)
 
-    patient = relationship("RefPatient", back_populates="exclusions", foreign_keys="[RefPatient.PatientID]")
-    activity = relationship("RefActivity", back_populates="exclusions", foreign_keys="[RefActivity.ActivityID]")
+    patient = relationship("RefPatient", back_populates="exclusions")
+    activity = relationship("RefActivity", back_populates="exclusions")

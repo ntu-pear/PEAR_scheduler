@@ -21,7 +21,7 @@ class MapperUtil:
                 'required_fields': ['id', 'name'],
                 'field_mappings': {
                     # Direct mappings (source_field: target_field)
-                    'id': 'Id',
+                    'id': 'PatientID',
                     'name': 'Name',
                     'preferredName': 'PreferredName',
                     'isActive': 'IsActive',

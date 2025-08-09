@@ -25,6 +25,6 @@ class RefCentreActivity(Base):
     ModifiedById = Column(String, nullable=True)
 
     # Relationships
-    activity = relationship("RefActivity", back_populates="centre_activities", foreign_keys="[RefActivity.ActivityID]")
-    preferences = relationship("RefActivityPreference", back_populates="centre_activity", foreign_keys="[RefActivityPreference.CentreActivityPreferenceID]")
-    recommendations = relationship("RefActivityRecommendation", back_populates="centre_activity", foreign_keys="[RefActivityRecommendation.CentreActivityRecommendationID]")
+    activity = relationship("RefActivity", back_populates="centre_activities")
+    preferences = relationship("RefActivityPreference", back_populates="centre_activity")
+    recommendations = relationship("RefActivityRecommendation", back_populates="centre_activity")

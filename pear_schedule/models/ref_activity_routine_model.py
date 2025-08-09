@@ -19,5 +19,5 @@ class RefActivityRoutine(Base):
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)  
 
-    patient = relationship("RefPatient", back_populates="routines", foreign_keys="[RefPatient.PatientID]")
-    activity = relationship("RefActivity", back_populates="routines", foreign_keys="[RefActivity.ActivityID]")
+    patient = relationship("RefPatient", back_populates="routines")
+    activity = relationship("RefActivity", back_populates="routines")

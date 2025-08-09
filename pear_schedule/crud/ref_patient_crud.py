@@ -16,7 +16,7 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
     current_time = datetime.utcnow()
     
     # Check if patient already exists
-    existing_patient = db.query(RefPatient).filter(RefPatient.Id == patient.Id).first()
+    existing_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
     
     if existing_patient:
         # Update existing patient
@@ -73,7 +73,7 @@ def create_or_update_ref_patient(db: Session, patient: RefPatientCreate, user: s
         db.commit()
         
         # Return the created/updated patient
-        return db.query(RefPatient).filter(RefPatient.Id == patient.Id).first()
+        return db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
 
 def update_ref_patient_idempotent(db: Session, patient_id: str, patient: RefPatientUpdate, user: str):
     """
@@ -81,7 +81,7 @@ def update_ref_patient_idempotent(db: Session, patient_id: str, patient: RefPati
     Updated to only use columns that exist in database
     """
     db_patient = db.query(RefPatient).filter(
-        RefPatient.Id == patient_id, 
+        RefPatient.PatientID == patient_id, 
         RefPatient.IsDeleted == "0"
     ).first()
     
@@ -109,7 +109,7 @@ def soft_delete_ref_patient_idempotent(db: Session, patient_id: str, user_id: st
     Idempotent soft delete - won't fail if patient doesn't exist or already deleted
     Updated to only use columns that exist in database
     """
-    db_patient = db.query(RefPatient).filter(RefPatient.Id == patient_id).first()
+    db_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient_id).first()
     
     if not db_patient:
         # Patient doesn't exist - idempotent operation should succeed
@@ -145,7 +145,7 @@ def get_ref_patients(db: Session, pageNo: int = 0, pageSize: int = 10,
         query = query.filter(RefPatient.IsActive == isActive)
 
     # Apply the same filters to count query
-    count_query = db.query(func.count(RefPatient.Id)).filter(RefPatient.IsDeleted == "0")
+    count_query = db.query(func.count(RefPatient.PatientID)).filter(RefPatient.IsDeleted == "0")
     
     if name:
         count_query = count_query.filter(RefPatient.Name.ilike(f"%{name}%"))

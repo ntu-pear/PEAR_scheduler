@@ -24,4 +24,4 @@ class RefPatientPrescription(Base):
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)  
 
-    patient = relationship("RefPatient", back_populates="prescriptions", foreign_keys="[RefPatient.PatientID]")
+    patient = relationship("RefPatient", back_populates="prescriptions")
