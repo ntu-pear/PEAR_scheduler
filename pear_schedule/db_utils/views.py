@@ -52,7 +52,7 @@ class AllActivitiesView(BaseView):
 
         query: Select = select(
             activity,
-            centre_activity.c["is_fixed"].label("is_fixed"),
+            centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
             centre_activity.c["MaxDuration"].label("MaxDuration")
@@ -75,7 +75,7 @@ class ActivitiesView(BaseView):
 
         query: Select = select(
             activity,
-            centre_activity.c["is_fixed"].label("is_fixed"),
+            centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
             centre_activity.c["MaxDuration"].label("MaxDuration")
@@ -102,7 +102,7 @@ class PatientsView(BaseView):
         centre_activity_cte = select(
             centre_activity_preference.c["PatientID"],
             centre_activity.c["ActivityID"].label("PreferredActivityID"),
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
         ).join(
@@ -141,7 +141,7 @@ class PatientsUnpreferredView(BaseView):
         centre_activity_cte = select(
             centre_activity_preference.c["PatientID"],
             centre_activity.c["ActivityID"].label("DispreferredActivityID"),
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
         ).join(
@@ -174,7 +174,7 @@ class PatientsOnlyView(BaseView): # Just patients only
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
 
         query: Select = select(
-            patient.c.Id
+            patient.c.PatientID
         )
 
         return query
@@ -192,14 +192,14 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
         query: Select = select(
             centre_activity.c["ActivityID"],
             activity.c["ActivityTitle"],
-            centre_activity.c["is_fixed"],
+            centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinPeopleReq"],
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity.c["IsCompulsory"] == False
-        ).where(activity.c["EndDate"] > get_next_sunday())
+        ).where(centre_activity.c["EndDate"] > get_next_sunday()) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -298,14 +298,14 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
 
         query: Select = select(
-            centre_activity.c["id"],
+            centre_activity.c["ActivityID"],
             activity.c["ActivityTitle"],
-            centre_activity.c["is_fixed"],
+            centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsCompulsory"] == True
-        ).where(activity.c["EndDate"] > get_next_sunday())
+        ).where(centre_activity.c["EndDate"] > get_next_sunday()) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -322,11 +322,11 @@ class RecommendedActivitiesView(BaseView):
 
         query: Select = select(
             centre_activity.c["ActivityID"],
-            centre_activity.c["is_fixed"],
+            centre_activity.c["IsFixed"],
             activity.c["ActivityTitle"],
             centre_activity.c["FixedTimeSlots"],
             recommendations.c["PatientID"],
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).join(
@@ -351,10 +351,10 @@ class DisrecommendedActivitiesView(BaseView):
 
         query: Select = select(
             centre_activity.c["ActivityID"],
-            centre_activity.c["is_fixed"],
+            centre_activity.c["IsFixed"],
             activity.c["ActivityTitle"],
             recommendations.c["PatientID"],
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).join(
@@ -534,7 +534,7 @@ class CentreActivityPreferenceView(BaseView): # Get the centre activities prefer
             centre_activity_preference.c["PatientID"],
             centre_activity_preference.c["IsLike"],
             centre_activity.c["IsCompulsory"],
-            centre_activity.c["is_fixed"],
+            centre_activity.c["IsFixed"],
             centre_activity.c["IsGroup"],
             activity.c["ActivityTitle"]
         ).join(
@@ -564,7 +564,7 @@ class CentreActivityRecommendationView(BaseView): # Get the centre activities re
             centre_activity_recommendation.c["DoctorID"],
             centre_activity_recommendation.c["DoctorRecommendation"],
             centre_activity.c["IsCompulsory"],
-            centre_activity.c["is_fixed"],
+            centre_activity.c["IsFixed"],
             centre_activity.c["IsGroup"],
             activity.c["ActivityTitle"]
         ).join(

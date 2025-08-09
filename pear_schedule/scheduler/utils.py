@@ -14,7 +14,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     from pear_schedule.scheduler.medicationScheduling import medicationScheduler
     patientDF = PatientsOnlyView.get_data()
 
-    for id in patientDF["Id"]:
+    for id in patientDF["PatientID"]:
         patientSchedules[id] = [["" for _ in range(config["HOURS"])] for _ in range(config["DAYS"])]
 
 
