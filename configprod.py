@@ -40,7 +40,7 @@ DB_TABLES = DBTABLES(
     SCHEDULE_TABLE = "SCHEDULE",
 )
 
-
+    # ACTIVITY_AVAILABILITY_TABLE = "ref_ActivityAvailability",
 # Scheduling Configs
 DAYS = 5
 HOURS = 8

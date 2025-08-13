@@ -102,7 +102,7 @@ class PatientsView(BaseView):
         centre_activity_cte = select(
             centre_activity_preference.c["PatientID"],
             centre_activity.c["ActivityID"].label("PreferredActivityID"),
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
         ).join(
@@ -141,7 +141,7 @@ class PatientsUnpreferredView(BaseView):
         centre_activity_cte = select(
             centre_activity_preference.c["PatientID"],
             centre_activity.c["ActivityID"].label("DispreferredActivityID"),
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             centre_activity, centre_activity_preference.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
         ).join(
@@ -199,7 +199,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity.c["IsCompulsory"] == False
-        ).where(activity.c["EndDate"] > get_next_sunday())
+        ).where(centre_activity.c["EndDate"] > get_next_sunday()) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -305,7 +305,7 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsCompulsory"] == True
-        ).where(activity.c["EndDate"] > get_next_sunday())
+        ).where(centre_activity.c["EndDate"] > get_next_sunday()) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -326,7 +326,7 @@ class RecommendedActivitiesView(BaseView):
             activity.c["ActivityTitle"],
             centre_activity.c["FixedTimeSlots"],
             recommendations.c["PatientID"],
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).join(
@@ -354,7 +354,7 @@ class DisrecommendedActivitiesView(BaseView):
             centre_activity.c["IsFixed"],
             activity.c["ActivityTitle"],
             recommendations.c["PatientID"],
-            activity.c["EndDate"].label("ActivityEndDate")
+            centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).join(
@@ -382,29 +382,33 @@ class MedicationView(BaseView): # Just medication table view
             medication.c["EndDateTime"] >= curDateTime 
         )
         return query
-
+#ROUTINETable Not Ready, add in once ready.
 class ValidRoutineActivitiesView(BaseView): # 
     @classmethod
     def build_query(cls) -> Select:
-        logger.info("Building valid routine activities query")
-        schema = DB.schema
+        logger.warning("ValidRoutineActivitiesView.build_query is not implemented yet — returning empty query")
+        return select()  # empty select to avoid breaking imports
+    
+    # def build_query(cls) -> Select:
+    #     logger.info("Building valid routine activities query")
+    #     schema = DB.schema
 
-        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
-        routine_activity = schema.tables[cls.db_tables.ROUTINE_ACTIVITY_TABLE]
-        routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
+    #     activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+    #     routine_activity = schema.tables[cls.db_tables.ROUTINE_ACTIVITY_TABLE]
+    #     routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
 
-        query: Select = select(
-            activity.c["ActivityTitle"],
-            activity.c["ActivityID"],
-            routine_activity.c["FixedTimeSlots"],
-            routine.c["PatientID"]
-        ).join(
-            activity, activity.c["ActivityID"] == routine.c["ActivityID"]
-        ).join(
-            routine_activity, routine.c["RoutineID"] == routine_activity.c["RoutineID"]
-        ).where(routine.c["IncludeInSchedule"] == True)
+    #     query: Select = select(
+    #         activity.c["ActivityTitle"],
+    #         activity.c["ActivityID"],
+    #         routine_activity.c["FixedTimeSlots"],
+    #         routine.c["PatientID"]
+    #     ).join(
+    #         activity, activity.c["ActivityID"] == routine.c["ActivityID"]
+    #     ).join(
+    #         routine_activity, routine.c["RoutineID"] == routine_activity.c["RoutineID"]
+    #     ).where(routine.c["IncludeInSchedule"] == True)
 
-        return query
+    #     return query
     
 
 class ActivityNameView(BaseView): # get activity name from activityID
