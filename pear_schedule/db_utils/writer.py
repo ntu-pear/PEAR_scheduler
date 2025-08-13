@@ -44,6 +44,9 @@ class ScheduleWriter(ConfigDependant):
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
+        # TODO: REPLACE THIS FOR AUDIT / LOGGING
+        SYSTEM_USER_ID = "SYSTEM"
+
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
             for p, slots in patientSchedules.items():
@@ -69,6 +72,8 @@ class ScheduleWriter(ConfigDependant):
                     "Sunday": "",
                     "IsDeleted": 0, ## Mandatory Field 
                     "UpdatedDateTime": today, ## Mandatory Field 
+                    "CreatedById": SYSTEM_USER_ID,
+                    "ModifiedById": SYSTEM_USER_ID
                 }
 
                 if not overwriteExisting:
@@ -116,12 +121,16 @@ class ScheduleWriter(ConfigDependant):
         
         today = datetime.datetime.now()
 
+        # TODO: REPLACE THIS FOR AUDIT / LOGGING
+        SYSTEM_USER_ID = "SYSTEM"
+
         with Session(bind=DB.engine) as session:
             try:
 
                 for i, record in filteredAdHocDF.iterrows():
                     schedule_data = {
-                        "UpdatedDateTime": today
+                        "UpdatedDateTime": today,
+                        "ModifiedById": SYSTEM_USER_ID
                     }
                     for col in chosenDays:
                         schedule_data[col] = record[col]
