@@ -2,13 +2,25 @@
 from sqlalchemy import URL
 
 from pear_schedule.utils import DBTABLES
-from pear_schedule.database import DB_CONN_STR_RAW
 from dotenv import load_dotenv
 import os
 load_dotenv()
+user = os.getenv("DB_USERNAME_DEV")
+password = os.getenv("DB_PASSWORD_DEV")
+server = os.getenv("DB_SERVER_DEV")
+port = os.getenv("DB_DATABASE_PORT")
+db = os.getenv("DB_DATABASE_DEV")
+driver = os.getenv("DB_DRIVER_DEV")
+# ideally all configs should be in an artifactory but PEAR doesnt have one as of yet
 
-# Use the properly encoded connection string from database module
-DB_CONN_STR = DB_CONN_STR_RAW
+
+# ~~~~~~~~~~~~~~~~~~~~~~~ DATABASE CONFIGS ~~~~~~~~~~~~~~~~~~~~~~~
+# DB_CONN_STR = "mssql+pyodbc://(LocalDb)\\MSSQLLocalDB/fypcom_localdb?driver=ODBC+Driver+17+for+SQL+Server"
+# DB_CONN_STR = "mssql+pyodbc://localhost:1433/fypcom_pearCore?driver=ODBC+Driver+17+for+SQL+Server"
+# DB_CONN_STR = "mssql+pyodbc://fypcom_fypcom:Fyppear%401@host.minikube.internal:1433/fypcom_dev?driver=ODBC+Driver+17+for+SQL+Server"
+# DB_CONN_STR = "mssql+pyodbc://"
+DB_CONN_STR = f"mssql+pyodbc://{user}:{password}@{server}:{port}/{db}?driver={driver.replace(' ', '+')}"
+from urllib.parse import unquote
 
 
 # connection_string = (
@@ -28,17 +40,17 @@ DB_CONN_STR = DB_CONN_STR_RAW
 DB_TABLES = DBTABLES(
     DB_SCHEMA = "",
     ACTIVITY_TABLE = "REF_ACTIVITY",
-    ACTIVITY_AVAILABILITY_TABLE = "REF_ACTIVITY_AVAILABILITY",
     ACTIVITY_EXCLUSION_TABLE = "REF_ACTIVITY_EXCLUSION",
-    CENTRE_ACTIVITY_TABLE = "REF_ACTIVITY", 
+    CENTRE_ACTIVITY_TABLE = "REF_CENTRE_ACTIVITY",
     CENTRE_ACTIVITY_PREFERENCE_TABLE = "REF_ACTIVITY_PREFERENCE",
     CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "REF_ACTIVITY_RECOMMENDATION",
     PATIENT_TABLE = "REF_PATIENT",
-    ROUTINE_TABLE = "REF_ACTIVITY_ROUTINE",
-    ROUTINE_ACTIVITY_TABLE= "REF_ACTIVITY_ROUTINE",
-    MEDICATION_TABLE = "REF_PATIENT_PRESCRIPTION", 
+    # ROUTINE_TABLE = "REF_ROUTINE",
+    # ROUTINE_ACTIVITY_TABLE = "REF_ROUTINEACTIVITY",
+    MEDICATION_TABLE = "REF_PATIENT_PRESCRIPTION",
     SCHEDULE_TABLE = "SCHEDULE",
 )
+
 
     # ACTIVITY_AVAILABILITY_TABLE = "ref_ActivityAvailability",
 # Scheduling Configs
