@@ -43,6 +43,10 @@ class IndividualActivityScheduler(BaseScheduler):
                 patients[pid] = {
                     "preferences":dict(), "exclusions": dict(), "dispreferences": dict()  # recommendations handled in compulsory scheduling
                 }
+            
+                # If ActivityEndDate is null, means the Activity will restart every week. #ToBeConfirmed
+            if pd.isna(p["ActivityEndDate"]):
+                p["ActivityEndDate"] = week_end
 
             if p["ActivityEndDate"] <= week_end:
                 continue
@@ -113,7 +117,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             patients = cls._get_patient_data(conn=conn)
 
             # get routine data
-            routines = ValidRoutineActivitiesView.get_data(conn=conn)
+#            routines = ValidRoutineActivitiesView.get_data(conn=conn)
 
             start = 0
 
@@ -128,10 +132,10 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 patient_schedule = schedules[patient_id]
 
                 fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
-                patient_routine = routines[routines["PatientID"] == patient_id]
+                #patient_routine = routines[routines["PatientID"] == patient_id]
 
                 cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
-                cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
+               # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
                 cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
 
                 start = end
@@ -428,6 +432,8 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             # use the original individual scheduler to update activities
             patient_data = cls._get_patient_data(conn)
             activities = ActivitiesView.get_data(conn)
+            # Fill null EndDate with week_end as the current weekend (this is because activities who are indefinite have null EndDate)
+            activities["EndDate"] = activities["EndDate"].fillna(week_end)
             activities = activities[activities["EndDate"] > week_end]
             activities_title_lookup = {
                 row["ActivityTitle"]: row["ActivityID"] for _, row in activities.iterrows()
