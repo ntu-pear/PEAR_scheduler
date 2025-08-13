@@ -667,6 +667,7 @@ def allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compuls
     testName = "All compulsory activities are scheduled at correct time slots for all patients"
     testRemarks = []
     testResult = "Pass"
+    allCompulsoryScheduled = True
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
         patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
 
@@ -675,14 +676,14 @@ def allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compuls
             fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
             compActivityName = compActivityRecord["ActivityTitle"]
 
-            allCompulsoryScheduled = True
+            # allCompulsoryScheduled = True
             for day, timeslot in fixedTimeSlots:
                 if compActivityName not in patientSchedule[day][timeslot]:
                     allCompulsoryScheduled = False
                     testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
-
-    if not allCompulsoryScheduled:
-        testResult = "Fail"
+    testResult = "Pass" if allCompulsoryScheduled else "Fail"
+    # if not allCompulsoryScheduled:
+    #     testResult = "Fail"
 
     return {"testName": testName, "testResult": testResult, "testRemarks": testRemarks}
 
@@ -693,18 +694,29 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
     testResult = "Pass"
 
     validityMap = {}
-    for _, activityRecord, in activitiesDF.iterrows():
+    for _, activityRecord in activitiesDF.iterrows():
         if activityRecord["ActivityTitle"] not in validityMap:
-            validityMap[activityRecord["ActivityTitle"]] = [activityRecord["StartDate"], activityRecord["EndDate"]]
+            validityMap[activityRecord["ActivityTitle"]] = [
+                activityRecord["StartDate"],
+                activityRecord["EndDate"]
+            ]
 
     result = True
     startScheduleDate = weeklyScheduleViewDF["StartDate"].iloc[0]
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
-        patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
+        patientSchedule = [
+            scheduleRecord["Monday"].split("--"),
+            scheduleRecord["Tuesday"].split("--"),
+            scheduleRecord["Wednesday"].split("--"),
+            scheduleRecord["Thursday"].split("--"),
+            scheduleRecord["Friday"].split("--"),
+            scheduleRecord["Saturday"].split("--")
+        ]
         addDays = 0
         for daySchedule in patientSchedule:
-            dateOfActivity = startScheduleDate + datetime.timedelta(days=addDays)
+            dateOfActivity = (startScheduleDate + datetime.timedelta(days=addDays)).date()
             if len(daySchedule) <= 1:
+                addDays += 1
                 continue
 
             for activity in daySchedule:
@@ -712,10 +724,19 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
                 
                 if activityTitle == "Free and Easy":
                     continue
+
+                startDate, endDate = validityMap[activityTitle]
                 
-                if not (validityMap[activityTitle][0] <= dateOfActivity <= validityMap[activityTitle][1]):
+                # Allow if EndDate is null as EndDate null means activity enddate is indefinite
+                if pd.isnull(endDate):
+                    continue
+
+                if not (startDate <= dateOfActivity <= endDate.date()):
                     result = False
-                    testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} on {dateOfActivity.strftime('%Y-%m-%d')} has expired and is not valid")
+                    testRemarks.append(
+                        f"{activityTitle} for patient ID {scheduleRecord['PatientID']} "
+                        f"on {dateOfActivity.strftime('%Y-%m-%d')} has expired and is not valid"
+                    )
             addDays += 1
     
     if not result:

@@ -432,6 +432,8 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             # use the original individual scheduler to update activities
             patient_data = cls._get_patient_data(conn)
             activities = ActivitiesView.get_data(conn)
+            # Fill null EndDate with week_end as the current weekend (this is because activities who are indefinite have null EndDate)
+            activities["EndDate"] = activities["EndDate"].fillna(week_end)
             activities = activities[activities["EndDate"] > week_end]
             activities_title_lookup = {
                 row["ActivityTitle"]: row["ActivityID"] for _, row in activities.iterrows()
