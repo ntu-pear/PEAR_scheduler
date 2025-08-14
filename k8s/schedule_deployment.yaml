@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pear-schedule-deployment
+  labels:
+    app: pear-schedule
+    project: pear
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pear-schedule
+      project: pear
+  template:
+    metadata:
+      labels:
+        app: pear-schedule
+        project: pear
+    spec:
+      hostNetwork: true
+      containers:
+      - name: pear-schedule
+        image: host.minikube.internal:5000/pear_schedule:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+          - name: TZ
+            value: Asia/Singapore
