@@ -1,4 +1,4 @@
-# only works for unix because windows is a joke
+#for UNIX
 .PHONY: build clean docker/build docker/run deploy/gcp
 
 ARTIFACTORY := localhost:5000/
