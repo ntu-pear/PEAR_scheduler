@@ -2,7 +2,7 @@ name: CD
 
 on:
   push:
-    branches: ['scheduler_prod']
+    branches: ['chore/migrate-db-integration']
 
 permissions:
   contents: read
@@ -37,9 +37,7 @@ jobs:
       RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
       RABBITMQ_PASS: ${{ secrets.RABBITMQ_PASS }}
       RABBITMQ_VIRTUAL_HOST: ${{ secrets.RABBITMQ_VIRTUAL_HOST }}
-      WEB_FE_ORIGIN: ${{ secrets.WEB_FE_ORIGIN }}
-      WEB_FE_ORIGIN_STAGING: ${{ secrets.WEB_FE_ORIGIN_STAGING }}
-      USER_BE_ORIGIN: ${{ secrets.USER_BE_ORIGIN }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -56,37 +54,28 @@ jobs:
           echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> .env
           echo "RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }}" >> .env
           echo "RABBITMQ_VIRTUAL_HOST=${{ secrets.RABBITMQ_VIRTUAL_HOST }}" >> .env
-          echo "WEB_FE_ORIGIN=${{ secrets.WEB_FE_ORIGIN }}" >> .env
-          echo "WEB_FE_ORIGIN_STAGING=${{ secrets.WEB_FE_ORIGIN_STAGING }}" >> .env
-          echo "USER_BE_ORIGIN=${{ secrets.USER_BE_ORIGIN }}" >> .env
-
-      - name: Create/Update ConfigMap in Kubernetes
-        run: |
-          kubectl create configmap scheduler-service-dev-env \
-            --from-env-file=.env \
-            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Delete old deployment and service
         run: |
-          kubectl delete deployment scheduler-service-dev -n default --ignore-not-found
+          kubectl delete deployment scheduler-service-dev service/scheduler-service-dev --ignore-not-found
 
       - name: Delete old Docker images
         run: |
-          docker rmi scheduler_service_dev || true
-          docker rmi localhost:5000/scheduler_service_dev || true
+          docker rmi scheduler-service-dev || true
+          docker rmi localhost:5000/scheduler-service-dev || true
 
       - name: Build Docker image
         run: |
-          docker build --no-cache -f Dockerfile.dev -t scheduler_service_dev:latest .
+          docker build --no-cache -f Dockerfile.dev -t scheduler-service-dev .
 
       - name: Tag Docker image for local registry
         run: |
-          docker tag scheduler_service_dev:latest localhost:5000/scheduler_service_dev:latest
+          docker tag scheduler-service-dev:latest localhost:5000/scheduler-service-dev:latest
 
       - name: Push Docker image to local registry
         run: |
-          docker push localhost:5000/scheduler_service_dev:latest
+          docker push localhost:5000/scheduler-service-dev:latest
 
       - name: Deploy to Kubernetes
         run: |
-          kubectl apply -f ./k8s/scheduler_deployment_dev.yaml
+          kubectl apply -f ./k8s/scheduler_deployment-dev.yaml
