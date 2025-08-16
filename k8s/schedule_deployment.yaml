@@ -1,29 +1,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: pear-schedule-deployment
-  labels:
-    app: pear-schedule
-    project: pear
+  name: scheduler-service-dev
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: pear-schedule
-      project: pear
+      app: scheduler-service-dev
   template:
     metadata:
       labels:
-        app: pear-schedule
-        project: pear
+        app: scheduler-service-dev
     spec:
-      hostNetwork: true
       containers:
-      - name: pear-schedule
-        image: host.minikube.internal:5000/pear_schedule:latest
-        imagePullPolicy: Always
+      - name: scheduler-service-dev
+        image: host.minikube.internal:5000/scheduler_service_dev:latest
         ports:
         - containerPort: 8080
-        env:
-          - name: TZ
-            value: Asia/Singapore
+        envFrom:
+        - configMapRef:
+            name: scheduler-service-dev-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler-service-dev
+spec:
+  selector:
+    app: scheduler-service-dev
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080
+  type: NodePort
