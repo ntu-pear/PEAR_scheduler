@@ -15,6 +15,7 @@ spec:
       containers:
       - name: scheduler-service-dev
         image: host.minikube.internal:5000/scheduler_service_dev:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
         envFrom:
