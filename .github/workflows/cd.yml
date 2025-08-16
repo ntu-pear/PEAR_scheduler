@@ -55,27 +55,33 @@ jobs:
           echo "RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }}" >> .env
           echo "RABBITMQ_VIRTUAL_HOST=${{ secrets.RABBITMQ_VIRTUAL_HOST }}" >> .env
 
+      - name: Create/Update ConfigMap in Kubernetes
+        run: |
+          kubectl create configmap scheduler-service-dev-env \
+            --from-env-file=.env \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Delete old deployment and service
         run: |
           kubectl delete deployment scheduler-service-dev service/scheduler-service-dev --ignore-not-found
 
       - name: Delete old Docker images
         run: |
-          docker rmi scheduler-service-dev || true
-          docker rmi localhost:5000/scheduler-service-dev || true
+          docker rmi scheduler_service_dev || true
+          docker rmi localhost:5000/scheduler_service_dev || true
 
       - name: Build Docker image
         run: |
-          docker build --no-cache -f Dockerfile.dev -t scheduler-service-dev .
+          docker build --no-cache -f Dockerfile.dev -t scheduler_service_dev:latest .
 
       - name: Tag Docker image for local registry
         run: |
-          docker tag scheduler-service-dev:latest localhost:5000/scheduler-service-dev:latest
+          docker tag scheduler_service_dev:latest localhost:5000/scheduler_service_dev:latest
 
       - name: Push Docker image to local registry
         run: |
-          docker push localhost:5000/scheduler-service-dev:latest
+          docker push localhost:5000/scheduler_service_dev:latest
 
       - name: Deploy to Kubernetes
         run: |
-          kubectl apply -f ./k8s/scheduler_deployment-dev.yaml
+          kubectl apply -f ./k8s/scheduler_deployment_dev.yaml
