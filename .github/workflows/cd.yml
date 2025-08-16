@@ -63,7 +63,7 @@ jobs:
 
       - name: Delete old deployment and service
         run: |
-          kubectl delete deployment scheduler-service-dev service/scheduler-service-dev --ignore-not-found
+          kubectl delete deployment service/scheduler-service-dev --ignore-not-found
 
       - name: Delete old Docker images
         run: |
