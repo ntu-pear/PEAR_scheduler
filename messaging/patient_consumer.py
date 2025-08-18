@@ -1,7 +1,6 @@
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -48,32 +47,6 @@ class PatientConsumer:
         
         self.map_patient_create = map_patient_create
         self.map_patient_update = map_patient_update
-    
-    @contextmanager
-    def get_db_transaction(self):
-        """Context manager for database transactions with proper cleanup"""
-        db = next(self.get_db())
-        try:
-            logger.debug("Started database session transaction")
-            yield db
-            logger.debug("Database session transaction completed")
-        except Exception as e:
-            logger.error(f"Rolling back transaction due to error: {e}")
-            db.rollback()
-            raise
-        finally:
-            db.close()
-            logger.debug("Closed database session")
-    
-    def _flush_logs(self):
-        """Force flush all log handlers to ensure logs are written immediately"""
-        try:
-            for handler in logging.getLogger().handlers:
-                handler.flush()
-            for handler in logger.handlers:
-                handler.flush()
-        except Exception:
-            pass
     
     def set_shutdown_event(self, shutdown_event: threading.Event):
         """Set the shutdown event for graceful shutdown"""
@@ -122,11 +95,23 @@ class PatientConsumer:
         if self.client:
             self.client.stop_consuming()
     
+    def stop(self):
+        """Stop the consumer gracefully"""
+        logger.info("Stopping patient consumer...")
+        self.is_consuming = False
+        if self.client:
+            self.client.stop_consuming()
+    
     def _handle_message_wrapper(self, message: Dict[str, Any]) -> bool:
         """Wrapper for message handling with proper acknowledgment logic."""
         try:
-            message_correlation = message.get('data', {}).get('correlation_id', 'UNKNOWN')
-            logger.debug(f"RECEIVED MESSAGE: correlation_id={message_correlation}")
+            # Check if we should shutdown
+            if self.shutdown_event and self.shutdown_event.is_set():
+                logger.info("Shutdown signal received, stopping message processing")
+                return False
+            
+            # Log the full message for debugging
+            logger.info(f"Received message: {message}")
             
             if self.shutdown_event and self.shutdown_event.is_set():
                 logger.info("Shutdown signal received, stopping message processing")
