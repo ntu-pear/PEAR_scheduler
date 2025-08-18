@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Dict, Any
 from datetime import datetime
 
@@ -19,6 +20,8 @@ class PatientConsumer:
             "scheduler.patient.updated",
             "scheduler.patient.deleted"
         ]
+        self.shutdown_event = None
+        self.is_consuming = False
         
         # Import here to avoid circular imports
         from pear_schedule.crud.ref_patient_crud import (
@@ -39,6 +42,12 @@ class PatientConsumer:
         
         self.map_patient_create = map_patient_create
         self.map_patient_update = map_patient_update
+    
+    def set_shutdown_event(self, shutdown_event: threading.Event):
+        """Set the shutdown event for graceful shutdown"""
+        self.shutdown_event = shutdown_event
+        if self.client:
+            self.client.set_shutdown_event(shutdown_event)
     
     def setup_consumer(self):
         """Set up consumer to listen to existing patient queues"""
@@ -70,10 +79,20 @@ class PatientConsumer:
         try:
             self.setup_consumer()
             logger.info("Starting scheduler patient consumer...")
+            self.is_consuming = True
             self.client.start_consuming()
         except Exception as e:
             logger.error(f"Error starting scheduler patient consumer: {str(e)}")
             raise
+        finally:
+            self.is_consuming = False
+    
+    def stop(self):
+        """Stop the consumer gracefully"""
+        logger.info("Stopping patient consumer...")
+        self.is_consuming = False
+        if self.client:
+            self.client.stop_consuming()
     
     def handle_patient_message(self, message: Dict[str, Any]) -> bool:
         """
@@ -81,6 +100,11 @@ class PatientConsumer:
         Returns True if message was processed successfully
         """
         try:
+            # Check if we should shutdown
+            if self.shutdown_event and self.shutdown_event.is_set():
+                logger.info("Shutdown signal received, stopping message processing")
+                return False
+            
             # Log the full message for debugging
             logger.info(f"Received message: {message}")
             
