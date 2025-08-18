@@ -5,6 +5,7 @@ import os
 import sys
 import threading
 import signal
+import asyncio
 from typing import Any, Mapping
 
 import uvicorn
@@ -52,7 +53,9 @@ def setup_logging():
     # These are particularly spammy - set to ERROR only
     spam_loggers = [
         'pika.adapters.utils.selector_ioloop_adapter',
-        'pika.adapters.utils.io_services_utils'
+        'pika.adapters.utils.io_services_utils',
+        'pika.adapters.blocking_connection',
+        'pika.connection'
     ]
     
     for logger_name in spam_loggers:
@@ -68,6 +71,7 @@ logger = logging.getLogger(__name__)
 
 # Global consumer manager instance
 consumer_manager = None
+shutdown_event = threading.Event()
 
 def create_app():
     from pear_schedule.api.routes import router as sched_router
@@ -109,9 +113,11 @@ def create_app():
         start_consumers()
 
     @app.on_event("shutdown") 
-    async def shutdown_event():
+    async def shutdown_event_handler():
         """Stop consumers when FastAPI server shuts down"""
-        stop_consumers()
+        logger.info("FastAPI shutdown event triggered")
+        shutdown_event.set()  # Signal shutdown
+        await asyncio.get_event_loop().run_in_executor(None, stop_consumers)
 
     return app
 
@@ -129,6 +135,9 @@ def start_consumers():
     try:
         logger.info("Starting RabbitMQ consumers...")
         consumer_manager = create_scheduler_consumer_manager()
+        
+        # Pass shutdown event to consumer manager
+        consumer_manager.set_shutdown_event(shutdown_event)
         
         # Start all registered consumers
         consumer_manager.start_all_consumers()
@@ -163,6 +172,7 @@ def setup_signal_handlers():
     """Setup signal handlers for graceful shutdown"""
     def signal_handler(signum, frame):
         logger.info(f"Received signal {signum}, shutting down gracefully...")
+        shutdown_event.set()
         stop_consumers()
         sys.exit(0)
     
@@ -174,11 +184,19 @@ def init_app(config: Mapping[str, Any], args):
     
     os.environ["PEAR_SCHEDULER_CONFIG"] = args.config
     
-    # Setup signal handlers for graceful shutdown
-    setup_signal_handlers()
+    # For uvicorn, we rely on FastAPI's shutdown event rather than signal handlers
+    # because uvicorn handles signals itself
     
     # Start the FastAPI server (consumers will start automatically via startup event)
-    uvicorn.run("app:create_app", host="0.0.0.0", port=args.port, workers=args.workers, factory=True)
+    uvicorn.run(
+        "app:create_app", 
+        host="0.0.0.0", 
+        port=args.port, 
+        workers=args.workers, 
+        factory=True,
+        # Add signal handlers for uvicorn
+        loop="asyncio"
+    )
 
 def refresh_schedules(config: Mapping[str, Any], args):
     config = {item: getattr(config, item) for item in dir(config)}
@@ -213,7 +231,7 @@ def start_consumers_only(config: Mapping[str, Any], args):
     DB.init_app(config_dict["DB_CONN_STR"], config_dict)
     loadConfigs(config_dict)
     
-    # Setup signal handlers
+    # Setup signal handlers (this mode needs them since no uvicorn)
     setup_signal_handlers()
     
     # Start consumers
@@ -222,9 +240,8 @@ def start_consumers_only(config: Mapping[str, Any], args):
     # Keep the main thread alive
     try:
         logger.info("Consumers running... Press Ctrl+C to stop")
-        while True:
-            import time
-            time.sleep(1)
+        while not shutdown_event.is_set():
+            shutdown_event.wait(1)  # Wait with timeout so we can check health
             
             # Optional: Monitor consumer health
             if consumer_manager:
@@ -241,6 +258,7 @@ def start_consumers_only(config: Mapping[str, Any], args):
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user")
     finally:
+        shutdown_event.set()
         stop_consumers()
 
 def parse_args():
