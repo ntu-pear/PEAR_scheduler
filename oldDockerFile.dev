@@ -1,6 +1,6 @@
-FROM python:3.11
+FROM python:3.12
 
-WORKDIR /pear
+WORKDIR /pear_schedule
 
 # Install pyodbc dependencies
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
