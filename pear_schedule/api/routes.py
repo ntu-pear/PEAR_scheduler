@@ -28,6 +28,29 @@ init(autoreset=True)
 
 router = APIRouter()
 
+@router.api_route("/getSchedule/", methods=["GET"])
+def get_schedule(request: Request):
+    try:
+        weeklyScheduleViewDF = WeeklyScheduleView.get_data()
+        weeklyScheduleViewDF.pop("ScheduleID")
+        if len(weeklyScheduleViewDF) == 0:
+            responseData = {"Status": "404", "Message": "No schedules found", "Data": ""} 
+            return JSONResponse(jsonable_encoder(responseData))
+
+        # Convert dataframe to JSON response (records = list of dicts, easier for API)
+        schedules_json = weeklyScheduleViewDF.to_dict(orient="records")
+
+        responseData = {
+            "Status": "200",
+            "Message": "Schedules retrieved successfully",
+            "Data": schedules_json
+        }
+        return JSONResponse(jsonable_encoder(responseData))
+
+    except Exception as e:
+        logger.exception(f"Error occurred when fetching schedules: {e}")
+        responseData = {"Status": "500", "Message": "Schedule retrieval error", "Data": ""} 
+        return JSONResponse(jsonable_encoder(responseData))
 
 @router.api_route("/generate/", methods=["GET"])
 def generate_schedule(request: Request):
