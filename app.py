@@ -23,25 +23,6 @@ load_dotenv()
 # Import messaging components
 from messaging.consumer_manager import create_scheduler_consumer_manager
 
-#Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:5173",
-    f"http://{os.getenv('WEB_FE_ORIGIN')}",
-    f"http://{os.getenv('WEB_FE_ORIGIN_STAGING')}"
-    # Add other origins if needed
-]
-
-
-# middleware to connect to the frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,  # Add your Next.js app's URL
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Configure logging to reduce Pika spam
 def setup_logging():
@@ -93,16 +74,9 @@ consumer_manager = None
 shutdown_event = threading.Event()
 
 def create_app():
-    from pear_schedule.api import (
-        schedule_router,
-        integrity_router
-    )
-    app = FastAPI(
-        title="PEAR FYP Scheduler Service",
-        description="Scheduler Service API Documentation"
-    )
-    app.include_router(schedule_router.router, prefix="/schedule")
-    app.include_router(integrity_router.router, prefix="/integrity")
+    from pear_schedule.api.routes import router as sched_router
+    app = FastAPI()
+    app.include_router(sched_router, prefix="/schedule")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
         "http://localhost",
