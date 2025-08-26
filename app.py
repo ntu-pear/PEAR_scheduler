@@ -19,7 +19,6 @@ from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import loadConfigs
 from fastapi.middleware.cors import CORSMiddleware
 
-
 load_dotenv()
 # Import messaging components
 from messaging.consumer_manager import create_scheduler_consumer_manager
