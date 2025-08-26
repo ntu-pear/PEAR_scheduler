@@ -19,10 +19,30 @@ from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import loadConfigs
 from fastapi.middleware.cors import CORSMiddleware
 
+
 load_dotenv()
 # Import messaging components
 from messaging.consumer_manager import create_scheduler_consumer_manager
 
+#Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    f"http://{os.getenv('WEB_FE_ORIGIN')}",
+    f"http://{os.getenv('WEB_FE_ORIGIN_STAGING')}"
+    # Add other origins if needed
+]
+
+
+# middleware to connect to the frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Add your Next.js app's URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Configure logging to reduce Pika spam
 def setup_logging():
