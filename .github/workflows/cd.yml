@@ -2,7 +2,7 @@ name: CD
 
 on:
   push:
-    branches: ['chore/migrate-db-jace']
+    branches: ['chore/migrate-db-integration']
 
 permissions:
   contents: read
