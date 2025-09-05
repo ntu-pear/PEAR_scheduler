@@ -1,0 +1,90 @@
+name: CD
+
+on:
+  push:
+    branches: ['chore/migrate-db-jace']
+
+permissions:
+  contents: read
+
+jobs:
+  precheck:
+    runs-on: [self-hosted, Linux, X64, scheduler]
+    steps:
+      - name: Check kubectl permissions
+        run: |
+          echo "Checking Kubernetes permissions..."
+          kubectl auth can-i delete deployments || (echo "No permission to delete deployments" && exit 1)
+          kubectl auth can-i create deployments || (echo "No permission to create deployments" && exit 1)
+      - name: Check Docker registry access
+        run: |
+          echo "Checking Docker registry access..."
+          docker info || (echo "Docker not accessible" && exit 1)
+
+  deploy:
+    needs: precheck
+    runs-on: [self-hosted, Linux, X64, scheduler]
+
+    env:
+      DB_SERVER_DEV: ${{ secrets.DB_SERVER_DEV }}
+      DB_DATABASE_DEV: ${{ secrets.DB_DATABASE_DEV }}
+      DB_DATABASE_PORT: ${{ secrets.DB_DATABASE_PORT }}
+      DB_USERNAME_DEV: ${{ secrets.DB_USERNAME_DEV }}
+      DB_PASSWORD_DEV: ${{ secrets.DB_PASSWORD_DEV }}
+      DB_DRIVER_DEV: ${{ secrets.DB_DRIVER_DEV }}
+      RABBITMQ_HOST: ${{ secrets.RABBITMQ_HOST }}
+      RABBITMQ_PORT: ${{ secrets.RABBITMQ_PORT }}
+      RABBITMQ_USER: ${{ secrets.RABBITMQ_USER }}
+      RABBITMQ_PASS: ${{ secrets.RABBITMQ_PASS }}
+      RABBITMQ_VIRTUAL_HOST: ${{ secrets.RABBITMQ_VIRTUAL_HOST }}
+      WEB_FE_ORIGIN: ${{ secrets.WEB_FE_ORIGIN }}
+      WEB_FE_ORIGIN_STAGING: ${{ secrets.WEB_FE_ORIGIN_STAGING }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create .env file from GitHub Secrets
+        run: |
+          echo "DB_DRIVER_DEV=${{ secrets.DB_DRIVER_DEV }}" >> .env
+          echo "DB_SERVER_DEV=${{ secrets.DB_SERVER_DEV }}" >> .env
+          echo "DB_DATABASE_DEV=${{ secrets.DB_DATABASE_DEV }}" >> .env
+          echo "DB_DATABASE_PORT=${{ secrets.DB_DATABASE_PORT }}" >> .env
+          echo "DB_USERNAME_DEV=${{ secrets.DB_USERNAME_DEV }}" >> .env
+          echo "DB_PASSWORD_DEV=${{ secrets.DB_PASSWORD_DEV }}" >> .env
+          echo "RABBITMQ_HOST=${{ secrets.RABBITMQ_HOST }}" >> .env
+          echo "RABBITMQ_PORT=${{ secrets.RABBITMQ_PORT }}" >> .env
+          echo "RABBITMQ_USER=${{ secrets.RABBITMQ_USER }}" >> .env
+          echo "RABBITMQ_PASS=${{ secrets.RABBITMQ_PASS }}" >> .env
+          echo "RABBITMQ_VIRTUAL_HOST=${{ secrets.RABBITMQ_VIRTUAL_HOST }}" >> .env
+          echo "WEB_FE_ORIGIN=${{ secrets.WEB_FE_ORIGIN }}" >> .env
+          echo "WEB_FE_ORIGIN_STAGING=${{ secrets.WEB_FE_ORIGIN_STAGING }}" >> .env
+
+      - name: Create/Update ConfigMap in Kubernetes
+        run: |
+          kubectl create configmap scheduler-service-dev-env \
+            --from-env-file=.env \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Delete old deployment and service
+        run: |
+          kubectl delete deployment scheduler-service-dev -n default --ignore-not-found
+
+      - name: Delete old Docker images
+        run: |
+          docker rmi scheduler_service_dev || true
+          docker rmi localhost:5000/scheduler_service_dev || true
+
+      - name: Build Docker image
+        run: |
+          docker build --no-cache -f Dockerfile.dev -t scheduler_service_dev:latest .
+
+      - name: Tag Docker image for local registry
+        run: |
+          docker tag scheduler_service_dev:latest localhost:5000/scheduler_service_dev:latest
+
+      - name: Push Docker image to local registry
+        run: |
+          docker push localhost:5000/scheduler_service_dev:latest
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl apply -f ./k8s/scheduler_deployment_dev.yaml

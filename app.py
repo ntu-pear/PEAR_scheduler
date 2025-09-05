@@ -9,16 +9,19 @@ from typing import Any, Mapping
 
 import uvicorn
 from fastapi import FastAPI
-
+from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import loadConfigs
+from fastapi.middleware.cors import CORSMiddleware
 
+load_dotenv()
 # Import messaging components
 from messaging.consumer_manager import create_scheduler_consumer_manager
+
 
 # Configure logging to reduce Pika spam
 def setup_logging():
@@ -70,6 +73,25 @@ def create_app():
     from pear_schedule.api.routes import router as sched_router
     app = FastAPI()
     app.include_router(sched_router, prefix="/schedule")
+    #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
+    origins = [
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        f"http://{os.getenv('WEB_FE_ORIGIN')}",
+        f"http://{os.getenv('WEB_FE_ORIGIN_STAGING')}"
+        # Add other origins if needed
+    ]
+
+
+    # middleware to connect to the frontend
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,  # Add your Next.js app's URL
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     config = import_config(os.environ["PEAR_SCHEDULER_CONFIG"])
     app.state.config = {item: getattr(config, item) for item in dir(config)}

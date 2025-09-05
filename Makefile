@@ -1,10 +1,10 @@
-# only works for unix because windows is a joke
+# For UNIX-based OS only
 .PHONY: build clean docker/build docker/run deploy/gcp
 
 ARTIFACTORY := localhost:5000/
-
+#Current server has python3.12 installed
 build: clean
-	python3.10 -m venv env && . env/bin/activate && python3 -m pip install -r requirements.txt
+	python3.12 -m venv env && . env/bin/activate && python3 -m pip install -r requirements.txt
 
 run: 
 	export PEAR_SCHEDULER_CONFIG=config.py && uvicorn --factory app:create_app --host 0.0.0.0 --port 8081 --workers 2

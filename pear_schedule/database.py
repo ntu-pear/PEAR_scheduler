@@ -64,7 +64,6 @@ DB_CONN_STR_RAW = f"mssql+pyodbc://{DB_USERNAME_DEV}:{DB_PASSWORD_DEV_ENCODED}@{
 # )
 ##############################################
 
-print(connection_url)
 engine = sa.create_engine(connection_url)
 ##############################################################
 # print(DATABASE_URL)
