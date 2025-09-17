@@ -13,6 +13,8 @@ class RefPatientPrescriptionBase(BaseModel):
     IsAfterMeal: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "0"})
     PrescriptionRemarks: str
     Status: str
+    AdministerTime: Optional[str] = Field(default="00:00") # TODO: Check if it's ok
+    IsChronic: Optional[str] = Field(default="0") # TODO: Check if it's ok
     IsDeleted: Optional[str] = Field(default="1", json_schema_extra={"example": "0"})
 
 

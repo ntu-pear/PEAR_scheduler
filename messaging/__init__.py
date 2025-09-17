@@ -6,6 +6,7 @@ from .consumer_manager import ConsumerManager, create_scheduler_consumer_manager
 __all__ = [
     'RabbitMQClient', 
     'PatientConsumer',
+    'PatientPrescriptionConsumer',
     'get_scheduler_publisher',
     'ConsumerManager',
     'create_scheduler_consumer_manager'

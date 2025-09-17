@@ -52,6 +52,54 @@ class MapperUtil:
                     'terminationReason', 'inActiveDate', 'dateOfBirth', 'gender'
                 ]
             },
+            # Patient Prescription → Scheduler Service
+            'patient_prescription_to_scheduler': {
+                'source_service': 'patient-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'patient_prescription',
+                # TODO: check required_fields. 
+                'required_fields': ['PrescriptionListId', 'PatientId'],
+                'field_mappings': {
+                    'Id': 'Id',
+                    'IsDeleted': 'IsDeleted',
+                    'PatientId': 'PatientId',
+                    'PrescriptionListId': 'PrescriptionListValue',
+                    'Dosage': 'Dosage',
+                    # TODO: add administer time in patient prescription table
+                    'AdministerTime': 'AdministerTime',
+                    'FrequencyPerDay': 'FrequencyPerDay',
+                    'Instruction': 'Instruction',
+                    'StartDate': 'StartDate',
+                    'EndDate': 'EndDate',
+                    'IsAfterMeal': 'IsAfterMeal',
+                    'PrescriptionRemarks': 'PrescriptionRemarks',
+                    # TODO: add IsChronic in patient prescription table and schema
+                    #'IsChronic': 'IsChronic',
+                    'Status': 'Status', # TODO: clarify if status is necessary because not in model
+                    'CreatedDateTime': 'CreatedDateTime',
+                    'UpdatedDateTime': 'UpdatedDateTime',
+                    'CreatedById': 'CreatedById',
+                    'ModifiedById': 'ModifiedById'
+                },
+                
+                'field_transforms': {
+                    # TODO: Check if it's 0 or 1
+                    'IsDeleted': lambda x: str(x) if x is not None else "1", 
+                    # TODO: get prescription list id mapping from prescription list table, use placeholder for now
+                    'PrescriptionListValue': lambda x: "Aspirin",  # temporary value until mapping of prescription list is implemented
+                    'StartDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'EndDateTime': lambda x: self._parse_datetime(x),
+
+                },
+                'defaults': {
+                    # TODO: Update AdministerTime and IsChronic here once patient prescription table in patient service is updated
+                    'AdministerTime': "00:00", 
+                    'IsChronic': "0"
+                },
+                'ignored_fields': [
+                    # Source fields to ignore
+                ]
+            },
             
             # Template for future mappings - just copy and modify
             'template_mapping': {
@@ -243,3 +291,18 @@ def update_patient_field_mapping(source_field: str, target_field: str):
 def add_patient_ignored_field(field_name: str):
     """Add field to patient ignore list"""
     mapper.add_ignored_field('patient_service_to_scheduler', field_name)
+
+
+# Patient prescription mapping functions
+def map_patient_prescription_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient prescription data for create operation for schema"""
+    return mapper.map_data(source_data, 'patient_prescription_to_scheduler', 'create')
+
+def map_patient_prescription_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient prescription data for update operation for schema"""
+    return mapper.map_data(source_data, 'patient_prescription_to_scheduler', 'update')
+
+def get_patient_prescription_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get patient prescription mapping information"""
+    return mapper.get_mapping_info('patient_prescription_to_scheduler')
+

@@ -35,17 +35,19 @@ def create_or_update_ref_patient_prescription(db: Session, prescription: RefPati
     else:
         # Create new prescription
         new_prescription = RefPatientPrescription(
-            PatientId=prescription.PatientId,
+            PatientID=prescription.PatientId, # TODO: Check if it's ok
             PrescriptionListValue=prescription.PrescriptionListValue,
             Dosage=prescription.Dosage,
             FrequencyPerDay=prescription.FrequencyPerDay,
             Instruction=prescription.Instruction,
-            StartDate=prescription.StartDate,
-            EndDate=prescription.EndDate,
-            IsAfterMeal=prescription.IsAfterMeal,
+            StartDateTime=prescription.StartDate, # TODO: Check if it's ok
+            EndDateTime=prescription.EndDate, # TODO: Check if it's ok
+            AfterMeal=prescription.IsAfterMeal, # TODO: Check if it's ok
             PrescriptionRemarks=prescription.PrescriptionRemarks,
-            Status=prescription.Status,
+            #Status=prescription.Status, # TODO: Check if it's ok
             IsDeleted=prescription.IsDeleted or "0",
+            AdministerTime=prescription.AdministerTime, # TODO: Check if it's ok
+            IsChronic="0", # TODO: Check if it's ok
             CreatedDateTime=current_time,
             UpdatedDateTime=current_time,
             CreatedById=user,
@@ -63,7 +65,7 @@ def update_ref_patient_prescription_idempotent(db: Session, prescription_id: int
     Idempotent update - won't fail if prescription doesn't exist
     """
     db_prescription = db.query(RefPatientPrescription).filter(
-        RefPatientPrescription.Id == prescription_id, 
+        RefPatientPrescription.PrescriptionID == prescription_id,  # TODO: Check if it's ok
         RefPatientPrescription.IsDeleted == "0"
     ).first()
     
@@ -88,7 +90,7 @@ def soft_delete_ref_patient_prescription_idempotent(db: Session, prescription_id
     """
     Idempotent soft delete - won't fail if prescription doesn't exist or already deleted
     """
-    db_prescription = db.query(RefPatientPrescription).filter(RefPatientPrescription.Id == prescription_id).first()
+    db_prescription = db.query(RefPatientPrescription).filter(RefPatientPrescription.PrescriptionID == prescription_id).first()
     
     if not db_prescription:
         # Prescription doesn't exist - idempotent operation should succeed
