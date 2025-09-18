@@ -6,7 +6,7 @@ class CompulsoryActivityScheduler(BaseScheduler):
     @classmethod
     def fillSchedule(cls, patientSchedules: Mapping[str, List[str]]):
         compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.get_data()
-        
+        breakpoint()
         # Compulsory Activity 
         for activityTitle in compulsoryActivitiesDF["ActivityTitle"]:
             fixedSlotString = compulsoryActivitiesDF.query(f"ActivityTitle == '{activityTitle}'").iloc[0]['FixedTimeSlots']
