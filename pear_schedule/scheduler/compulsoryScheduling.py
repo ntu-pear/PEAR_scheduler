@@ -6,6 +6,7 @@ class CompulsoryActivityScheduler(BaseScheduler):
     @classmethod
     def fillSchedule(cls, patientSchedules: Mapping[str, List[str]]):
         compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.get_data()
+        breakpoint()
         # Compulsory Activity 
         for _, row in compulsoryActivitiesDF.query("IsFixed=='1'").loc[:, ["ActivityTitle", "FixedTimeSlots"]].astype(str).iterrows():
         

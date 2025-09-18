@@ -313,6 +313,7 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsCompulsory"] == True
+        ).where(centre_activity.c["IsDeleted"] == False
         ).where(or_(
         centre_activity.c["EndDate"] > get_next_sunday(),
         centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
