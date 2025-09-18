@@ -203,7 +203,9 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity.c["IsCompulsory"] == False
-        ).where(centre_activity.c["EndDate"] > get_next_sunday()) #EndDate has been moved from ActivityTable to CentreActivity Table
+        ).where(or_(
+        centre_activity.c["EndDate"] > get_next_sunday(),
+        centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -309,7 +311,10 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsCompulsory"] == True
-        ).where(centre_activity.c["EndDate"] > get_next_sunday()) #EndDate has been moved from ActivityTable to CentreActivity Table
+        ).where(centre_activity.c["IsDeleted"] == False
+        ).where(or_(
+        centre_activity.c["EndDate"] > get_next_sunday(),
+        centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -497,12 +502,13 @@ class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
         schema = DB.schema
         
         schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
-        
+        patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         curDateTime = datetime.now()
-        
+        subquery = select(patient.c.PreferredName).where(patient.c.PatientID == schedule.c.PatientID).scalar_subquery()
         query: Select = select(
             schedule.c["ScheduleID"],
             schedule.c["PatientID"],
+            subquery.label("PreferredName"),
             schedule.c["Monday"],
             schedule.c["Tuesday"],
             schedule.c["Wednesday"],

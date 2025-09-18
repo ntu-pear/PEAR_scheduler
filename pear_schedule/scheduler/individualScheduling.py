@@ -44,12 +44,10 @@ class IndividualActivityScheduler(BaseScheduler):
                     "preferences":dict(), "exclusions": dict(), "dispreferences": dict()  # recommendations handled in compulsory scheduling
                 }
             
-                # If ActivityEndDate is null, means the Activity will restart every week. #ToBeConfirmed
-            if pd.isna(p["ActivityEndDate"]):
-                p["ActivityEndDate"] = week_end
-
-            if p["ActivityEndDate"] <= week_end:
+            # If ActivityEndDate is null, means the Activity will restart every week. #ToBeConfirmed
+            if not pd.isna(p["ActivityEndDate"]) and p["ActivityEndDate"] <= week_end:
                 continue
+
 
             patients[pid]["preferences"][p["PreferredActivityID"]] = True
 
@@ -105,8 +103,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             recommendations.sort_values(by=["PatientID"])
             recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
 
-            # filter out activities that are not available this week
-            recommendations = recommendations[recommendations["ActivityEndDate"] > week_end]
+            # filter out activities that are not available this week, NULL dates are indefinite
+            recommendations = recommendations[(recommendations["ActivityEndDate"] > week_end) | (recommendations["ActivityEndDate"].isna())]
 
             # add an extra row at end for easier handling of final patient
             dummy_row = recommendations.iloc[0:1].copy(deep=True)
@@ -433,8 +431,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             patient_data = cls._get_patient_data(conn)
             activities = ActivitiesView.get_data(conn)
             # Fill null EndDate with week_end as the current weekend (this is because activities who are indefinite have null EndDate)
-            activities["EndDate"] = activities["EndDate"].fillna(week_end)
-            activities = activities[activities["EndDate"] > week_end]
+            activities = activities[(activities["EndDate"].isna()) | (activities["EndDate"] > week_end)]
             activities_title_lookup = {
                 row["ActivityTitle"]: row["ActivityID"] for _, row in activities.iterrows()
             }
