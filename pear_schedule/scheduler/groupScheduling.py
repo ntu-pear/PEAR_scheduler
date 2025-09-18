@@ -244,8 +244,18 @@ class GroupActivityScheduler(BaseScheduler):
                 return
 
             activity = activityList[activity_index]
-            possibleTimeSlots = get_possible_slots(activity)
-            isScheduled = False
+
+
+            isFixed = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['IsFixed']
+            
+            # for fixed time activity, try all given fixed timeslots
+            if int(isFixed) == 1:
+                fixedTimeSlots = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['FixedTimeSlots']
+                possibleTimeSlots = cls.getFixedTimeArr(fixedTimeSlots)
+
+            # for flexible time activity, try all possible timeslots
+            else:
+                possibleTimeSlots = timeSlots.copy()
 
             for ts in possibleTimeSlots:
                 if can_schedule(activity, ts, timeTable, activityMap):
