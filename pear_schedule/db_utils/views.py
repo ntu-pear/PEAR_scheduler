@@ -506,11 +506,11 @@ class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
         schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         curDateTime = datetime.now()
-        subquery = select(patient.c.Name).where(patient.c.PatientID == schedule.c.PatientID).scalar_subquery()
+        subquery = select(patient.c.PreferredName).where(patient.c.PatientID == schedule.c.PatientID).scalar_subquery()
         query: Select = select(
             schedule.c["ScheduleID"],
             schedule.c["PatientID"],
-            subquery.label("Name"),
+            subquery.label("PreferredName"),
             schedule.c["Monday"],
             schedule.c["Tuesday"],
             schedule.c["Wednesday"],
