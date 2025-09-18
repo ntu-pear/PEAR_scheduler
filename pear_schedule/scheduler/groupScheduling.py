@@ -242,7 +242,7 @@ class GroupActivityScheduler(BaseScheduler):
             isFixed = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['IsFixed']
             
             # for fixed time activity, try all given fixed timeslots
-            if isFixed:
+            if int(isFixed) == 1:
                 fixedTimeSlots = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['FixedTimeSlots']
                 possibleTimeSlots = cls.getFixedTimeArr(fixedTimeSlots)
 
