@@ -6,7 +6,7 @@ import logging
 import math
 from ..models import RefPatient
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_patient import RefPatientCreate, RefPatientUpdate, RefPatientDelete
+from ..schemas.ref_patient import RefPatientCreate, RefPatientUpdate
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -36,22 +36,20 @@ def create_ref_patient(
     
     def create_operation():
         # Check if patient already exists - this is a business rule violation for CREATE
-        existing = db.query(RefPatient).filter(RefPatient.PatientID == patient.PatientID).first()
+        existing = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
         if existing:
-            raise ValueError(f"Patient with ID {patient.PatientID} already exists. Use update operation instead.")
+            raise ValueError(f"Patient with ID {patient.Id} already exists. Use update operation instead.")
         
-        logger.info(f"Creating new patient {patient.PatientID}")
+        logger.info(f"Creating new patient {patient.Id}")
         
         # Use raw SQL for IDENTITY INSERT to handle specific ID
         query = text("""
             SET IDENTITY_INSERT [REF_PATIENT] ON;
             
             INSERT INTO [REF_PATIENT] (
-                PatientID, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive, IsDeleted,
-                CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
+                Id, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive, IsDeleted
             ) VALUES (
-                :PatientID, :Name, :PreferredName, :UpdateBit, :StartDate, :EndDate, :IsActive, :IsDeleted,
-                :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
+                :Id, :Name, :PreferredName, :UpdateBit, :StartDate, :EndDate, :IsActive, :IsDeleted
             );
             
             SET IDENTITY_INSERT [REF_PATIENT] OFF;
@@ -76,9 +74,9 @@ def create_ref_patient(
         db.flush()
         
         # Return the created patient
-        created_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.PatientID).first()
+        created_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
         if not created_patient:
-            raise Exception(f"Failed to create patient {patient.PatientID}")
+            raise Exception(f"Failed to create patient {patient.Id}")
             
         return created_patient
     
@@ -88,24 +86,24 @@ def create_ref_patient(
             db=db,
             correlation_id=correlation_id,
             event_type="PATIENT_CREATED",
-            aggregate_id=str(patient.PatientID),
+            aggregate_id=str(patient.Id),
             processed_by=f"scheduler_service_{created_by}",
             operation=create_operation
         )
         
         if was_duplicate:
             # Return existing patient for duplicate events
-            existing_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.PatientID).first()
-            logger.info(f"Duplicate create event for patient {patient.PatientID}, returning existing")
+            existing_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
+            logger.info(f"Duplicate create event for patient {patient.Id}, returning existing")
             return existing_patient, True
         
         db.commit()
-        logger.info(f"Successfully created patient {patient.PatientID}")
+        logger.info(f"Successfully created patient {patient.Id}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating patient {patient.PatientID}: {str(e)}")
+        logger.error(f"Error creating patient {patient.Id}: {str(e)}")
         raise
 
 def update_ref_patient(
@@ -113,7 +111,7 @@ def update_ref_patient(
     patient_id: str,
     patient_update: RefPatientUpdate,
     correlation_id: str,
-    skip_duplicate_check: bool = False
+    updated_by: str
 ) -> Tuple[Optional[RefPatient], bool]:
     """
     Update an existing patient with idempotency protection.
@@ -121,9 +119,9 @@ def update_ref_patient(
     Args:
         db: Database session
         patient_id: ID of patient to update
-        patient_update: Fields to update (includes UpdatedDateTime and ModifiedById)
+        patient_update: Fields to update
         correlation_id: Correlation ID from outbox service for deduplication
-        skip_duplicate_check: If True, bypass idempotency check (for sync events)
+        updated_by: User/service updating the patient
         
     Returns:
         Tuple of (RefPatient or None, was_duplicate: bool)
@@ -149,40 +147,22 @@ def update_ref_patient(
         # Update only the fields that were provided
         update_data = patient_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_patient, field) and field != 'PatientID':  # Never update ID
+            if hasattr(db_patient, field) and field != 'Id':  # Never update ID
                 setattr(db_patient, field, value)
         
         db.flush()
         return db_patient
     
-    # Use IdempotencyService for deduplication (unless skipped for sync events)
+    # Use IdempotencyService for deduplication
     try:
-        if skip_duplicate_check:
-            logger.info(f"Skipping duplicate check for patient {patient_id} (sync event)")
-            # Execute update directly without idempotency check
-            result = update_operation()
-            was_duplicate = False
-            
-            # Still record the event for tracking, but don't check for duplicates
-            try:
-                IdempotencyService.record_processed_event(
-                    db=db,
-                    correlation_id=correlation_id,
-                    event_type="PATIENT_UPDATED",
-                    aggregate_id=patient_id,
-                    processed_by=f"scheduler_service_{patient_update.ModifiedById}_sync"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
-        else:
-            result, was_duplicate = IdempotencyService.process_idempotent(
-                db=db,
-                correlation_id=correlation_id,
-                event_type="PATIENT_UPDATED",
-                aggregate_id=patient_id,
-                processed_by=f"scheduler_service_{patient_update.ModifiedById}",
-                operation=update_operation
-            )
+        result, was_duplicate = IdempotencyService.process_idempotent(
+            db=db,
+            correlation_id=correlation_id,
+            event_type="PATIENT_UPDATED",
+            aggregate_id=patient_id,
+            processed_by=f"scheduler_service_{updated_by}",
+            operation=update_operation
+        )
         
         if was_duplicate:
             # Return current state for duplicate events
@@ -210,9 +190,8 @@ def update_ref_patient(
 def delete_ref_patient(
     db: Session,
     patient_id: str,
-    patient_delete: RefPatientDelete,
     correlation_id: str,
-    skip_duplicate_check: bool = False
+    deleted_by: str
 ) -> Tuple[Optional[RefPatient], bool]:
     """
     Soft delete a patient with idempotency protection.
@@ -220,9 +199,8 @@ def delete_ref_patient(
     Args:
         db: Database session
         patient_id: ID of patient to delete
-        patient_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        skip_duplicate_check: If True, bypass idempotency check (for sync events)
+        deleted_by: User/service deleting the patient
         
     Returns:
         Tuple of (RefPatient or None, was_duplicate: bool)
@@ -246,11 +224,8 @@ def delete_ref_patient(
         
         logger.info(f"Soft deleting patient {patient_id}")
         
-        # Perform soft delete using schema data
+        # Perform soft delete
         db_patient.IsDeleted = "1"
-        db_patient.ModifiedById = patient_delete.ModifiedById
-        db_patient.UpdatedDateTime = patient_delete.UpdatedDateTime
-        
         db.flush()
         return db_patient
     
@@ -261,7 +236,7 @@ def delete_ref_patient(
             correlation_id=correlation_id,
             event_type="PATIENT_DELETED",
             aggregate_id=patient_id,
-            processed_by=f"scheduler_service_{patient_delete.ModifiedById}",
+            processed_by=f"scheduler_service_{deleted_by}",
             operation=delete_operation
         )
         

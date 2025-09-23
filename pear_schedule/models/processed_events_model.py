@@ -40,7 +40,7 @@ class ProcessedEvent(Base):
     processed_at = Column(
         DateTime,
         nullable=False,
-        default=datetime.now,
+        default=datetime.utcnow,
         comment="When the event was processed"
     )
     processed_by = Column(
@@ -93,7 +93,7 @@ class ProcessedEvent(Base):
             processed_by=processed_by,
             operation_result=operation_result,
             error_message=error_message,
-            processed_at=datetime.now()
+            processed_at=datetime.utcnow()
         )
 
 

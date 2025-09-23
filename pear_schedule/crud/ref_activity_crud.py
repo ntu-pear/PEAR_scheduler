@@ -6,7 +6,7 @@ import logging
 import math
 from ..models.ref_activity_model import RefActivity
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_activity import RefActivityCreate, RefActivityUpdate, RefActivityDelete
+from ..schemas.ref_activity import RefActivityCreate, RefActivityUpdate
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -36,21 +36,21 @@ def create_ref_activity(
     
     def create_operation():
         # Check if activity already exists - this is a business rule violation for CREATE
-        existing = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
+        existing = db.query(RefActivity).filter(RefActivity.ActivityID == activity.Id).first()
         if existing:
-            raise ValueError(f"Activity with ID {activity.ActivityID} already exists. Use update operation instead.")
+            raise ValueError(f"Activity with ID {activity.Id} already exists. Use update operation instead.")
         
-        logger.info(f"Creating new activity {activity.ActivityID}")
+        logger.info(f"Creating new activity {activity.Id}")
         
         # Use raw SQL for IDENTITY INSERT to handle specific ID
         query = text("""
             SET IDENTITY_INSERT [REF_ACTIVITY] ON;
             
             INSERT INTO [REF_ACTIVITY] (
-                ActivityID, ActivityTitle, ActivityDesc, IsDeleted,
+                Id, ActivityTitle, ActivityDesc, StartDate, EndDate, IsDeleted,
                 CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
             ) VALUES (
-                :ActivityID, :ActivityTitle, :ActivityDesc, :IsDeleted,
+                :Id, :ActivityTitle, :ActivityDesc, :StartDate, :EndDate, :IsDeleted,
                 :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
             );
             
@@ -58,9 +58,11 @@ def create_ref_activity(
         """)
         
         params = {
-            "ActivityID": activity.ActivityID,
-            "ActivityTitle": activity.ActivityTitle,
-            "ActivityDesc": activity.ActivityDesc,
+            "ActivityID": activity.Id,
+            "ActivityTitle": activity.Title,
+            "ActivityDesc": activity.Desc,
+            "StartDate": activity.StartDate,
+            "EndDate": activity.EndDate,
             "IsDeleted": activity.IsDeleted or "0",
             "CreatedDateTime": activity.CreatedDateTime,
             "UpdatedDateTime": activity.UpdatedDateTime,
@@ -72,9 +74,9 @@ def create_ref_activity(
         db.flush()
         
         # Return the created activity
-        created_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
+        created_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.Id).first()
         if not created_activity:
-            raise Exception(f"Failed to create activity {activity.ActivityID}")
+            raise Exception(f"Failed to create activity {activity.Id}")
             
         return created_activity
     
@@ -84,24 +86,24 @@ def create_ref_activity(
             db=db,
             correlation_id=correlation_id,
             event_type="ACTIVITY_CREATED",
-            aggregate_id=str(activity.ActivityID),
+            aggregate_id=str(activity.Id),
             processed_by=f"scheduler_service_{created_by}",
             operation=create_operation
         )
         
         if was_duplicate:
             # Return existing activity for duplicate events
-            existing_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
-            logger.info(f"Duplicate create event for activity {activity.ActivityID}, returning existing")
+            existing_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.Id).first()
+            logger.info(f"Duplicate create event for activity {activity.Id}, returning existing")
             return existing_activity, True
         
         db.commit()
-        logger.info(f"Successfully created activity {activity.ActivityID}")
+        logger.info(f"Successfully created activity {activity.Id}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating activity {activity.ActivityID}: {str(e)}")
+        logger.error(f"Error creating activity {activity.Id}: {str(e)}")
         raise
 
 def update_ref_activity(
@@ -109,7 +111,7 @@ def update_ref_activity(
     activity_id: int,
     activity_update: RefActivityUpdate,
     correlation_id: str,
-    skip_duplicate_check: bool = False
+    updated_by: str
 ) -> Tuple[Optional[RefActivity], bool]:
     """
     Update an existing activity with idempotency protection.
@@ -117,9 +119,9 @@ def update_ref_activity(
     Args:
         db: Database session
         activity_id: ID of activity to update
-        activity_update: Fields to update (includes UpdatedDateTime and ModifiedById)
+        activity_update: Fields to update
         correlation_id: Correlation ID from outbox service for deduplication
-        skip_duplicate_check: If True, bypass idempotency check (for sync events)
+        updated_by: User/service updating the activity
         
     Returns:
         Tuple of (RefActivity or None, was_duplicate: bool)
@@ -145,40 +147,33 @@ def update_ref_activity(
         # Update only the fields that were provided
         update_data = activity_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_activity, field) and field != 'ActivityID':  # Never update ID
-                setattr(db_activity, field, value)
+            if hasattr(db_activity, field) and field != 'Id':  # Never update ID
+                # Handle field name mappings
+                if field == "Title":
+                    setattr(db_activity, "ActivityTitle", value)
+                elif field == "Desc":
+                    setattr(db_activity, "ActivityDesc", value)
+                else:
+                    setattr(db_activity, field, value)
+        
+        # Always update the modification timestamp
+        from datetime import datetime
+        db_activity.UpdatedDateTime = datetime.utcnow()
+        db_activity.ModifiedById = updated_by
         
         db.flush()
         return db_activity
     
-    # Use IdempotencyService for deduplication (unless skipped for sync events)
+    # Use IdempotencyService for deduplication
     try:
-        if skip_duplicate_check:
-            logger.info(f"Skipping duplicate check for activity {activity_id} (sync event)")
-            # Execute update directly without idempotency check
-            result = update_operation()
-            was_duplicate = False
-            
-            # Still record the event for tracking, but don't check for duplicates
-            try:
-                IdempotencyService.record_processed_event(
-                    db=db,
-                    correlation_id=correlation_id,
-                    event_type="ACTIVITY_UPDATED",
-                    aggregate_id=str(activity_id),
-                    processed_by=f"scheduler_service_{activity_update.ModifiedById}_sync"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
-        else:
-            result, was_duplicate = IdempotencyService.process_idempotent(
-                db=db,
-                correlation_id=correlation_id,
-                event_type="ACTIVITY_UPDATED",
-                aggregate_id=str(activity_id),
-                processed_by=f"scheduler_service_{activity_update.ModifiedById}",
-                operation=update_operation
-            )
+        result, was_duplicate = IdempotencyService.process_idempotent(
+            db=db,
+            correlation_id=correlation_id,
+            event_type="ACTIVITY_UPDATED",
+            aggregate_id=str(activity_id),
+            processed_by=f"scheduler_service_{updated_by}",
+            operation=update_operation
+        )
         
         if was_duplicate:
             # Return current state for duplicate events
@@ -206,9 +201,8 @@ def update_ref_activity(
 def delete_ref_activity(
     db: Session,
     activity_id: int,
-    activity_delete: RefActivityDelete,
     correlation_id: str,
-    skip_duplicate_check: bool = False
+    deleted_by: str
 ) -> Tuple[Optional[RefActivity], bool]:
     """
     Soft delete an activity with idempotency protection.
@@ -216,9 +210,8 @@ def delete_ref_activity(
     Args:
         db: Database session
         activity_id: ID of activity to delete
-        activity_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        skip_duplicate_check: If True, bypass idempotency check (for sync events)
+        deleted_by: User/service deleting the activity
         
     Returns:
         Tuple of (RefActivity or None, was_duplicate: bool)
@@ -242,42 +235,25 @@ def delete_ref_activity(
         
         logger.info(f"Soft deleting activity {activity_id}")
         
-        # Perform soft delete using schema data
+        # Perform soft delete
+        from datetime import datetime
         db_activity.IsDeleted = "1"
-        db_activity.ModifiedById = activity_delete.ModifiedById
-        db_activity.UpdatedDateTime = activity_delete.UpdatedDateTime
+        db_activity.UpdatedDateTime = datetime.utcnow()
+        db_activity.ModifiedById = deleted_by
         
         db.flush()
         return db_activity
     
-    # Use IdempotencyService for deduplication (unless skipped for sync events)
+    # Use IdempotencyService for deduplication
     try:
-        if skip_duplicate_check:
-            logger.info(f"Skipping duplicate check for activity {activity_id} (sync event)")
-            # Execute delete directly without idempotency check
-            result = delete_operation()
-            was_duplicate = False
-            
-            # Still record the event for tracking, but don't check for duplicates
-            try:
-                IdempotencyService.record_processed_event(
-                    db=db,
-                    correlation_id=correlation_id,
-                    event_type="ACTIVITY_DELETED",
-                    aggregate_id=str(activity_id),
-                    processed_by=f"scheduler_service_{activity_delete.ModifiedById}_sync"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
-        else:
-            result, was_duplicate = IdempotencyService.process_idempotent(
-                db=db,
-                correlation_id=correlation_id,
-                event_type="ACTIVITY_DELETED",
-                aggregate_id=str(activity_id),
-                processed_by=f"scheduler_service_{activity_delete.ModifiedById}",
-                operation=delete_operation
-            )
+        result, was_duplicate = IdempotencyService.process_idempotent(
+            db=db,
+            correlation_id=correlation_id,
+            event_type="ACTIVITY_DELETED",
+            aggregate_id=str(activity_id),
+            processed_by=f"scheduler_service_{deleted_by}",
+            operation=delete_operation
+        )
         
         if was_duplicate:
             # Return current state for duplicate events

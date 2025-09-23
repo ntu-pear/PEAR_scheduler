@@ -196,11 +196,11 @@ class IdempotencyService:
         try:
             # Execute the business operation
             logger.debug(f"Starting business operation for event {correlation_id}")
-            operation_start_time = datetime.now()
+            operation_start_time = datetime.utcnow()
             
             result = operation()
             
-            operation_end_time = datetime.now()
+            operation_end_time = datetime.utcnow()
             processing_duration = (operation_end_time - operation_start_time).total_seconds()
             
             logger.debug(f"Business operation completed for {correlation_id} in {processing_duration:.3f}s")
@@ -259,51 +259,6 @@ class IdempotencyService:
             raise
     
     @staticmethod
-    def record_processed_event(
-        db: Session,
-        correlation_id: str,
-        event_type: str,
-        aggregate_id: str,
-        processed_by: str
-    ) -> ProcessedEvent:
-        """
-        Record a processed event without checking for duplicates.
-        Used for sync events where we want to track but not prevent processing.
-        
-        Args:
-            db: Database session
-            correlation_id: The correlation ID from the event
-            event_type: Type of event (e.g., 'ACTIVITY_UPDATED')
-            aggregate_id: The entity ID that was processed
-            processed_by: Service/user that processed the event
-            
-        Returns:
-            The created ProcessedEvent record
-        """
-        try:
-            logger.debug(f"Recording processed event {correlation_id} (no duplicate check)")
-            
-            processed_event = ProcessedEvent.create_from_correlation_id(
-                correlation_id=correlation_id,
-                event_type=event_type,
-                aggregate_id=aggregate_id,
-                processed_by=processed_by,
-                operation_result=json.dumps({"status": "recorded", "sync_event": True}, default=str),
-                error_message=None
-            )
-            
-            db.add(processed_event)
-            db.flush()
-            
-            logger.debug(f"Recorded event {correlation_id} without duplicate check")
-            return processed_event
-            
-        except Exception as e:
-            # Non-critical failure - just log it
-            logger.warning(f"Failed to record event {correlation_id}: {str(e)}")
-            raise
-    
-    @staticmethod
     def cleanup_old_events(db: Session, older_than_days: int = 30) -> int:
         """
         Clean up old processed events to prevent table growth.
@@ -315,7 +270,7 @@ class IdempotencyService:
         Returns:
             Number of deleted events
         """
-        cutoff_date = datetime.now() - timedelta(days=older_than_days)
+        cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
         
         logger.info(f"Starting cleanup of processed events older than {older_than_days} days (before {cutoff_date})")
         
@@ -362,7 +317,7 @@ class IdempotencyService:
             ).group_by(ProcessedEvent.event_type).all()
             
             # Recent events (last 24 hours)
-            yesterday = datetime.now() - timedelta(hours=24)
+            yesterday = datetime.utcnow() - timedelta(hours=24)
             recent_events = db.query(ProcessedEvent).filter(
                 ProcessedEvent.processed_at >= yesterday
             ).count()
@@ -394,7 +349,7 @@ class IdempotencyService:
                 "events_with_errors": error_events,
                 "events_by_type": [{"event_type": et, "count": count} for et, count in events_by_type],
                 "latest_events": latest_events_info,
-                "stats_generated_at": datetime.now().isoformat()
+                "stats_generated_at": datetime.utcnow().isoformat()
             }
             
             logger.debug(f"Generated processing stats: {total_events} total events, {recent_events} in last 24h")
@@ -404,5 +359,5 @@ class IdempotencyService:
             logger.error(f"Error generating processing stats: {e}")
             return {
                 "error": str(e),
-                "stats_generated_at": datetime.now().isoformat()
+                "stats_generated_at": datetime.utcnow().isoformat()
             }
