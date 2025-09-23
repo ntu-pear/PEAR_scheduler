@@ -53,6 +53,46 @@ class MapperUtil:
                 ]
             },
             
+            # Activity Service → Scheduler Service
+            'activity_service_to_scheduler': {
+                'source_service': 'activity-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'activity',
+                'required_fields': ['id', 'title'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field)
+                    'id': 'ActivityID',
+                    'title': 'ActivityTitle',
+                    'description': 'ActivityDesc',
+                    'is_deleted': 'IsDeleted',
+                    'startDate': 'StartDate',
+                    'endDate': 'EndDate',
+                    'createdDate': 'CreatedDateTime',
+                    'modifiedDate': 'UpdatedDateTime',
+                    'created_by_id': 'CreatedById',
+                    'modified_by_id': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'IsActive': lambda x: "1" if x else "0" if x is not None else "1",
+                    'StartDate': lambda x: self._parse_datetime(x),
+                    'EndDate': lambda x: self._parse_datetime(x),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'CreatedDateTime': datetime.utcnow(),
+                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedById': 'activity_service',
+                    'ModifiedById': 'activity_service'
+                },
+                'ignored_fields': [
+                    # Source fields to ignore
+                    'createdById', 'modifiedById', 'isDeleted'
+                ]
+            },
+            
             # Template for future mappings - just copy and modify
             'template_mapping': {
                 'source_service': 'source-service-name',
@@ -118,10 +158,16 @@ class MapperUtil:
                         
                     mapped_data[target_field] = value
             
-            # Apply defaults for create operations
+            # Apply defaults for create operations or when required fields are missing
             if operation == 'create':
                 for target_field, default_value in config.get('defaults', {}).items():
                     if target_field not in mapped_data:
+                        mapped_data[target_field] = default_value
+            elif operation == 'update':
+                # For updates, apply defaults only for critical fields that are missing
+                critical_defaults = {'UpdatedDateTime', 'ModifiedById'}
+                for target_field, default_value in config.get('defaults', {}).items():
+                    if target_field in critical_defaults and target_field not in mapped_data:
                         mapped_data[target_field] = default_value
             
             if not mapped_data:
@@ -243,3 +289,34 @@ def update_patient_field_mapping(source_field: str, target_field: str):
 def add_patient_ignored_field(field_name: str):
     """Add field to patient ignore list"""
     mapper.add_ignored_field('patient_service_to_scheduler', field_name)
+
+# Convenience functions for activity mapper
+def map_activity_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity data for create operation"""
+    return mapper.map_data(source_data, 'activity_service_to_scheduler', 'create')
+
+def map_activity_update(source_data: Dict[str, Any], modified_by: str = None) -> Optional[Dict[str, Any]]:
+    """Map activity data for update operation with optional context"""
+    # Add context data if provided
+    enhanced_data = source_data.copy()
+    if modified_by:
+        enhanced_data['modified_by'] = modified_by
+    
+    # Always include UpdatedDateTime for updates
+    if 'UpdatedDateTime' not in enhanced_data and 'modifiedDate' not in enhanced_data:
+        enhanced_data['modifiedDate'] = datetime.utcnow().isoformat()
+    
+    return mapper.map_data(enhanced_data, 'activity_service_to_scheduler', 'update')
+
+def get_activity_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get activity mapping information"""
+    return mapper.get_mapping_info('activity_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_activity_field_mapping(source_field: str, target_field: str):
+    """Update activity field mapping when columns change"""
+    mapper.update_field_mapping('activity_service_to_scheduler', source_field, target_field)
+
+def add_activity_ignored_field(field_name: str):
+    """Add field to activity ignore list"""
+    mapper.add_ignored_field('activity_service_to_scheduler', field_name)

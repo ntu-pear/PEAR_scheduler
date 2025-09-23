@@ -27,7 +27,7 @@ class RefActivityUpdate(BaseModel):
 
 
 class RefActivity(RefActivityBase):
-    Id: int
+    ActivityID: int
     CreatedDateTime: datetime
     UpdatedDateTime: datetime 
     CreatedById: str = Field(json_schema_extra={"example": "activity_service"})
