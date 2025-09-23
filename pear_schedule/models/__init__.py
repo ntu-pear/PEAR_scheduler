@@ -7,3 +7,4 @@ from .ref_activity_recommendation_model import RefActivityRecommendation
 from .ref_activity_routine_model import RefActivityRoutine
 from .ref_patient_prescription_model import RefPatientPrescription
 from .schedule_model import Schedule
+from .processed_events_model import ProcessedEvent

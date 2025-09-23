@@ -5,7 +5,7 @@ from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor
 
 from .patient_consumer import PatientConsumer
-# from .activity_consumer import ActivityConsumer
+from .activity_consumer import ActivityConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -17,9 +17,15 @@ class ConsumerManager:
     
     def __init__(self):
         self.consumers = {}
+        self.consumer_instances = {}  # Store actual consumer instances
         self.threads = {}
         self.executor = None
         self.running = False
+        self.shutdown_event = None
+        
+    def set_shutdown_event(self, shutdown_event: threading.Event):
+        """Set the shutdown event for graceful shutdown"""
+        self.shutdown_event = shutdown_event
         
     def register_consumer(self, name: str, consumer_class):
         """Register a consumer class"""
@@ -70,12 +76,14 @@ class ConsumerManager:
             logger.warning(f"Consumer {name} is not running")
             return False
         
-        # Note: This is a graceful shutdown request
-        # The actual consumer shutdown depends on the consumer implementation
-        future = self.threads[name]
-        if not future.done():
-            future.cancel()
-            logger.info(f"Sent stop signal to consumer: {name}")
+        # Stop the consumer instance if it exists
+        if name in self.consumer_instances:
+            try:
+                consumer = self.consumer_instances[name]
+                consumer.stop()
+                logger.info(f"Sent stop signal to consumer: {name}")
+            except Exception as e:
+                logger.error(f"Error stopping consumer {name}: {str(e)}")
         
         return True
     
@@ -87,9 +95,32 @@ class ConsumerManager:
         
         logger.info("Stopping all consumers...")
         
-        if self.executor:
-            self.executor.shutdown(wait=True)
+        # First, stop all consumer instances gracefully
+        for name, consumer in self.consumer_instances.items():
+            try:
+                logger.info(f"Stopping consumer: {name}")
+                consumer.stop()
+            except Exception as e:
+                logger.error(f"Error stopping consumer {name}: {str(e)}")
         
+        # Then shutdown the executor - handle Python version compatibility
+        if self.executor:
+            logger.info("Shutting down thread executor...")
+            try:
+                # Try with timeout parameter (Python 3.9+)
+                import sys
+                if sys.version_info >= (3, 9):
+                    self.executor.shutdown(wait=True, timeout=10)
+                else:
+                    # For older Python versions, just use wait=True
+                    self.executor.shutdown(wait=True)
+            except TypeError:
+                # Fallback for any other issues
+                self.executor.shutdown(wait=True)
+            logger.info("Thread executor shutdown complete")
+        
+        # Clear state
+        self.consumer_instances.clear()
         self.threads.clear()
         self.running = False
         logger.info("All consumers stopped")
@@ -110,10 +141,20 @@ class ConsumerManager:
     
     def _run_consumer(self, name: str, consumer_class):
         """Run a consumer in a separate thread"""
+        consumer = None
         try:
             logger.info(f"Starting consumer: {name}")
             consumer = consumer_class()
+            
+            # Store consumer instance for graceful shutdown
+            self.consumer_instances[name] = consumer
+            
+            # Pass shutdown event to consumer if it supports it
+            if hasattr(consumer, 'set_shutdown_event') and self.shutdown_event:
+                consumer.set_shutdown_event(self.shutdown_event)
+            
             consumer.start_consuming()
+            
         except KeyboardInterrupt:
             logger.info(f"Consumer {name} interrupted by user")
         except Exception as e:
@@ -122,8 +163,16 @@ class ConsumerManager:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             raise
         finally:
-            if 'consumer' in locals():
-                consumer.close()
+            if consumer:
+                try:
+                    consumer.close()
+                except Exception as e:
+                    logger.error(f"Error closing consumer {name}: {str(e)}")
+            
+            # Remove from instances dict
+            if name in self.consumer_instances:
+                del self.consumer_instances[name]
+                
             logger.info(f"Consumer {name} shutdown complete")
 
 
@@ -134,7 +183,7 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     
     # Register all available consumers
     manager.register_consumer("patient", PatientConsumer)
-    # manager.register_consumer("activity", ActivityConsumer)  # Add when available
+    manager.register_consumer("activity", ActivityConsumer)
     
     return manager
 
@@ -148,9 +197,12 @@ if __name__ == "__main__":
     
     # Create and configure the manager
     manager = create_scheduler_consumer_manager()
+    shutdown_event = threading.Event()
+    manager.set_shutdown_event(shutdown_event)
     
     def signal_handler(sig, frame):
         logger.info("Received shutdown signal")
+        shutdown_event.set()
         manager.stop_all_consumers()
         sys.exit(0)
     
@@ -163,8 +215,8 @@ if __name__ == "__main__":
         manager.start_all_consumers()
         
         # Keep the main thread alive
-        while manager.running:
-            time.sleep(1)
+        while manager.running and not shutdown_event.is_set():
+            shutdown_event.wait(1)  # Wait with timeout
             
             # Optionally print status
             status = manager.get_consumer_status()
@@ -175,4 +227,5 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user")
     finally:
+        shutdown_event.set()
         manager.stop_all_consumers()

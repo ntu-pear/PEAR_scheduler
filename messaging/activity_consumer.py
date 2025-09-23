@@ -10,45 +10,45 @@ from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
-class PatientConsumer:
+class ActivityConsumer:
     """
-    Consumer for patient events with separated CRUD operations.
+    Consumer for activity events with separated CRUD operations.
     
-    This consumer processes patient events from the patient.updates exchange
-    and updates the scheduler's local REF_PATIENT table with idempotency guarantees.
+    This consumer processes activity events from the activity.updates exchange
+    and updates the scheduler's local REF_ACTIVITY table with idempotency guarantees.
     """
     
     def __init__(self):
-        self.client = RabbitMQClient("scheduler-patient-consumer")
-        self.patient_queues = [
-            "scheduler.patient.created",
-            "scheduler.patient.updated",
-            "scheduler.patient.deleted"
+        self.client = RabbitMQClient("scheduler-activity-consumer")
+        self.activity_queues = [
+            "scheduler.activity.created",
+            "scheduler.activity.updated", 
+            "scheduler.activity.deleted"
         ]
         self.shutdown_event = None
         self.is_consuming = False
         
-
-        from pear_schedule.crud.ref_patient_crud import (
-            create_ref_patient,
-            update_ref_patient,
-            delete_ref_patient,
+        # Import dependencies - adjust imports based on your actual structure
+        from pear_schedule.crud.ref_activity_crud import (
+            create_ref_activity,
+            update_ref_activity,
+            delete_ref_activity,
             is_event_already_processed
         )
         from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
-            map_patient_create,
-            map_patient_update
+            map_activity_create,
+            map_activity_update
         )
         
-        self.create_ref_patient = create_ref_patient
-        self.update_ref_patient = update_ref_patient
-        self.delete_ref_patient = delete_ref_patient
+        self.create_ref_activity = create_ref_activity
+        self.update_ref_activity = update_ref_activity
+        self.delete_ref_activity = delete_ref_activity
         self.is_event_already_processed = is_event_already_processed
         self.get_db = get_db
         
-        self.map_patient_create = map_patient_create
-        self.map_patient_update = map_patient_update
+        self.map_activity_create = map_activity_create
+        self.map_activity_update = map_activity_update
     
     @contextmanager
     def get_db_transaction(self):
@@ -85,46 +85,46 @@ class PatientConsumer:
             self.client.set_shutdown_event(shutdown_event)
     
     def setup_consumer(self):
-        """Set up consumer to listen to existing patient queues"""
+        """Set up consumer to listen to existing activity queues"""
         try:
             self.client.connect()
             
-            # Declare the patient.updates exchange (idempotent)
+            # Declare the activity.updates exchange (idempotent)
             self.client.channel.exchange_declare(
-                exchange='patient.updates',
+                exchange='activity.updates',
                 exchange_type='topic',
                 durable=True
             )
             
-            # Set up consumers for each existing patient queue
-            for queue_name in self.patient_queues:
+            # Set up consumers for each existing activity queue
+            for queue_name in self.activity_queues:
                 # Don't declare the queue - it already exists as quorum queue
                 # Set up the consumer with proper message handling
                 self.client.consume(queue_name, self._handle_message_wrapper)
                 logger.info(f"Set up consumer for scheduler queue: {queue_name}")
             
-            logger.info("Scheduler patient consumer setup complete")
+            logger.info("Scheduler activity consumer setup complete")
             
         except Exception as e:
-            logger.error(f"Failed to setup scheduler patient consumer: {str(e)}")
+            logger.error(f"Failed to setup scheduler activity consumer: {str(e)}")
             raise
     
     def start_consuming(self):
         """Start consuming messages"""
         try:
             self.setup_consumer()
-            logger.info("Starting scheduler patient consumer...")
+            logger.info("Starting scheduler activity consumer...")
             self.is_consuming = True
             self.client.start_consuming()
         except Exception as e:
-            logger.error(f"Error starting scheduler patient consumer: {str(e)}")
+            logger.error(f"Error starting scheduler activity consumer: {str(e)}")
             raise
         finally:
             self.is_consuming = False
     
     def stop(self):
         """Stop the consumer gracefully"""
-        logger.info("Stopping patient consumer...")
+        logger.info("Stopping activity consumer...")
         self.is_consuming = False
         if self.client:
             self.client.stop_consuming()
@@ -147,7 +147,7 @@ class PatientConsumer:
                 return False
             
             # Process the message
-            result = self._process_patient_message(message)
+            result = self._process_activity_message(message)
             
             # Force log flush after processing each message
             self._flush_logs()
@@ -180,9 +180,9 @@ class PatientConsumer:
             self._flush_logs()
             return False  # Reject and requeue
     
-    def _process_patient_message(self, message: Dict[str, Any]) -> MessageProcessingResult:
+    def _process_activity_message(self, message: Dict[str, Any]) -> MessageProcessingResult:
         """
-        Process patient message with FIXED session management and error handling.
+        Process activity message with FIXED session management and error handling.
         """
         try:
             # Parse and validate message structure
@@ -192,9 +192,9 @@ class PatientConsumer:
             
             correlation_id = message_data['correlation_id']
             event_type = message_data['event_type']
-            patient_id = message_data['patient_id']
+            activity_id = message_data['activity_id']
             
-            logger.info(f"Processing {event_type} for patient {patient_id} (correlation: {correlation_id})")
+            logger.info(f"Processing {event_type} for activity {activity_id} (correlation: {correlation_id})")
             
             # Use context manager for guaranteed transaction handling
             with self.get_db_transaction() as db:
@@ -204,12 +204,12 @@ class PatientConsumer:
                     return MessageProcessingResult.DUPLICATE
                 
                 # Route to appropriate handler
-                if event_type == 'PATIENT_CREATED':
-                    result = self._handle_patient_created(db, message_data)
-                elif event_type == 'PATIENT_UPDATED':
-                    result = self._handle_patient_updated(db, message_data)
-                elif event_type == 'PATIENT_DELETED':
-                    result = self._handle_patient_deleted(db, message_data)
+                if event_type == 'ACTIVITY_CREATED':
+                    result = self._handle_activity_created(db, message_data)
+                elif event_type == 'ACTIVITY_UPDATED':
+                    result = self._handle_activity_updated(db, message_data)
+                elif event_type == 'ACTIVITY_DELETED':
+                    result = self._handle_activity_deleted(db, message_data)
                 else:
                     logger.error(f"Unknown event type: {event_type}")
                     return MessageProcessingResult.FAILED_PERMANENT
@@ -230,7 +230,7 @@ class PatientConsumer:
             return result
             
         except Exception as e:
-            logger.error(f"Error processing patient message: {str(e)}")
+            logger.error(f"Error processing activity message: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE
@@ -246,7 +246,7 @@ class PatientConsumer:
             message_data = message.get('data', {})
             
             # Validate required fields for idempotency
-            required_fields = ['correlation_id', 'event_type', 'patient_id']
+            required_fields = ['correlation_id', 'event_type', 'activity_id']
             for field in required_fields:
                 if field not in message_data:
                     logger.error(f"Missing required field '{field}' in message")
@@ -260,164 +260,175 @@ class PatientConsumer:
             logger.error(f"Failed to parse message: {str(e)}")
             return None
     
-    def _handle_patient_created(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle patient creation events with separation"""
+    def _handle_activity_created(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
+        """Handle activity creation events with separation"""
         try:
             correlation_id = message_data['correlation_id']
-            patient_id = message_data['patient_id']
-            patient_data = message_data.get('patient_data', {})
-            created_by = message_data.get('created_by', 'patient_service')
+            activity_id = message_data['activity_id']
+            activity_data = message_data.get('activity_data', {})
+            created_by = message_data.get('created_by', 'activity_service')
             
-            logger.info(f"Handling patient creation for patient {patient_id}")
-            logger.debug(f"Patient data: {patient_data}")
+            logger.info(f"Handling activity creation for activity {activity_id}")
+            logger.debug(f"Activity data: {activity_data}")
             
-            # Convert patient data to scheduler's RefPatient format
-            mapped_patient_data = self.map_patient_create(patient_data)
-            if not mapped_patient_data:
-                logger.error(f"Failed to map patient data for patient {patient_id}")
-                logger.debug(f"Source data: {patient_data}")
+            # Convert activity data to scheduler's RefActivity format
+            mapped_activity_data = self.map_activity_create(activity_data)
+            if not mapped_activity_data:
+                logger.error(f"Failed to map activity data for activity {activity_id}")
+                logger.debug(f"Source data: {activity_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            logger.debug(f"Mapped patient data: {mapped_patient_data}")
+            logger.debug(f"Mapped activity data: {mapped_activity_data}")
             
             # Convert to Pydantic schema for CRUD function
-            from pear_schedule.schemas.ref_patient import RefPatientCreate
+            from pear_schedule.schemas.ref_activity import RefActivityCreate
             try:
-                ref_patient_data = RefPatientCreate(**mapped_patient_data)
+                ref_activity_data = RefActivityCreate(**mapped_activity_data)
             except Exception as e:
-                logger.error(f"Failed to create RefPatientCreate schema: {str(e)}")
-                logger.error(f"Mapped data: {mapped_patient_data}")
+                logger.error(f"Failed to create RefActivityCreate schema: {str(e)}")
+                logger.error(f"Mapped data: {mapped_activity_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Create patient using CRUD operation with idempotency
-            result, was_duplicate = self.create_ref_patient(
+            # Create activity using CRUD operation with idempotency
+            result, was_duplicate = self.create_ref_activity(
                 db=db,
-                patient=ref_patient_data,
+                activity=ref_activity_data,
                 correlation_id=correlation_id,
                 created_by=created_by
             )
             
             if was_duplicate:
-                logger.info(f"Duplicate creation event for patient {patient_id}")
+                logger.info(f"Duplicate creation event for activity {activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result:
-                logger.info(f"Successfully created patient {patient_id}")
+                logger.info(f"Successfully created activity {activity_id}")
                 return MessageProcessingResult.SUCCESS
             else:
-                logger.error(f"Failed to create patient {patient_id}")
+                logger.error(f"Failed to create activity {activity_id}")
                 return MessageProcessingResult.FAILED_RETRYABLE
             
         except ValueError as e:
-            # Business logic error (patient already exists)
-            logger.warning(f"Business logic error creating patient: {str(e)}")
+            # Business logic error (activity already exists)
+            logger.warning(f"Business logic error creating activity: {str(e)}")
             return MessageProcessingResult.FAILED_PERMANENT
         except Exception as e:
-            logger.error(f"Error handling patient creation: {str(e)}")
+            logger.error(f"Error handling activity creation: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE
     
-    def _handle_patient_updated(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle patient update events"""
+    def _handle_activity_updated(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
+        """Handle activity update events"""
         try:
             correlation_id = message_data['correlation_id']
-            patient_id = message_data['patient_id']
+            activity_id = message_data['activity_id']
             old_data = message_data.get('old_data', {})
             new_data = message_data.get('new_data', {})
             changes = message_data.get('changes', {})
-            modified_by = message_data.get('modified_by', 'patient_service')
+            modified_by = message_data.get('modified_by', 'activity_service')
             
-            logger.info(f"Handling patient update for patient {patient_id}")
+            logger.info(f"Handling activity update for activity {activity_id}")
             logger.debug(f"Changes: {changes}")
             
-            # Convert new patient data to scheduler's RefPatient format
-            mapped_update_data = self.map_patient_update(new_data)
+            # Convert new activity data to scheduler's RefActivity format
+            mapped_update_data = self.map_activity_update(new_data)
             if not mapped_update_data:
-                logger.error(f"Failed to map patient update data for patient {patient_id}")
+                logger.error(f"Failed to map activity update data for activity {activity_id}")
                 logger.debug(f"Source update data: {new_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
             # Convert to Pydantic schema for CRUD function
-            from pear_schedule.schemas.ref_patient import RefPatientUpdate
+            from pear_schedule.schemas.ref_activity import RefActivityUpdate
             try:
-                ref_patient_update = RefPatientUpdate(**mapped_update_data)
+                ref_activity_update = RefActivityUpdate(**mapped_update_data)
             except Exception as e:
-                logger.error(f"Failed to create RefPatientUpdate schema: {str(e)}")
+                logger.error(f"Failed to create RefActivityUpdate schema: {str(e)}")
                 logger.error(f"Mapped data: {mapped_update_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Update patient using CRUD operation with idempotency
-            result, was_duplicate = self.update_ref_patient(
+            # Update activity using CRUD operation with idempotency
+            result, was_duplicate = self.update_ref_activity(
                 db=db,
-                patient_id=patient_id,
-                patient_update=ref_patient_update,
+                activity_id=activity_id,
+                activity_update=ref_activity_update,
                 correlation_id=correlation_id,
                 updated_by=modified_by
             )
             
             if was_duplicate:
-                logger.info(f"Duplicate update event for patient {patient_id}")
+                logger.info(f"Duplicate update event for activity {activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                # Patient doesn't exist in scheduler DB 
+                # Activity doesn't exist in scheduler DB 
                 # For UPDATE messages, this might be acceptable depending on business rules
-                logger.warning(f"Patient {patient_id} not found for update")
-                logger.warning("Patient should be created by PATIENT_CREATED message first")
+                logger.warning(f"Activity {activity_id} not found for update")
+                logger.warning("Activity should be created by ACTIVITY_CREATED message first")
                 return MessageProcessingResult.SUCCESS  # Don't requeue
             
-            logger.info(f"Successfully updated patient {patient_id}")
+            logger.info(f"Successfully updated activity {activity_id}")
             
             # Check if changes affect scheduling
             scheduling_affecting_changes = [
-                'IsActive', 'StartDate', 'EndDate', 'UpdateBit'
+                'active', 'title', 'description', 'start_date', 'end_date'
             ]
             
             if any(field in changes for field in scheduling_affecting_changes):
-                logger.info(f"Patient {patient_id} scheduling-relevant changes detected: {list(changes.keys())}")
+                logger.info(f"Activity {activity_id} scheduling-relevant changes detected: {list(changes.keys())}")
                 # TODO: Trigger schedule recalculation if needed
+                # This could involve:
+                # 1. Updating related centre activities
+                # 2. Recalculating patient schedules
+                # 3. Notifying affected patients/caregivers
             
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
-            logger.error(f"Error handling patient update: {str(e)}")
+            logger.error(f"Error handling activity update: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE
     
-    def _handle_patient_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle patient deletion events"""
+    def _handle_activity_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
+        """Handle activity deletion events"""
         try:
             correlation_id = message_data['correlation_id']
-            patient_id = message_data['patient_id']
-            deleted_by = message_data.get('deleted_by', 'patient_service')
+            activity_id = message_data['activity_id']
+            deleted_by = message_data.get('deleted_by', 'activity_service')
             
-            logger.info(f"Handling patient deletion for patient {patient_id}")
+            logger.info(f"Handling activity deletion for activity {activity_id}")
             
-            # Delete patient using CRUD operation with idempotency
-            result, was_duplicate = self.delete_ref_patient(
+            # Delete activity using CRUD operation with idempotency
+            result, was_duplicate = self.delete_ref_activity(
                 db=db,
-                patient_id=patient_id,
+                activity_id=activity_id,
                 correlation_id=correlation_id,
                 deleted_by=deleted_by
             )
             
             if was_duplicate:
-                logger.info(f"Duplicate deletion event for patient {patient_id}")
+                logger.info(f"Duplicate deletion event for activity {activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                logger.warning(f"Patient {patient_id} not found for deletion")
-                # This is acceptable - patient might already be deleted
+                logger.warning(f"Activity {activity_id} not found for deletion")
+                # This is acceptable - activity might already be deleted
                 
-            logger.info(f"Successfully processed deletion for patient {patient_id}")
+            logger.info(f"Successfully processed deletion for activity {activity_id}")
+            
+            # TODO: Handle cascade effects of activity deletion
+            # This might involve:
+            # 1. Removing activity from patient schedules
+            # 2. Notifying affected patients/caregivers
+            # 3. Updating centre activity configurations
+            
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
-            logger.error(f"Error handling patient deletion: {str(e)}")
+            logger.error(f"Error handling activity deletion: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE
@@ -429,9 +440,9 @@ class PatientConsumer:
         try:
             return {
                 "status": "healthy",
-                "service": "patient_consumer",
+                "service": "activity_consumer",
                 "is_consuming": self.is_consuming,
-                "queues": self.patient_queues,
+                "queues": self.activity_queues,
                 "rabbitmq_connected": self.client.is_connected() if self.client else False
             }
         except Exception as e:
@@ -444,4 +455,4 @@ class PatientConsumer:
         """Close connections"""
         if self.client:
             self.client.close()
-            logger.info("Scheduler patient consumer connections closed")
+            logger.info("Scheduler activity consumer connections closed")

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+import threading
 from typing import Dict, Any, Callable
 from datetime import datetime
 from dotenv import load_dotenv
@@ -27,6 +28,13 @@ class RabbitMQClient:
         self.connection = None
         self.channel = None
         self.is_connected = False
+        self.shutdown_event = None
+        self.consuming = False
+        self.consumer_tags = []  # Track our own consumer tags
+    
+    def set_shutdown_event(self, shutdown_event: threading.Event):
+        """Set the shutdown event for graceful shutdown"""
+        self.shutdown_event = shutdown_event
     
     def connect(self, max_retries: int = 5) -> bool:
         """Connect to RabbitMQ with retry logic"""
@@ -106,6 +114,13 @@ class RabbitMQClient:
         """
         def wrapped_callback(channel, method, properties, body):
             try:
+                # Check if we should stop processing
+                if self.shutdown_event and self.shutdown_event.is_set():
+                    logger.info(f"{self.service_name} stopping due to shutdown signal")
+                    if not auto_ack:
+                        channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                    return
+                
                 message = json.loads(body.decode('utf-8'))
                 logger.info(f"{self.service_name} received message from {queue_name}")
                 
@@ -133,12 +148,15 @@ class RabbitMQClient:
         try:
             self.ensure_connection()
             self.channel.basic_qos(prefetch_count=1)
-            self.channel.basic_consume(
+            
+            # Set up consumer and track the consumer tag
+            consumer_tag = self.channel.basic_consume(
                 queue=queue_name,
                 on_message_callback=wrapped_callback,
                 auto_ack=auto_ack
             )
-            logger.info(f"{self.service_name} set up consumer for {queue_name}")
+            self.consumer_tags.append(consumer_tag)
+            logger.info(f"{self.service_name} set up consumer for {queue_name} with tag {consumer_tag}")
             
         except Exception as e:
             logger.error(f"Failed to set up consumer: {str(e)}")
@@ -149,22 +167,86 @@ class RabbitMQClient:
         try:
             self.ensure_connection()
             logger.info(f"{self.service_name} starting to consume messages...")
-            self.channel.start_consuming()
-        except KeyboardInterrupt:
+            self.consuming = True
+            
+            # Use Pika's built-in start_consuming but with custom stop logic
+            while self.consuming and not (self.shutdown_event and self.shutdown_event.is_set()):
+                try:
+                    # Process events with a timeout to allow checking shutdown signal
+                    self.connection.process_data_events(time_limit=1)
+                    
+                    # Check if there are any pending events
+                    if not self.connection.is_open:
+                        logger.warning(f"{self.service_name} connection closed")
+                        break
+                        
+                except pika.exceptions.AMQPConnectionError:
+                    logger.warning(f"{self.service_name} connection lost, attempting to reconnect...")
+                    if not self.connect():
+                        break
+                except Exception as e:
+                    logger.error(f"Error processing data events: {str(e)}")
+                    break
+            
             logger.info(f"{self.service_name} stopping consumption...")
-            self.channel.stop_consuming()
+            
+        except KeyboardInterrupt:
+            logger.info(f"{self.service_name} stopping consumption due to KeyboardInterrupt...")
         except Exception as e:
             logger.error(f"Error during consumption: {str(e)}")
             raise
+        finally:
+            self.consuming = False
+            self.stop_consuming()
+    
+    def stop_consuming(self):
+        """Stop consuming messages"""
+        try:
+            self.consuming = False
+            if self.channel and not self.channel.is_closed:
+                # Cancel all our tracked consumers (only once each)
+                if self.consumer_tags:  # Only if we have consumers to cancel
+                    consumer_tags_to_cancel = self.consumer_tags[:]  # Make a copy
+                    self.consumer_tags.clear()  # Clear the original list immediately
+                    
+                    for consumer_tag in consumer_tags_to_cancel:
+                        try:
+                            self.channel.basic_cancel(consumer_tag)
+                            logger.info(f"{self.service_name} cancelled consumer: {consumer_tag}")
+                        except Exception as e:
+                            # Log at debug level to reduce noise - these errors are often harmless
+                            logger.debug(f"Error cancelling consumer {consumer_tag}: {str(e)}")
+                            
+                    logger.info(f"{self.service_name} stopped consuming")
+        except Exception as e:
+            logger.debug(f"Error stopping consumption: {str(e)}")
     
     def close(self):
         """Close connection"""
         try:
+            self.consuming = False
+            
+            # First stop consuming (but only if we haven't already)
+            if self.consumer_tags:  # Only if we have consumers to cancel
+                self.stop_consuming()
+            
+            # Then close channel
             if self.channel and not self.channel.is_closed:
-                self.channel.close()
+                try:
+                    self.channel.close()
+                    logger.debug(f"{self.service_name} channel closed")
+                except Exception as e:
+                    logger.debug(f"Error closing channel: {str(e)}")
+                
+            # Finally close connection
             if self.connection and not self.connection.is_closed:
-                self.connection.close()
+                try:
+                    self.connection.close()
+                    logger.debug(f"{self.service_name} connection closed")
+                except Exception as e:
+                    logger.debug(f"Error closing connection: {str(e)}")
+                
             self.is_connected = False
             logger.info(f"{self.service_name} RabbitMQ connection closed")
         except Exception as e:
-            logger.error(f"Error closing connection: {str(e)}")
+            logger.debug(f"Error closing connection: {str(e)}")
