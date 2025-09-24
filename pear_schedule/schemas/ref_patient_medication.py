@@ -4,14 +4,14 @@ from typing import Optional
 
 class RefPatientMedicationBase(BaseModel):
     PatientID: int
-    PrescriptionListValue: Optional[str] = None
+    PrescriptionName: Optional[str] = None
     Dosage: str
     AdministerTime: str
     Instruction: str
     StartDate: datetime
     EndDate: Optional[datetime] = None
     PrescriptionRemarks: str
-    IsDeleted: Optional[str] = Field(default="1", json_schema_extra={"example": "0"})
+    IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
 
 
 class RefPatientMedicationCreate(RefPatientMedicationBase):
@@ -24,7 +24,7 @@ class RefPatientMedicationCreate(RefPatientMedicationBase):
 
 class RefPatientMedicationUpdate(BaseModel):
     PatientID: Optional[int] = None
-    PrescriptionListValue: Optional[str] = None
+    PrescriptionName: Optional[str] = None
     Dosage: Optional[str] = None
     AdministerTime: str
     Instruction: Optional[str] = None

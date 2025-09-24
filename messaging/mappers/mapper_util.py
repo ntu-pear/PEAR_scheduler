@@ -63,7 +63,7 @@ class MapperUtil:
                     # Direct mappings (source_field: target_field) - updated to match your schema
                     'Id': 'MedicationID',  # Keep same field name
                     'PatientId': 'PatientID',  # Required field
-                    'PrescriptionListId': 'PrescriptionListValue',  # Schema expects PrescriptionListValue
+                    'PrescriptionName': 'PrescriptionName',
                     'AdministerTime': 'AdministerTime',
                     'Dosage': 'Dosage',
                     'Instruction': 'Instruction',
@@ -79,7 +79,6 @@ class MapperUtil:
                 'field_transforms': {
                     # Special transformations (target_field: transform_function)
                     'IsDeleted': lambda x: str(x) if x is not None else "0",
-                    'PrescriptionListValue': lambda x: str(x) if x is not None else None,
                     'StartDate': lambda x: self._parse_datetime(x),
                     'EndDate': lambda x: self._parse_datetime(x),
                     'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),

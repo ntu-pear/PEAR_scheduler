@@ -8,7 +8,7 @@ from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusi
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
 from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
 from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
-from pear_schedule.models.ref_patient_prescription_model import RefPatientPrescription
+from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 from pear_schedule.models.schedule_model import Schedule
 
 
@@ -148,12 +148,12 @@ def sample_activity_routine():
 
 
 @pytest.fixture
-def sample_patient_prescription():
-    """Create a sample RefPatientPrescription instance"""
-    return RefPatientPrescription(
+def sample_patient_medication():
+    """Create a sample RefPatientMedication instance"""
+    return RefPatientMedication(
         Id=1,
         PatientId=1,
-        PrescriptionListValue="Aspirin 100mg",
+        PrescriptionName="Aspirin",
         Dosage="1 tablet",
         FrequencyPerDay=1,
         Instruction="Take with food",

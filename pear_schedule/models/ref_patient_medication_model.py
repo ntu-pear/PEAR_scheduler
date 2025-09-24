@@ -9,7 +9,7 @@ class RefPatientMedication(Base):
     MedicationID = Column(Integer, primary_key=True, index=True)
     IsDeleted = Column(String(1), default='1', nullable=False)
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID'))
-    PrescriptionListValue = Column(String(255))
+    PrescriptionName = Column(String(255))
     Dosage = Column(String(255), nullable=False)
     AdministerTime = Column(String(255), nullable=False)
     Instruction = Column(String(255), nullable=False)
