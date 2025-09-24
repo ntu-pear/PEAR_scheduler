@@ -35,7 +35,7 @@ class MICROSERVICE_TABLES:
     REF_ACTIVITY_PREFERENCE: str = "REF_ACTIVITY_PREFERENCE"
     REF_ACTIVITY_RECOMMENDATION: str = "REF_ACTIVITY_RECOMMENDATION"
     REF_ACTIVITY_ROUTINE: str = "REF_ACTIVITY_ROUTINE"
-    REF_PATIENT_PRESCRIPTION: str = "REF_PATIENT_PRESCRIPTION"
+    REF_PATIENT_MEDICATION: str = "REF_PATIENT_MEDICATION"
     SCHEDULE: str = "SCHEDULE"
 
 
@@ -68,7 +68,7 @@ def get_ref_table_mapping():
         "CentreActivityRecommendation": "REF_ACTIVITY_RECOMMENDATION",
         "Routine": "REF_ACTIVITY_ROUTINE",
         "RoutineActivity": "REF_ACTIVITY_ROUTINE",
-        "Medication": "REF_PATIENT_PRESCRIPTION",
+        "Medication": "REF_PATIENT_MEDICATION",
         "Schedule": "SCHEDULE"
     }
 
@@ -87,7 +87,7 @@ def get_model_for_table(table_name: str):
     from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
     from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
     from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
-    from pear_schedule.models.ref_patient_prescription_model import RefPatientPrescription
+    from pear_schedule.models.ref_patient_medication import RefPatientMedication
     from pear_schedule.models.schedule_model import Schedule
     
     model_mapping = {
@@ -98,7 +98,7 @@ def get_model_for_table(table_name: str):
         "REF_ACTIVITY_PREFERENCE": RefActivityPreference,
         "REF_ACTIVITY_RECOMMENDATION": RefActivityRecommendation,
         "REF_ACTIVITY_ROUTINE": RefActivityRoutine,
-        "REF_PATIENT_PRESCRIPTION": RefPatientPrescription,
+        "REF_PATIENT_MEDICATION": RefPatientMedication,
         "SCHEDULE": Schedule
     }
     

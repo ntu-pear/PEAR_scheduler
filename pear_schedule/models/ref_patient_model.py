@@ -21,4 +21,4 @@ class RefPatient(Base):
     preferences = relationship("RefActivityPreference", back_populates="patient")
     recommendations = relationship("RefActivityRecommendation", back_populates="patient")
     routines = relationship("RefActivityRoutine", back_populates="patient")
-    prescriptions = relationship("RefPatientPrescription", back_populates="patient")
+    medications = relationship("RefPatientMedication", back_populates="patient")

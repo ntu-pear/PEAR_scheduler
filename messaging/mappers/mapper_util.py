@@ -52,6 +52,55 @@ class MapperUtil:
                     'terminationReason', 'inActiveDate', 'dateOfBirth', 'gender'
                 ]
             },
+
+            # Patient Service → Scheduler Service (Patient Medication)
+            'patient_medication_service_to_scheduler': {
+                'source_service': 'patient-service',
+                'target_service': 'scheduler-service', 
+                'entity_type': 'patient_medication',
+                'required_fields': ['Id', 'PatientId'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field) - updated to match your schema
+                    'Id': 'MedicationID',  # Keep same field name
+                    'PatientId': 'PatientID',  # Required field
+                    'PrescriptionListId': 'PrescriptionListValue',  # Schema expects PrescriptionListValue
+                    'AdministerTime': 'AdministerTime',
+                    'Dosage': 'Dosage',
+                    'Instruction': 'Instruction',
+                    'StartDate': 'StartDate',
+                    'EndDate': 'EndDate',
+                    'PrescriptionRemarks': 'PrescriptionRemarks',
+                    'IsDeleted': 'IsDeleted',
+                    'CreatedDateTime': 'CreatedDateTime',
+                    'UpdatedDateTime': 'UpdatedDateTime',
+                    'CreatedById': 'CreatedById',
+                    'ModifiedById': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'IsDeleted': lambda x: str(x) if x is not None else "0",
+                    'PrescriptionListValue': lambda x: str(x) if x is not None else None,
+                    'StartDate': lambda x: self._parse_datetime(x),
+                    'EndDate': lambda x: self._parse_datetime(x),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'Dosage': lambda x: str(x) if x is not None else "",
+                    'Instruction': lambda x: str(x) if x is not None else "",
+                    'PrescriptionRemarks': lambda x: str(x) if x is not None else "",
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'CreatedDateTime': datetime.utcnow(),
+                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedById': 'patient_service',
+                    'ModifiedById': 'patient_service',
+                    'PrescriptionRemarks': '',
+                },
+                'ignored_fields': [
+                    # Source fields to ignore - adjust based on your source model
+                    'patient', 'prescription_list'  # SQLAlchemy relationship fields
+                ]
+            },
             
             # Activity Service → Scheduler Service
             'activity_service_to_scheduler': {
@@ -320,3 +369,25 @@ def update_activity_field_mapping(source_field: str, target_field: str):
 def add_activity_ignored_field(field_name: str):
     """Add field to activity ignore list"""
     mapper.add_ignored_field('activity_service_to_scheduler', field_name)
+
+# Convenience functions for patient medication mapper
+def map_patient_medication_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient medication data for create operation"""
+    return mapper.map_data(source_data, 'patient_medication_service_to_scheduler', 'create')
+
+def map_patient_medication_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient medication data for update operation"""
+    return mapper.map_data(source_data, 'patient_medication_service_to_scheduler', 'update')
+
+def get_patient_medication_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get patient medication mapping information"""
+    return mapper.get_mapping_info('patient_medication_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_patient_medication_field_mapping(source_field: str, target_field: str):
+    """Update patient medication field mapping when columns change"""
+    mapper.update_field_mapping('patient_medication_service_to_scheduler', source_field, target_field)
+
+def add_patient_medication_ignored_field(field_name: str):
+    """Add field to patient medication ignore list"""
+    mapper.add_ignored_field('patient_medication_service_to_scheduler', field_name)

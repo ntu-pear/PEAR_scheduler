@@ -3,26 +3,23 @@ from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from pear_schedule.database import Base
 
-class RefPatientPrescription(Base):
-    __tablename__ = "REF_PATIENT_PRESCRIPTION"
+class RefPatientMedication(Base):
+    __tablename__ = "REF_PATIENT_MEDICATION"
 
-    PrescriptionID = Column(Integer, primary_key=True, index=True)
+    MedicationID = Column(Integer, primary_key=True, index=True)
     IsDeleted = Column(String(1), default='1', nullable=False)
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID'))
     PrescriptionListValue = Column(String(255))
     Dosage = Column(String(255), nullable=False)
     AdministerTime = Column(String(255), nullable=False)
-    FrequencyPerDay = Column(BigInteger, nullable=False)
     Instruction = Column(String(255), nullable=False)
     StartDateTime = Column(DateTime, nullable=False)
     EndDateTime = Column(DateTime)
-    AfterMeal = Column(String(1))
     PrescriptionRemarks = Column(String(255), nullable=False)
-    IsChronic = Column(String(255), nullable=False)
     
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
     UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)  
 
-    patient = relationship("RefPatient", back_populates="prescriptions")
+    patient = relationship("RefPatient", back_populates="medications")
