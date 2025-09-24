@@ -1,6 +1,6 @@
-from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
 import logging
+from datetime import datetime
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +90,47 @@ class MapperUtil:
                 'ignored_fields': [
                     # Source fields to ignore
                     'createdById', 'modifiedById', 'isDeleted'
+                ]
+            },
+            
+            # Activity Service → Scheduler Service
+            'activity_exclusion_service_to_scheduler': {
+                'source_service': 'activity-exclusion-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'activity_exclusion',
+                'required_fields': ['id', 'patient_id'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field)
+                    'id': 'ActivityExclusionId',
+                    'centre_activity_id': 'ActivityId',
+                    'patient_id': 'PatientId',
+                    'is_deleted': 'IsDeleted',
+                    'exclusion_remarks': 'ExclusionRemarks',
+                    'start_date': 'StartDate',
+                    'end_date': 'EndDate',
+                    'created_date': 'CreatedDateTime',
+                    'modified_date': 'UpdatedDateTime',
+                    'created_by_id': 'CreatedById',
+                    'modified_by_id': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'IsActive': lambda x: "1" if x else "0" if x is not None else "1",
+                    # 'StartDateTime': lambda x: self._parse_datetime(x),
+                    # 'EndDateTime': lambda x: self._parse_datetime(x),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'IsDeleted': lambda x: str(x) if x is not None else "0",
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'CreatedDateTime': datetime.utcnow(),
+                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedById': 'activity_service',
+                    'ModifiedById': 'activity_service'
+                },
+                'ignored_fields': [
+                    # Source fields to ignore
                 ]
             },
             
@@ -320,3 +361,36 @@ def update_activity_field_mapping(source_field: str, target_field: str):
 def add_activity_ignored_field(field_name: str):
     """Add field to activity ignore list"""
     mapper.add_ignored_field('activity_service_to_scheduler', field_name)
+    
+
+# For Activity Exclusion
+def map_activity_exclusion_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity exclusion data for create operation"""
+    return mapper.map_data(source_data, 'activity_exclusion_service_to_scheduler', 'create')
+
+def map_activity_exclusion_update(source_data: Dict[str, Any], modified_by: str = None) -> Optional[Dict[str, Any]]:
+    """Map activity exclusion data for update operation with optional context"""
+    # Add context data if provided
+    enhanced_data = source_data.copy()
+    if modified_by:
+        enhanced_data['modified_by'] = modified_by
+    
+    # Always include UpdatedDateTime for updates
+    if 'UpdatedDateTime' not in enhanced_data and 'modifiedDate' not in enhanced_data:
+        enhanced_data['modifiedDate'] = datetime.utcnow().isoformat()
+    
+    return mapper.map_data(enhanced_data, 'activity_exclusion_service_to_scheduler', 'update')
+
+def get_activity_exclusion_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get activity exclusion mapping information"""
+    return mapper.get_mapping_info('activity_exclusion_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_activity_exclusion_field_mapping(source_field: str, target_field: str):
+    """Update activity exclusion field mapping when columns change"""
+    mapper.update_field_mapping('activity_exclusion_service_to_scheduler', source_field, target_field)
+
+def add_activity_exclusion_ignored_field(field_name: str):
+    """Add field to activity exclusion ignore list"""
+    mapper.add_ignored_field('activity_exclusion_service_to_scheduler', field_name)
+

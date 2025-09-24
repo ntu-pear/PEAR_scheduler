@@ -1,11 +1,12 @@
 import logging
 import threading
 import time
-from typing import List, Dict
 from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, List
 
-from .patient_consumer import PatientConsumer
 from .activity_consumer import ActivityConsumer
+from .activity_exclusion_consumer import ActivityExclusionConsumer
+from .patient_consumer import PatientConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     # Register all available consumers
     manager.register_consumer("patient", PatientConsumer)
     manager.register_consumer("activity", ActivityConsumer)
+    manager.register_consumer("activity", ActivityExclusionConsumer)
     
     return manager
 
