@@ -7,7 +7,7 @@ class RefPatientMedication(Base):
     __tablename__ = "REF_PATIENT_MEDICATION"
 
     MedicationID = Column(Integer, primary_key=True, index=True)
-    IsDeleted = Column(String(1), default='0', nullable=False)
+    IsDeleted = Column(String(1), default='1', nullable=False)
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID'))
     PrescriptionName = Column(String(255))
     Dosage = Column(String(255), nullable=False)

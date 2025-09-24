@@ -87,7 +87,7 @@ def get_model_for_table(table_name: str):
     from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
     from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
     from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
-    from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
+    from pear_schedule.models.ref_patient_medication import RefPatientMedication
     from pear_schedule.models.schedule_model import Schedule
     
     model_mapping = {

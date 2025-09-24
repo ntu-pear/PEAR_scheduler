@@ -67,7 +67,7 @@ class MapperUtil:
                     # Direct mappings (source_field: target_field) - updated to match your schema
                     'Id': 'MedicationID',  # Keep same field name
                     'PatientId': 'PatientID',  # Required field
-                    'PrescriptionName': 'PrescriptionName',
+                    'PrescriptionListId': 'PrescriptionListValue',  # Schema expects PrescriptionListValue
                     'AdministerTime': 'AdministerTime',
                     'Dosage': 'Dosage',
                     'Instruction': 'Instruction',
@@ -82,19 +82,20 @@ class MapperUtil:
                 },
                 'field_transforms': {
                     # Special transformations (target_field: transform_function)
-                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
+                    'IsDeleted': lambda x: str(x) if x is not None else "0",
+                    'PrescriptionListValue': lambda x: str(x) if x is not None else None,
                     'StartDate': lambda x: self._parse_datetime(x),
                     'EndDate': lambda x: self._parse_datetime(x),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
                     'Dosage': lambda x: str(x) if x is not None else "",
                     'Instruction': lambda x: str(x) if x is not None else "",
                     'PrescriptionRemarks': lambda x: str(x) if x is not None else "",
                 },
                 'defaults': {
                     'IsDeleted': '0',
-                    'CreatedDateTime': datetime.now(),
-                    'UpdatedDateTime': datetime.now(),
+                    'CreatedDateTime': datetime.utcnow(),
+                    'UpdatedDateTime': datetime.utcnow(),
                     'CreatedById': 'patient_service',
                     'ModifiedById': 'patient_service',
                     'PrescriptionRemarks': '',
@@ -103,222 +104,6 @@ class MapperUtil:
                     # Source fields to ignore - adjust based on your source model
                     'patient', 'prescription_list'  # SQLAlchemy relationship fields
                 ]
-            },
-            
-            # Activity Service → Scheduler Service
-            'activity_service_to_scheduler': {
-                'source_service': 'activity-service',
-                'target_service': 'scheduler-service',
-                'entity_type': 'activity',
-                'required_fields': ['id', 'title'],
-                'field_mappings': {
-                    # Direct mappings (source_field: target_field)
-                    'id': 'ActivityID',
-                    'title': 'ActivityTitle',
-                    'description': 'ActivityDesc',
-                    'is_deleted': 'IsDeleted',
-                    'created_date': 'CreatedDateTime',
-                    'modified_date': 'UpdatedDateTime',
-                    'created_by_id': 'CreatedById',
-                    'modified_by_id': 'ModifiedById',
-                },
-                'field_transforms': {
-                    # Special transformations (target_field: transform_function)
-                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'CreatedById': lambda x: x or "activity_service",
-                    'ModifiedById': lambda x: x or "activity_service",
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                },
-                'defaults': {
-                    'IsDeleted': '0',
-                    'CreatedDateTime': datetime.now(),
-                    'UpdatedDateTime': datetime.now(),
-                    'CreatedById': 'activity_service',
-                    'ModifiedById': 'activity_service'
-                },
-                'ignored_fields': [
-                    # Source fields to ignore
-                    'createdById', 'modifiedById', 'isDeleted'
-                ]
-            },
-
-            # Activity Service → Scheduler Service (Activity Preferences)
-            'activity_preference_service_to_scheduler': {
-                'source_service': 'activity-service',
-                'target_service': 'scheduler-service',
-                'entity_type': 'activity_preference',
-                'required_fields': ['centre_activity_id', 'patient_id'],
-                'field_mappings': {
-                    'id': 'CentreActivityPreferenceID',
-                    'centre_activity_id': 'CentreActivityID',
-                    'patient_id': 'PatientID',
-                    'is_like': 'IsLike',
-                    'is_deleted': 'IsDeleted',
-                    'created_date': 'CreatedDateTime',
-                    'modified_date': 'UpdatedDateTime',
-                    'created_by_id': 'CreatedById',
-                    'modified_by_id': 'ModifiedById',
-                },
-                'field_transforms': {
-                    'IsLike': lambda x: self._convert_preference_value(x, "0"),  # Convert to -1, 0, or 1
-                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'ModifiedById': lambda x: x or "activity_service",
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                },
-                'defaults': {
-                    'IsDeleted': '0',
-                    'IsLike': '0',  # Neutral preference
-                    'CreatedDateTime': datetime.now(),
-                    'UpdatedDateTime': datetime.now(),
-                    'CreatedById': 'activity_service',
-                    'ModifiedById': 'activity_service'
-                },
-                'ignored_fields': []
-            },
-
-            # Activity Service → Scheduler Service (Activity Recommendations)
-            'activity_recommendation_service_to_scheduler': {
-                'source_service': 'activity-service',
-                'target_service': 'scheduler-service',
-                'entity_type': 'activity_recommendation',
-                'required_fields': ['centre_activity_id', 'patient_id', 'doctor_id'],
-                'field_mappings': {
-                    # Direct mappings (source_field: target_field)
-                    'id': 'CentreActivityRecommendationID',  # Use the source ID as our unique identifier
-                    'centre_activity_id': 'CentreActivityID',
-                    'patient_id': 'PatientID',
-                    'doctor_id': 'DoctorID',
-                    'doctor_recommendation': 'DoctorRecommendation',
-                    'doctor_remarks': 'DoctorRemarks',
-                    'is_deleted': 'IsDeleted',
-                    'created_date': 'CreatedDateTime',
-                    'modified_date': 'UpdatedDateTime',
-                    'created_by_id': 'CreatedById',
-                    'modified_by_id': 'ModifiedById',
-                },
-                'field_transforms': {
-                    # Special transformations (target_field: transform_function)
-                    'DoctorID': lambda x: str(x) if x is not None else "",
-                    'DoctorRecommendation': lambda x: self._convert_preference_value(x, "0"),  # Convert to -1, 0, or 1
-                    'DoctorRemarks': lambda x: str(x) if x is not None else "",
-                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                },
-                'defaults': {
-                    'IsDeleted': '0',
-                    'DoctorRecommendation': '0',  # Neutral recommendation
-                    'DoctorRemarks': '',
-                    'CreatedDateTime': datetime.now(),
-                    'UpdatedDateTime': datetime.now(),
-                    'CreatedById': 'activity_service',
-                    'ModifiedById': 'activity_service'
-                },
-                'ignored_fields': []
-            },
-
-            # Activity Service → Scheduler Service (Centre Activity)
-            'centre_activity_service_to_scheduler': {
-                'source_service': 'activity-service',
-                'target_service': 'scheduler-service',
-                'entity_type': 'centre_activity',
-                'required_fields': ['id', 'activity_id'],
-                'field_mappings': {
-                    # Direct mappings (source_field: target_field)
-                    'id': 'CentreActivityID',
-                    'activity_id': 'ActivityID',
-                    'is_deleted': 'IsDeleted',
-                    'is_compulsory': 'IsCompulsory',
-                    'is_fixed': 'IsFixed',
-                    'is_group': 'IsGroup',
-                    'start_date': 'StartDate',
-                    'end_date': 'EndDate',
-                    'min_duration': 'MinDuration',
-                    'max_duration': 'MaxDuration',
-                    'min_people_req': 'MinPeopleReq',
-                    'fixed_time_slots': 'FixedTimeSlots',
-                    'created_date': 'CreatedDateTime',
-                    'modified_date': 'UpdatedDateTime',
-                    'created_by_id': 'CreatedById',
-                    'modified_by_id': 'ModifiedById',
-                },
-                'field_transforms': {
-                    # Special transformations (target_field: transform_function)
-                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'IsCompulsory': lambda x: self._convert_boolean(x, "0"),
-                    'IsFixed': lambda x: self._convert_boolean(x, "0"),
-                    'IsGroup': lambda x: self._convert_boolean(x, "0"),
-                    'StartDate': lambda x: self._parse_date(x),
-                    'EndDate': lambda x: self._parse_date(x),
-                    'MinDuration': lambda x: int(x) if x is not None else 30,
-                    'MaxDuration': lambda x: int(x) if x is not None else 60,
-                    'MinPeopleReq': lambda x: int(x) if x is not None else 1,
-                    'FixedTimeSlots': lambda x: str(x) if x is not None else None,
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
-                    'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
-                },
-                'defaults': {
-                    'IsDeleted': '0',
-                    'IsCompulsory': '0',
-                    'IsFixed': '0',
-                    'IsGroup': '0',
-                    'MinDuration': 30,
-                    'MaxDuration': 60,
-                    'MinPeopleReq': 1,
-                    'CreatedDateTime': datetime.now(),
-                    'UpdatedDateTime': datetime.now(),
-                    'CreatedById': 'activity_service',
-                    'ModifiedById': 'activity_service'
-                },
-                'ignored_fields': []
-            },
-            
-            # Activity Service → Scheduler Service (Activity Exclusions)
-            'activity_exclusion_service_to_scheduler': {
-                'source_service': 'activity-service',
-                'target_service': 'scheduler-service',
-                'entity_type': 'activity_exclusion',
-                'required_fields': ['patient_id', 'centre_activity_id'],
-                'field_mappings': {
-                    # Direct mappings (source_field: target_field)
-                    'id': 'ActivityExclusionID',
-                    'patient_id': 'PatientID',
-                    'centre_activity_id': 'ActivityID',
-                    'start_date': 'StartDateTime',
-                    'end_date': 'EndDateTime', 
-                    'exclusion_remarks': 'ExclusionRemarks',
-                    'is_deleted': 'IsDeleted',
-                    'created_date': 'CreatedDateTime',
-                    'modified_date': 'UpdatedDateTime',
-                    'created_by_id': 'CreatedById',
-                    'modified_by_id': 'ModifiedById',
-                },
-                'field_transforms': {
-                    # Special transformations (target_field: transform_function)
-                    'StartDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'EndDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'ExclusionRemarks': lambda x: str(x) if x is not None else "",
-                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
-                    'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
-                },
-                'defaults': {
-                    'IsDeleted': '0',
-                    'ExclusionRemarks': '',
-                    'StartDateTime': datetime.now(),
-                    'EndDateTime': datetime.now(),
-                    'CreatedDateTime': datetime.now(),
-                    'UpdatedDateTime': datetime.now(),
-                    'CreatedById': 'activity_service',
-                    'ModifiedById': 'activity_service'
-                },
-                'ignored_fields': []
             },
             
             # Activity Service → Scheduler Service
@@ -692,3 +477,25 @@ def update_activity_field_mapping(source_field: str, target_field: str):
 def add_activity_ignored_field(field_name: str):
     """Add field to activity ignore list"""
     mapper.add_ignored_field('activity_service_to_scheduler', field_name)
+
+# Convenience functions for patient medication mapper
+def map_patient_medication_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient medication data for create operation"""
+    return mapper.map_data(source_data, 'patient_medication_service_to_scheduler', 'create')
+
+def map_patient_medication_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient medication data for update operation"""
+    return mapper.map_data(source_data, 'patient_medication_service_to_scheduler', 'update')
+
+def get_patient_medication_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get patient medication mapping information"""
+    return mapper.get_mapping_info('patient_medication_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_patient_medication_field_mapping(source_field: str, target_field: str):
+    """Update patient medication field mapping when columns change"""
+    mapper.update_field_mapping('patient_medication_service_to_scheduler', source_field, target_field)
+
+def add_patient_medication_ignored_field(field_name: str):
+    """Add field to patient medication ignore list"""
+    mapper.add_ignored_field('patient_medication_service_to_scheduler', field_name)
