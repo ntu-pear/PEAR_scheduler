@@ -10,7 +10,7 @@ from pear_schedule.models import (
     ref_activity_preference_model,
     ref_activity_routine_model,
     ref_patient_model,
-    ref_patient_prescription_model,
+    ref_patient_medication_model,
     schedule_model
 )
 
