@@ -15,6 +15,10 @@ class RefPatientCreate(RefPatientBase):
     """Schema for creating a new ref patient - includes Id for message queue operations"""
     PatientID: int  # Include Id for message queue synchronization
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
+    CreatedDateTime: datetime
+    UpdatedDateTime: datetime 
+    CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
+    ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
 
 
 class RefPatientUpdate(BaseModel):
@@ -32,5 +36,9 @@ class RefPatient(RefPatientBase):
     """Schema for ref patient response"""
     PatientID: int
     IsDeleted: str = Field(default="0")
+    CreatedDateTime: datetime
+    UpdatedDateTime: datetime 
+    CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
+    ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
     
     model_config = ConfigDict(from_attributes=True)

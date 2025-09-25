@@ -13,7 +13,7 @@ class RefCentreActivity(Base):
     IsFixed = Column(String(1), default='0', nullable=False) 
     IsGroup = Column(String(1), default='0', nullable=False)
     StartDate = Column(Date, nullable=False)
-    EndDate = Column(Date, nullable=True)
+    EndDate = Column(Date, nullable=False)
     MinDuration = Column(Integer, nullable=False)
     MaxDuration = Column(Integer, nullable=False)
     MinPeopleReq = Column(Integer, nullable=False)
