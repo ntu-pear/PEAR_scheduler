@@ -5,12 +5,11 @@ from typing import Optional
 class RefActivityBase(BaseModel):
     ActivityTitle: Optional[str] = None
     ActivityDesc: Optional[str] = None
-    StartDate: datetime 
-    EndDate: datetime
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
 
 
 class RefActivityCreate(RefActivityBase):
+    ActivityID: int
     CreatedDateTime: datetime
     UpdatedDateTime: datetime
     CreatedById: str = Field(json_schema_extra={"example": "activity_service"})
@@ -20,8 +19,6 @@ class RefActivityCreate(RefActivityBase):
 class RefActivityUpdate(BaseModel):
     ActivityTitle: Optional[str] = None
     ActivityDesc: Optional[str] = None
-    StartDate: Optional[datetime] = None
-    EndDate: Optional[datetime] = None
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 

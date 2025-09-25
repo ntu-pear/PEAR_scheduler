@@ -4,30 +4,30 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, Tuple, List
 import logging
 import math
-from ..models.ref_activity_model import RefActivity
+from ..models.ref_centre_activity_model import RefCentreActivity
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_activity import RefActivityCreate, RefActivityUpdate
+from ..schemas.ref_centre_activity import RefCentreActivityCreate, RefCentreActivityUpdate
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
 
-def create_ref_activity(
+def create_ref_centre_activity(
     db: Session,
-    activity: RefActivityCreate,
+    centre_activity: RefCentreActivityCreate,
     correlation_id: str,
     created_by: str
-) -> Tuple[RefActivity, bool]:
+) -> Tuple[RefCentreActivity, bool]:
     """
-    Create a new activity with idempotency protection.
+    Create a new centre activity with idempotency protection.
     
     Args:
         db: Database session
-        activity: Activity data to create
+        centre_activity: Centre Activity data to create
         correlation_id: Correlation ID from outbox service for deduplication
         created_by: User/service creating the activity
         
     Returns:
-        Tuple of (RefActivity, was_duplicate: bool)
+        Tuple of (RefCentreActivity, was_duplicate: bool)
         
     Raises:
         ValueError: If activity with same ID already exists (business logic error)
@@ -35,35 +35,41 @@ def create_ref_activity(
     """
     
     def create_operation():
-        # Check if activity already exists - this is a business rule violation for CREATE
-        existing = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
+        # Check if centre activity already exists - this is a business rule violation for CREATE
+        existing = db.query(RefCentreActivity).filter(RefCentreActivity.CentreActivityID == centre_activity.CentreActivityID).first()
         if existing:
-            raise ValueError(f"Activity with ID {activity.ActivityID} already exists. Use update operation instead.")
+            raise ValueError(f"Centre Activity with ID {centre_activity.CentreActivityID} already exists. Use update operation instead.")
         
-        logger.info(f"Creating new activity {activity.ActivityID}")
+        logger.info(f"Creating new centre activity {centre_activity.CentreActivityID}")
         
         # Use raw SQL for IDENTITY INSERT to handle specific ID
         query = text("""
-            SET IDENTITY_INSERT [REF_ACTIVITY] ON;
+            SET IDENTITY_INSERT [REF_CENTRE_ACTIVITY] ON;
             
-            INSERT INTO [REF_ACTIVITY] (
-                ActivityID, ActivityTitle, ActivityDesc, IsDeleted,
-                CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
+            INSERT INTO [REF_CENTRE_ACTIVITY] (
+                CentreActivityID, ActivityID, IsDeleted, IsCompulsory, IsFixed, IsGroup, StartDate, EndDate, MinDuration, MaxDuration, MinPeopleReq, FixedTimeSlots, CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
             ) VALUES (
-                :ActivityID, :ActivityTitle, :ActivityDesc, :IsDeleted,
-                :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
+                :CentreActivityID, :ActivityID, :IsDeleted, :IsCompulsory, :IsFixed, :IsGroup, :StartDate, :EndDate, :MinDuration, :MaxDuration, :MinPeopleReq, :FixedTimeSlots, :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
             );
             
-            SET IDENTITY_INSERT [REF_ACTIVITY] OFF;
+            SET IDENTITY_INSERT [REF_CENTRE_ACTIVITY] OFF;
         """)
         
         params = {
-            "ActivityID": activity.ActivityID,
-            "ActivityTitle": activity.ActivityTitle,
-            "ActivityDesc": activity.ActivityDesc,
-            "IsDeleted": activity.IsDeleted or "0",
-            "CreatedDateTime": activity.CreatedDateTime,
-            "UpdatedDateTime": activity.UpdatedDateTime,
+            "CentreActivityID": centre_activity.CentreActivityID,
+            "ActivityID": centre_activity.ActivityID,
+            "IsDeleted": centre_activity.IsDeleted or "0",
+            "IsCompulsory": centre_activity.IsCompulsory or "0",
+            "IsFixed": centre_activity.IsFixed or "0",
+            "IsGroup": centre_activity.IsGroup or "0",
+            "StartDate": centre_activity.StartDate,
+            "EndDate": centre_activity.EndDate,
+            "MinDuration": centre_activity.MinDuration,
+            "MaxDuration": centre_activity.MaxDuration,
+            "MinPeopleReq": centre_activity.MinPeopleReq,
+            "FixedTimeSlots": centre_activity.FixedTimeSlots,
+            "CreatedDateTime": centre_activity.CreatedDateTime,
+            "UpdatedDateTime": centre_activity.UpdatedDateTime,
             "CreatedById": created_by,
             "ModifiedById": created_by,
         }
@@ -72,9 +78,9 @@ def create_ref_activity(
         db.flush()
         
         # Return the created activity
-        created_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
+        created_activity = db.query(RefCentreActivity).filter(RefCentreActivity.CentreActivityID == centre_activity.CentreActivityID).first()
         if not created_activity:
-            raise Exception(f"Failed to create activity {activity.ActivityID}")
+            raise Exception(f"Failed to create activity {created_activity.Id}")
             
         return created_activity
     
@@ -83,46 +89,46 @@ def create_ref_activity(
         result, was_duplicate = IdempotencyService.process_idempotent(
             db=db,
             correlation_id=correlation_id,
-            event_type="ACTIVITY_CREATED",
-            aggregate_id=str(activity.ActivityID),
+            event_type="CENTRE_ACTIVITY_CREATED",
+            aggregate_id=str(centre_activity.CentreActivityID),
             processed_by=f"scheduler_service_{created_by}",
             operation=create_operation
         )
         
         if was_duplicate:
             # Return existing activity for duplicate events
-            existing_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
-            logger.info(f"Duplicate create event for activity {activity.ActivityID}, returning existing")
+            existing_activity = db.query(RefCentreActivity).filter(RefCentreActivity.CentreActivityID == centre_activity.CentreActivityID).first()
+            logger.info(f"Duplicate create event for centre activity {centre_activity.CentreActivityID}, returning existing")
             return existing_activity, True
         
         db.commit()
-        logger.info(f"Successfully created activity {activity.ActivityID}")
+        logger.info(f"Successfully created centre activity {centre_activity.CentreActivityID}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating activity {activity.ActivityID}: {str(e)}")
+        logger.error(f"Error creating centre activity {centre_activity.CentreActivityID}: {str(e)}")
         raise
 
-def update_ref_activity(
+def update_ref_centre_activity(
     db: Session,
-    activity_id: int,
-    activity_update: RefActivityUpdate,
+    centre_activity_id: int,
+    centre_activity_update: RefCentreActivityUpdate,
     correlation_id: str,
     updated_by: str
-) -> Tuple[Optional[RefActivity], bool]:
+) -> Tuple[Optional[RefCentreActivity], bool]:
     """
-    Update an existing activity with idempotency protection.
+    Update an existing centre activity with idempotency protection.
     
     Args:
         db: Database session
-        activity_id: ID of activity to update
-        activity_update: Fields to update
+        centre_activity_id: ID of centre activity to update
+        centre_activity_update: Fields to update
         correlation_id: Correlation ID from outbox service for deduplication
         updated_by: User/service updating the activity
         
     Returns:
-        Tuple of (RefActivity or None, was_duplicate: bool)
+        Tuple of (RefCentreActivity or None, was_duplicate: bool)
         None if activity not found
         
     Raises:
@@ -130,30 +136,25 @@ def update_ref_activity(
     """
     
     def update_operation():
-        # Find the activity to update
-        db_activity = db.query(RefActivity).filter(
-            RefActivity.ActivityID == activity_id,
-            RefActivity.IsDeleted == "0"
+        # Find the centre activity to update
+        db_activity = db.query(RefCentreActivity).filter(
+            RefCentreActivity.CentreActivityID == centre_activity_id,
+            RefCentreActivity.IsDeleted == "0"
         ).first()
         
         if not db_activity:
-            logger.warning(f"Activity {activity_id} not found for update")
+            logger.warning(f"Centre Activity {centre_activity_id} not found for update")
             return None
         
-        logger.debug(f"Updating activity {activity_id}")
+        logger.debug(f"Updating activity {centre_activity_id}")
         
         # Update only the fields that were provided
-        update_data = activity_update.model_dump(exclude_unset=True)
+        update_data = centre_activity_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             if hasattr(db_activity, field) and field != 'Id':  # Never update ID
                 # Handle field name mappings
-                if field == "Title":
-                    setattr(db_activity, "ActivityTitle", value)
-                elif field == "Desc":
-                    setattr(db_activity, "ActivityDesc", value)
-                else:
-                    setattr(db_activity, field, value)
-        
+                setattr(db_activity, field, value)
+                    
         # Always update the modification timestamp
         from datetime import datetime
         db_activity.UpdatedDateTime = datetime.utcnow()
@@ -167,52 +168,52 @@ def update_ref_activity(
         result, was_duplicate = IdempotencyService.process_idempotent(
             db=db,
             correlation_id=correlation_id,
-            event_type="ACTIVITY_UPDATED",
-            aggregate_id=str(activity_id),
+            event_type="CENTRE_ACTIVITY_UPDATED",
+            aggregate_id=str(centre_activity_id),
             processed_by=f"scheduler_service_{updated_by}",
             operation=update_operation
         )
         
         if was_duplicate:
             # Return current state for duplicate events
-            existing_activity = db.query(RefActivity).filter(
-                RefActivity.ActivityID == activity_id,
-                RefActivity.IsDeleted == "0"
+            existing_activity = db.query(RefCentreActivity).filter(
+                RefCentreActivity.CentreActivityID == centre_activity_id,
+                RefCentreActivity.IsDeleted == "0"
             ).first()
-            logger.info(f"Duplicate update event for activity {activity_id}, returning current state")
+            logger.info(f"Duplicate update event for centre activity {centre_activity_id}, returning current state")
             return existing_activity, True
         
         if result is None:
-            logger.warning(f"Activity {activity_id} not found for update")
+            logger.warning(f"Centre Activity {centre_activity_id} not found for update")
             db.commit()  # Commit the idempotency record even if activity not found
             return None, False
         
         db.commit()
-        logger.debug(f"Successfully updated activity {activity_id}")
+        logger.debug(f"Successfully updated centre activity {centre_activity_id}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error updating activity {activity_id}: {str(e)}")
+        logger.error(f"Error updating centre activity {centre_activity_id}: {str(e)}")
         raise
 
-def delete_ref_activity(
+def delete_ref_centre_activity(
     db: Session,
-    activity_id: int,
+    centre_activity_id: int,
     correlation_id: str,
     deleted_by: str
-) -> Tuple[Optional[RefActivity], bool]:
+) -> Tuple[Optional[RefCentreActivity], bool]:
     """
-    Soft delete an activity with idempotency protection.
+    Soft delete an centre activity with idempotency protection.
     
     Args:
         db: Database session
-        activity_id: ID of activity to delete
+        centre_activity_id: ID of centre activity to delete
         correlation_id: Correlation ID from outbox service for deduplication
         deleted_by: User/service deleting the activity
         
     Returns:
-        Tuple of (RefActivity or None, was_duplicate: bool)
+        Tuple of (RefCentreActivity or None, was_duplicate: bool)
         None if activity not found
         
     Raises:
@@ -221,17 +222,17 @@ def delete_ref_activity(
     
     def delete_operation():
         # Find the activity to delete
-        db_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity_id).first()
+        db_activity = db.query(RefCentreActivity).filter(RefCentreActivity.CentreActivityID == centre_activity_id).first()
         
         if not db_activity:
-            logger.warning(f"Activity {activity_id} not found for deletion")
+            logger.warning(f"Centre Activity {centre_activity_id} not found for deletion")
             return None
         
         if db_activity.IsDeleted == "1":
-            logger.info(f"Activity {activity_id} already deleted")
+            logger.info(f"Centre Activity {centre_activity_id} already deleted")
             return db_activity
         
-        logger.info(f"Soft deleting activity {activity_id}")
+        logger.info(f"Soft deleting centre activity {centre_activity_id}")
         
         # Perform soft delete
         from datetime import datetime
@@ -247,33 +248,33 @@ def delete_ref_activity(
         result, was_duplicate = IdempotencyService.process_idempotent(
             db=db,
             correlation_id=correlation_id,
-            event_type="ACTIVITY_DELETED",
-            aggregate_id=str(activity_id),
+            event_type="CENTRE_ACTIVITY_DELETED",
+            aggregate_id=str(centre_activity_id),
             processed_by=f"scheduler_service_{deleted_by}",
             operation=delete_operation
         )
         
         if was_duplicate:
             # Return current state for duplicate events
-            existing_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity_id).first()
-            logger.info(f"Duplicate delete event for activity {activity_id}, returning current state")
+            existing_activity = db.query(RefCentreActivity).filter(RefCentreActivity.CentreActivityID == centre_activity_id).first()
+            logger.info(f"Duplicate delete event for centre activity {centre_activity_id}, returning current state")
             return existing_activity, True
         
         if result is None:
-            logger.warning(f"Activity {activity_id} not found for deletion")
+            logger.warning(f"Activity {centre_activity_id} not found for deletion")
             db.commit()  # Commit the idempotency record even if activity not found
             return None, False
         
         db.commit()
-        logger.info(f"Successfully deleted activity {activity_id}")
+        logger.info(f"Successfully deleted activity {centre_activity_id}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error deleting activity {activity_id}: {str(e)}")
+        logger.error(f"Error deleting activity {centre_activity_id}: {str(e)}")
         raise
 
-def get_ref_activity_by_id(db: Session, activity_id: int) -> Optional[RefActivity]:
+def get_ref_centre_activity_by_id(db: Session, centre_activity_id: int) -> Optional[RefCentreActivity]:
     """
     Get a single activity by ID.
     
@@ -284,74 +285,66 @@ def get_ref_activity_by_id(db: Session, activity_id: int) -> Optional[RefActivit
     Returns:
         RefActivity if found, None otherwise
     """
-    return db.query(RefActivity).filter(
-        RefActivity.ActivityID == activity_id,
-        RefActivity.IsDeleted == "0"
+    return db.query(RefCentreActivity).filter(
+        RefCentreActivity.CentreActivityID == centre_activity_id,
+        RefCentreActivity.IsDeleted == "0"
     ).first()
 
 
-def get_ref_activities(
+def get_ref_centre_activities(
     db: Session,
     page_no: int = 0,
     page_size: int = 10,
-    title_filter: Optional[str] = None,
     is_deleted: Optional[str] = "0"
-) -> Tuple[List[RefActivity], int, int]:
+) -> Tuple[List[RefCentreActivity], int, int]:
     """
-    Get paginated list of activities with optional filters.
+    Get paginated list of centre activities with optional filters.
     
     Args:
         db: Database session
         page_no: Page number (0-based)
         page_size: Number of items per page
-        title_filter: Optional title filter (partial match)
         is_deleted: Optional deletion status filter ("0" for active, "1" for deleted)
         
     Returns:
         Tuple of (activities_list, total_records, total_pages)
     """
     # Base query
-    query = db.query(RefActivity)
+    query = db.query(RefCentreActivity)
     
     # Apply deletion filter (default to active activities only)
     if is_deleted is not None:
-        query = query.filter(RefActivity.IsDeleted == is_deleted)
-    
-    # Apply title filter
-    if title_filter:
-        query = query.filter(RefActivity.ActivityTitle.ilike(f"%{title_filter}%"))
+        query = query.filter(RefCentreActivity.IsDeleted == is_deleted)
     
     # Count total records with same filters
-    count_query = db.query(func.count(RefActivity.ActivityID))
+    count_query = db.query(func.count(RefCentreActivity.CentreActivityID))
     
     if is_deleted is not None:
-        count_query = count_query.filter(RefActivity.IsDeleted == is_deleted)
-    if title_filter:
-        count_query = count_query.filter(RefActivity.ActivityTitle.ilike(f"%{title_filter}%"))
+        count_query = count_query.filter(RefCentreActivity.IsDeleted == is_deleted)
     
     total_records = count_query.scalar()
     total_pages = math.ceil(total_records / page_size) if page_size > 0 else 1
     
     # Apply pagination and get results
     offset = page_no * page_size
-    activities = query.order_by(RefActivity.ActivityTitle.asc()).offset(offset).limit(page_size).all()
+    activities = query.order_by(RefCentreActivity.CentreActivityID.asc()).offset(offset).limit(page_size).all()
     
     return activities, total_records, total_pages
 
 
-def check_activity_exists(db: Session, activity_id: int) -> bool:
+def check_activity_exists(db: Session, centre_activity_id: int) -> bool:
     """
     Check if an activity exists (including deleted ones).
     
     Args:
         db: Database session
-        activity_id: Activity ID to check
+        centre_activity_id: Centre Activity ID to check
         
     Returns:
         True if activity exists, False otherwise
     """
-    count = db.query(func.count(RefActivity.ActivityID)).filter(
-        RefActivity.ActivityID == activity_id
+    count = db.query(func.count(RefCentreActivity.CentreActivityID)).filter(
+        RefCentreActivity.CentreActivityID == centre_activity_id
     ).scalar()
     
     return count > 0

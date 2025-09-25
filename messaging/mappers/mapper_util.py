@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
+from datetime import datetime, date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -113,8 +113,8 @@ class MapperUtil:
                     'title': 'ActivityTitle',
                     'description': 'ActivityDesc',
                     'is_deleted': 'IsDeleted',
-                    'startDate': 'StartDate',
-                    'endDate': 'EndDate',
+                    #'startDate': 'StartDate',
+                    #'endDate': 'EndDate',
                     'createdDate': 'CreatedDateTime',
                     'modifiedDate': 'UpdatedDateTime',
                     'created_by_id': 'CreatedById',
@@ -123,8 +123,7 @@ class MapperUtil:
                 'field_transforms': {
                     # Special transformations (target_field: transform_function)
                     'IsActive': lambda x: "1" if x else "0" if x is not None else "1",
-                    'StartDate': lambda x: self._parse_datetime(x),
-                    'EndDate': lambda x: self._parse_datetime(x),
+                    'IsDeleted': lambda x: str(int(x)) if isinstance(x, bool) else x or "0",
                     'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
                     'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
                 },
@@ -137,7 +136,59 @@ class MapperUtil:
                 },
                 'ignored_fields': [
                     # Source fields to ignore
-                    'createdById', 'modifiedById', 'isDeleted'
+                    'createdById', 'modifiedById', 'isDeleted', 'startDate', 'endDate'
+                ]
+            },
+
+            # Centre Activity Service → Scheduler Service
+            'centre_activity_service_to_scheduler': {
+                'source_service': 'activity-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'centre_activity',
+                'required_fields': ['id'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field)
+                    'id': 'CentreActivityID',
+                    'activity_id': 'ActivityID',
+                    'is_deleted': 'IsDeleted',
+                    'is_compulsory': 'IsCompulsory',
+                    'is_fixed': 'IsFixed',
+                    'is_group': 'IsGroup',
+                    'start_date': 'StartDate',
+                    'end_date': 'EndDate',
+                    'min_duration': 'MinDuration',
+                    'max_duration': 'MaxDuration',
+                    'min_people_req': 'MinPeopleReq',
+                    'fixed_time_slots': 'FixedTimeSlots',
+                    'created_date': 'CreatedDateTime',
+                    'modified_date': 'UpdatedDateTime',
+                    'created_by_id': 'CreatedById',
+                    'modified_by_id': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'IsDeleted': lambda x: "1" if x else "0",
+                    'IsCompulsory': lambda x: "1" if x else "0", 
+                    'IsFixed': lambda x: "1" if x else "0",
+                    'IsGroup': lambda x: "1" if x else "0",
+                    'StartDate': lambda x: self._parse_date_only(x) if x else date.today(),
+                    'EndDate': lambda x: self._parse_date_only(x) if x else None,
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'IsDeleted': '0',
+                    'IsCompulsory': '0',
+                    'IsFixed': '0', 
+                    'IsGroup': '0',
+                    'CreatedDateTime': datetime.utcnow(),
+                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedById': 'activity_service',
+                    'ModifiedById': 'activity_service'
+                },
+                'ignored_fields': [
+                    # Source fields to ignore
                 ]
             },
             
@@ -311,6 +362,26 @@ class MapperUtil:
         """Log successful mapping"""
         logger.info(f"✅ {operation.upper()} mapping: {config['source_service']} → "
                    f"{config['target_service']} ({config['entity_type']} ID: {source_id})")
+        
+    def _parse_date_only(self, date_str):
+        """Parse date from string in YYYY-MM-DD format"""
+        if not date_str:
+            return None
+        
+        try:
+            if isinstance(date_str, str):
+                # Parse date-only string
+                return datetime.strptime(date_str, '%Y-%m-%d').date()
+            elif isinstance(date_str, date):
+                return date_str
+            elif isinstance(date_str, datetime):
+                return date_str.date()
+        except ValueError as e:
+            logger.warning(f"Failed to parse date: {date_str}, error: {e}")
+            return None
+        
+        return None
+
 
 
 # Global instance for easy import
@@ -390,3 +461,26 @@ def update_patient_medication_field_mapping(source_field: str, target_field: str
 def add_patient_medication_ignored_field(field_name: str):
     """Add field to patient medication ignore list"""
     mapper.add_ignored_field('patient_medication_service_to_scheduler', field_name)
+
+
+# Convenience functions for centre activity mapper
+def map_centre_activity_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map centre activity data for create operation"""
+    return mapper.map_data(source_data, 'centre_activity_service_to_scheduler', 'create')
+
+def map_centre_activity_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map centre activity data for update operation"""
+    return mapper.map_data(source_data, 'centre_activity_service_to_scheduler', 'update')
+
+def get_centre_activity_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get centre activity mapping information"""
+    return mapper.get_mapping_info('centre_activity_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_centre_activity_field_mapping(source_field: str, target_field: str):
+    """Update centre activity field mapping when columns change"""
+    mapper.update_field_mapping('centre_activity_service_to_scheduler', source_field, target_field)
+
+def add_centre_activity_ignored_field(field_name: str):
+    """Add field to centre activity ignore list"""
+    mapper.add_ignored_field('centre_activity_service_to_scheduler', field_name)
