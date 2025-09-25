@@ -19,12 +19,6 @@ class RefActivityCreate(RefActivityBase):
 class RefActivityUpdate(BaseModel):
     ActivityTitle: Optional[str] = None
     ActivityDesc: Optional[str] = None
-    IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
-    UpdatedDateTime: datetime
-    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
-
-
-class RefActivityDelete(BaseModel):
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 

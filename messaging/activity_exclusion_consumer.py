@@ -193,19 +193,15 @@ class ActivityExclusionConsumer:
             correlation_id = message_data['correlation_id']
             event_type = message_data['event_type']
             exclusion_id = message_data['exclusion_id']
-            is_sync_event = message_data.get('is_sync_event', False)
-            sync_reason = message_data.get('sync_reason')
             
-            logger.info(f"Processing {event_type} for activity exclusion {exclusion_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
+            logger.info(f"Processing {event_type} for activity exclusion {exclusion_id} (correlation: {correlation_id})")
             
             # Use context manager for guaranteed transaction handling
             with self.get_db_transaction() as db:
                 # Quick check for duplicates
-                if not is_sync_event and self.is_event_already_processed(db, correlation_id):
+                if self.is_event_already_processed(db, correlation_id):
                     logger.info(f"Event already processed: {correlation_id}")
                     return MessageProcessingResult.DUPLICATE
-                elif is_sync_event:
-                    logger.info(f"Sync event detected - bypassing idempotency check for {correlation_id}")
                 
                 # Route to appropriate handler
                 if event_type == 'ACTIVITY_EXCLUSION_CREATED':
@@ -345,19 +341,18 @@ class ActivityExclusionConsumer:
             correlation_id = message_data['correlation_id']
             exclusion_id = message_data['exclusion_id']
             old_data = message_data.get('old_data', {})
-            exclusion_data = message_data.get('new_data', {})
+            new_data = message_data.get('new_data', {})
             changes = message_data.get('changes', {})
             modified_by = message_data.get('modified_by', 'activity_service')
-            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling activity exclusion update for exclusion {exclusion_id}")
             logger.debug(f"Changes: {changes}")
             
             # Convert new exclusion data to scheduler's RefActivityExclusion format
-            mapped_update_data = self.map_activity_exclusion_update(exclusion_data)
+            mapped_update_data = self.map_activity_exclusion_update(new_data)
             if not mapped_update_data:
                 logger.error(f"Failed to map activity exclusion update data for exclusion {exclusion_id}")
-                logger.debug(f"Source update data: {exclusion_data}")
+                logger.debug(f"Source update data: {new_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
@@ -377,39 +372,34 @@ class ActivityExclusionConsumer:
                 exclusion_id=exclusion_id,
                 exclusion_update=ref_exclusion_update,
                 correlation_id=correlation_id,
-                skip_duplicate_check=is_sync_event
+                updated_by=modified_by
             )
             
-            if was_duplicate and not is_sync_event:
+            if was_duplicate:
                 logger.info(f"Duplicate update event for activity exclusion {exclusion_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                if is_sync_event:
-                    # For sync events, try to create if doesn't exist
-                    logger.warning(f"Exclusion {exclusion_id} not found during sync - attempting to create")
-                    try:
-                        from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionCreate
-                        mapped_exclusion_data = self.map_activity_exclusion_create(exclusion_data)
-                        if mapped_exclusion_data:
-                            ref_exclusion_data = RefActivityExclusionCreate(**mapped_exclusion_data)
-                            create_result, _ = self.create_ref_activity_exclusion(
-                                db=db,
-                                exclusion=ref_exclusion_data,
-                                correlation_id=correlation_id,
-                                created_by=modified_by
-                            )
-                            if create_result:
-                                logger.info(f"Successfully created exclusion {exclusion_id} during sync")
-                                return MessageProcessingResult.SUCCESS
-                    except Exception as e:
-                        logger.error(f"Failed to create exclusion during sync: {str(e)}")
-                        return MessageProcessingResult.FAILED_RETRYABLE
-                else:
-                    logger.warning(f"Activity exclusion {exclusion_id} not found for update")
+                # Exclusion doesn't exist in scheduler DB 
+                # For UPDATE messages, this might be acceptable depending on business rules
+                logger.warning(f"Activity exclusion {exclusion_id} not found for update")
+                logger.warning("Exclusion should be created by ACTIVITY_EXCLUSION_CREATED message first")
                 return MessageProcessingResult.SUCCESS  # Don't requeue
             
             logger.info(f"Successfully updated activity exclusion {exclusion_id}")
+            
+            # Check if changes affect scheduling
+            scheduling_affecting_changes = [
+                'PatientID', 'ActivityID', 'StartDateTime', 'EndDateTime'
+            ]
+            
+            if any(field in changes for field in scheduling_affecting_changes):
+                logger.info(f"Activity exclusion {exclusion_id} scheduling-relevant changes detected: {list(changes.keys())}")
+                # TODO: Trigger schedule recalculation if needed
+                # This could involve:
+                # 1. Updating patient schedules based on exclusions
+                # 2. Recalculating activity availability
+                # 3. Notifying affected patients/caregivers
             
             return MessageProcessingResult.SUCCESS
             
@@ -420,45 +410,42 @@ class ActivityExclusionConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def _handle_activity_exclusion_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle exclusion deletion events with source timestamp extraction"""
+        """Handle activity exclusion deletion events"""
         try:
             correlation_id = message_data['correlation_id']
             exclusion_id = message_data['exclusion_id']
-            exclusion_data = message_data.get('exclusion_data', {})
             deleted_by = message_data.get('deleted_by', 'activity_service')
-            is_sync_event = message_data.get('is_sync_event', False)
             
-            logger.info(f"Handling exclusion deletion for {exclusion_id}")
+            logger.info(f"Handling activity exclusion deletion for exclusion {exclusion_id}")
             
-            deleted_datetime = message_data['timestamp']
-            
-            from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionDelete
-            
-            try:
-                ref_exclusion_delete = RefActivityExclusionDelete(
-                    UpdatedDateTime=deleted_datetime,
-                    ModifiedById=deleted_by
-                )
-            except Exception as e:
-                logger.error(f"Pydantic validation failed: {str(e)}")
-                return MessageProcessingResult.FAILED_PERMANENT
-            
+            # Delete exclusion using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_activity_exclusion(
                 db=db,
                 exclusion_id=exclusion_id,
-                exclusion_delete=ref_exclusion_delete,
                 correlation_id=correlation_id,
-                skip_duplicate_check=is_sync_event
+                deleted_by=deleted_by
             )
             
-            if was_duplicate and not is_sync_event:
+            if was_duplicate:
+                logger.info(f"Duplicate deletion event for activity exclusion {exclusion_id}")
                 return MessageProcessingResult.DUPLICATE
             
-            logger.info(f"Successfully processed deletion for exclusion {exclusion_id}")
+            if result is None:
+                logger.warning(f"Activity exclusion {exclusion_id} not found for deletion")
+                # This is acceptable - exclusion might already be deleted
+                
+            logger.info(f"Successfully processed deletion for activity exclusion {exclusion_id}")
+            
+            # TODO: Handle cascade effects of exclusion deletion
+            # This might involve:
+            # 1. Updating patient schedules to remove exclusion constraints
+            # 2. Recalculating activity availability
+            # 3. Notifying affected patients/caregivers
+            
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
-            logger.error(f"Error handling exclusion deletion: {str(e)}")
+            logger.error(f"Error handling activity exclusion deletion: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE

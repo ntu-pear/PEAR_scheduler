@@ -36,20 +36,22 @@ def create_ref_patient(
     
     def create_operation():
         # Check if patient already exists - this is a business rule violation for CREATE
-        existing = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
+        existing = db.query(RefPatient).filter(RefPatient.PatientID == patient.PatientID).first()
         if existing:
-            raise ValueError(f"Patient with ID {patient.Id} already exists. Use update operation instead.")
+            raise ValueError(f"Patient with ID {patient.PatientID} already exists. Use update operation instead.")
         
-        logger.info(f"Creating new patient {patient.Id}")
+        logger.info(f"Creating new patient {patient.PatientID}")
         
         # Use raw SQL for IDENTITY INSERT to handle specific ID
         query = text("""
             SET IDENTITY_INSERT [REF_PATIENT] ON;
             
             INSERT INTO [REF_PATIENT] (
-                Id, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive, IsDeleted
+                PatientID, Name, PreferredName, UpdateBit, StartDate, EndDate, IsActive, IsDeleted,
+                CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
             ) VALUES (
-                :Id, :Name, :PreferredName, :UpdateBit, :StartDate, :EndDate, :IsActive, :IsDeleted
+                :PatientID, :Name, :PreferredName, :UpdateBit, :StartDate, :EndDate, :IsActive, :IsDeleted,
+                :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
             );
             
             SET IDENTITY_INSERT [REF_PATIENT] OFF;
@@ -74,9 +76,9 @@ def create_ref_patient(
         db.flush()
         
         # Return the created patient
-        created_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
+        created_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.PatientID).first()
         if not created_patient:
-            raise Exception(f"Failed to create patient {patient.Id}")
+            raise Exception(f"Failed to create patient {patient.PatientID}")
             
         return created_patient
     
@@ -86,24 +88,24 @@ def create_ref_patient(
             db=db,
             correlation_id=correlation_id,
             event_type="PATIENT_CREATED",
-            aggregate_id=str(patient.Id),
+            aggregate_id=str(patient.PatientID),
             processed_by=f"scheduler_service_{created_by}",
             operation=create_operation
         )
         
         if was_duplicate:
             # Return existing patient for duplicate events
-            existing_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.Id).first()
-            logger.info(f"Duplicate create event for patient {patient.Id}, returning existing")
+            existing_patient = db.query(RefPatient).filter(RefPatient.PatientID == patient.PatientID).first()
+            logger.info(f"Duplicate create event for patient {patient.PatientID}, returning existing")
             return existing_patient, True
         
         db.commit()
-        logger.info(f"Successfully created patient {patient.Id}")
+        logger.info(f"Successfully created patient {patient.PatientID}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating patient {patient.Id}: {str(e)}")
+        logger.error(f"Error creating patient {patient.PatientID}: {str(e)}")
         raise
 
 def update_ref_patient(

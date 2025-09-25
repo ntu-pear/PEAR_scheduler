@@ -22,7 +22,6 @@ class RefActivityRecommendationCreate(RefActivityRecommendationBase):
 class RefActivityRecommendationUpdate(BaseModel):
     PatientID: Optional[int] = None
     CentreActivityID: Optional[int] = None
-    IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
     DoctorID: Optional[str] = None
     DoctorRecommendation: Optional[str] = Field(None, pattern=r"^(0|1|-1)$", json_schema_extra={"example": "1"})
     DoctorRemarks: Optional[str] = None

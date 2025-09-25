@@ -16,8 +16,8 @@ class RefPatient(Base):
     EndDate = Column(DateTime)
     IsActive = Column(String(1), default="1", nullable=False)
 
-    CreatedDateTime = Column(DateTime, nullable=False)
-    UpdatedDateTime = Column(DateTime, nullable=False)
+    CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)  
 

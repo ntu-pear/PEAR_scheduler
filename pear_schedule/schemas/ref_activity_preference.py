@@ -20,7 +20,6 @@ class RefActivityPreferenceCreate(RefActivityPreferenceBase):
 class RefActivityPreferenceUpdate(BaseModel):
     PatientId: Optional[int] = None
     ActivityId: Optional[int] = None
-    IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
     IsLike: Optional[str] = Field(None, pattern=r"^(0|1|-1)$", json_schema_extra={"example": "0"})
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
