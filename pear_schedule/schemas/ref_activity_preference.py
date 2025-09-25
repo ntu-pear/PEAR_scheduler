@@ -3,13 +3,14 @@ from datetime import datetime
 from typing import Optional
 
 class RefActivityPreferenceBase(BaseModel):
-    PatientId: int
-    ActivityId: int
-    IsLike: str = Field(default="0", pattern="^[01]$", json_schema_extra={"example": "0"})
+    PatientID: int
+    CentreActivityID: int
+    IsLike: str = Field(default="0", pattern=r"^(0|1|-1)$", json_schema_extra={"example": "0"})
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
 
 
 class RefActivityPreferenceCreate(RefActivityPreferenceBase):
+    CentreActivityPreferenceID: int # Include CentreActivityPreferenceID for message queue synchronization
     CreatedDateTime: datetime
     UpdatedDateTime: datetime
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
@@ -19,13 +20,13 @@ class RefActivityPreferenceCreate(RefActivityPreferenceBase):
 class RefActivityPreferenceUpdate(BaseModel):
     PatientId: Optional[int] = None
     ActivityId: Optional[int] = None
-    IsLike: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "0"})
+    IsLike: Optional[str] = Field(None, pattern=r"^(0|1|-1)$", json_schema_extra={"example": "0"})
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
 
 
 class RefActivityPreference(RefActivityPreferenceBase):
-    Id: int
+    CentreActivityPreferenceID: int
     CreatedDateTime: datetime
     UpdatedDateTime: datetime 
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})

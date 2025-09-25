@@ -7,6 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from .patient_consumer import PatientConsumer
 from .patient_medication_consumer import PatientMedicationConsumer
 from .activity_consumer import ActivityConsumer
+from .activity_exclusion_consumer import ActivityExclusionConsumer
+from .activity_preference_consumer import ActivityPreferenceConsumer
+from .activity_recommendation_consumer import ActivityRecommendationConsumer
+from .centre_activity_consumer import CentreActivityConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +190,10 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     manager.register_consumer("patient", PatientConsumer)
     manager.register_consumer("patient_medication", PatientMedicationConsumer)
     manager.register_consumer("activity", ActivityConsumer)
+    manager.register_consumer("activity_exclusion", ActivityExclusionConsumer)
+    manager.register_consumer("activity_preference", ActivityPreferenceConsumer)
+    manager.register_consumer("activity_recommendation", ActivityRecommendationConsumer)
+    manager.register_consumer("centre_activity", CentreActivityConsumer)
     
     return manager
 
