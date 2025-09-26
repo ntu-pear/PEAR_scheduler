@@ -1,181 +1,290 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
-from ..models.ref_activity_recommendation_model import RefActivityRecommendation
-from ..schemas.ref_activity_recommendation import RefActivityRecommendationCreate, RefActivityRecommendationUpdate
-from datetime import datetime
+from sqlalchemy.exc import IntegrityError
+from typing import Optional, Tuple, List
+import logging
 import math
-from fastapi import HTTPException
-from typing import Optional
+from ..models.ref_activity_recommendation_model import RefActivityRecommendation
+from ..models.processed_events_model import ProcessedEvent
+from ..schemas.ref_activity_recommendation import RefActivityRecommendationCreate, RefActivityRecommendationUpdate
+from ..services.idempotency_service import IdempotencyService
 
-def create_or_update_ref_activity_recommendation(db: Session, recommendation: RefActivityRecommendationCreate, user: str):
+logger = logging.getLogger(__name__)
+
+def create_ref_activity_recommendation(
+    db: Session,
+    recommendation: RefActivityRecommendationCreate,
+    correlation_id: str,
+    created_by: str
+) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
-    Idempotent create/update for message queue usage
-    Creates if doesn't exist, updates if exists
+    Create a new activity recommendation with idempotency protection.
+    
+    Args:
+        db: Database session
+        recommendation: Activity recommendation data to create
+        correlation_id: Correlation ID from outbox service for deduplication
+        created_by: User/service creating the recommendation
+        
+    Returns:
+        Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
+        
+    Raises:
+        ValueError: If recommendation with same combination already exists (business logic error)
+        Exception: For database or other errors
     """
-    current_time = datetime.utcnow()
     
-    # For recommendations, we'll check by PatientId, ActivityId, and DoctorId combination
-    existing_recommendation = db.query(RefActivityRecommendation).filter(
-        RefActivityRecommendation.PatientId == recommendation.PatientId,
-        RefActivityRecommendation.ActivityId == recommendation.ActivityId,
-        RefActivityRecommendation.DoctorId == recommendation.DoctorId,
-        RefActivityRecommendation.IsDeleted == "0"
-    ).first()
-    
-    if existing_recommendation:
-        # Update existing recommendation
-        for key, value in recommendation.model_dump(exclude={'PatientId', 'ActivityId', 'DoctorId'}).items():
-            if hasattr(existing_recommendation, key):
-                setattr(existing_recommendation, key, value)
+    def create_operation():
+        # Check if recommendation already exists - this is a business rule for CREATE
+        # We use the CentreActivityRecommendationID from the activity service as unique identifier
+        existing = db.query(RefActivityRecommendation).filter(
+            RefActivityRecommendation.CentreActivityRecommendationID == recommendation.CentreActivityRecommendationID
+        ).first()
         
-        existing_recommendation.UpdatedDateTime = current_time
-        existing_recommendation.ModifiedById = user
+        if existing:
+            if existing.IsDeleted == "1":
+                # Reactivate soft-deleted recommendation
+                logger.info(f"Reactivating soft-deleted recommendation {recommendation.CentreActivityRecommendationID}")
+                existing.IsDeleted = "0"
+                existing.PatientID = recommendation.PatientID
+                existing.CentreActivityID = recommendation.CentreActivityID
+                existing.DoctorID = recommendation.DoctorID
+                existing.DoctorRecommendation = recommendation.DoctorRecommendation
+                existing.DoctorRemarks = recommendation.DoctorRemarks
+                existing.UpdatedDateTime = recommendation.UpdatedDateTime
+                existing.ModifiedById = created_by
+                db.flush()
+                return existing
+            else:
+                raise ValueError(f"Activity recommendation with CentreActivityRecommendationID {recommendation.CentreActivityRecommendationID} already exists.")
         
-        db.commit()
-        db.refresh(existing_recommendation)
-        return existing_recommendation
-    
-    else:
+        logger.info(f"Creating new activity recommendation {recommendation.CentreActivityRecommendationID}")
+        
         # Create new recommendation
         new_recommendation = RefActivityRecommendation(
-            PatientId=recommendation.PatientId,
-            ActivityId=recommendation.ActivityId,
-            DoctorId=recommendation.DoctorId,
+            CentreActivityRecommendationID=recommendation.CentreActivityRecommendationID,
+            PatientID=recommendation.PatientID,
+            CentreActivityID=recommendation.CentreActivityID,
+            DoctorID=recommendation.DoctorID,
             DoctorRecommendation=recommendation.DoctorRecommendation,
             DoctorRemarks=recommendation.DoctorRemarks,
             IsDeleted=recommendation.IsDeleted or "0",
-            CreatedDateTime=current_time,
-            UpdatedDateTime=current_time,
-            CreatedById=user,
-            ModifiedById=user
+            CreatedDateTime=recommendation.CreatedDateTime,
+            UpdatedDateTime=recommendation.UpdatedDateTime,
+            CreatedById=created_by,
+            ModifiedById=created_by
         )
         
         db.add(new_recommendation)
-        db.commit()
-        db.refresh(new_recommendation)
+        db.flush()
         
         return new_recommendation
+    
+    # Use IdempotencyService for deduplication
+    try:
+        result, was_duplicate = IdempotencyService.process_idempotent(
+            db=db,
+            correlation_id=correlation_id,
+            event_type="ACTIVITY_RECOMMENDATION_CREATED",
+            aggregate_id=str(recommendation.CentreActivityRecommendationID),
+            processed_by=f"scheduler_service_{created_by}",
+            operation=create_operation
+        )
+        
+        if was_duplicate:
+            # Return existing recommendation for duplicate events
+            existing_recommendation = db.query(RefActivityRecommendation).filter(
+                RefActivityRecommendation.CentreActivityRecommendationID == recommendation.CentreActivityRecommendationID
+            ).first()
+            logger.info(f"Duplicate create event for activity recommendation {recommendation.CentreActivityRecommendationID}, returning existing")
+            return existing_recommendation, True
+        
+        db.commit()
+        logger.info(f"Successfully created activity recommendation {recommendation.CentreActivityRecommendationID}")
+        return result, False
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating activity recommendation {recommendation.CentreActivityRecommendationID}: {str(e)}")
+        raise
 
-def update_ref_activity_recommendation_idempotent(db: Session, recommendation_id: int, recommendation: RefActivityRecommendationUpdate, user: str):
+def update_ref_activity_recommendation(
+    db: Session,
+    recommendation_id: int,
+    recommendation_update: RefActivityRecommendationUpdate,
+    correlation_id: str,
+    updated_by: str
+) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
-    Idempotent update - won't fail if recommendation doesn't exist
+    Update an existing activity recommendation with idempotency protection.
+    
+    Args:
+        db: Database session
+        recommendation_id: CentreActivityRecommendationID of recommendation to update
+        recommendation_update: Fields to update
+        correlation_id: Correlation ID from outbox service for deduplication
+        updated_by: User/service updating the recommendation
+        
+    Returns:
+        Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
+        None if recommendation not found
+        
+    Raises:
+        Exception: For database or other errors
     """
-    db_recommendation = db.query(RefActivityRecommendation).filter(
-        RefActivityRecommendation.Id == recommendation_id, 
-        RefActivityRecommendation.IsDeleted == "0"
-    ).first()
     
-    if not db_recommendation:
-        # Recommendation doesn't exist - this is OK for idempotent operations
-        return None
-    
-    # Update fields
-    for key, value in recommendation.model_dump(exclude_unset=True).items():
-        if hasattr(db_recommendation, key):
-            setattr(db_recommendation, key, value)
-    
-    db_recommendation.UpdatedDateTime = datetime.utcnow()
-    db_recommendation.ModifiedById = user
-    
-    db.commit()
-    db.refresh(db_recommendation)
-    
-    return db_recommendation
-
-def soft_delete_ref_activity_recommendation_idempotent(db: Session, recommendation_id: int, user_id: str):
-    """
-    Idempotent soft delete - won't fail if recommendation doesn't exist or already deleted
-    """
-    db_recommendation = db.query(RefActivityRecommendation).filter(RefActivityRecommendation.Id == recommendation_id).first()
-    
-    if not db_recommendation:
-        # Recommendation doesn't exist - idempotent operation should succeed
-        return None
-    
-    if db_recommendation.IsDeleted == "1":
-        # Already deleted - idempotent operation should succeed
+    def update_operation():
+        # Find the recommendation to update using CentreActivityRecommendationID
+        db_recommendation = db.query(RefActivityRecommendation).filter(
+            RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id,
+            RefActivityRecommendation.IsDeleted == "0"
+        ).first()
+        
+        if not db_recommendation:
+            logger.warning(f"Activity recommendation {recommendation_id} not found for update")
+            return None
+        
+        logger.debug(f"Updating activity recommendation {recommendation_id}")
+        
+        # Update only the fields that were provided
+        update_data = recommendation_update.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            if hasattr(db_recommendation, field) and field != 'Id':  # Never update ID
+                setattr(db_recommendation, field, value)
+        
+        # Always update the modification timestamp
+        from datetime import datetime
+        db_recommendation.UpdatedDateTime = datetime.utcnow()
+        db_recommendation.ModifiedById = updated_by
+        
+        db.flush()
         return db_recommendation
     
-    # Perform soft delete
-    db_recommendation.IsDeleted = "1"
-    db_recommendation.UpdatedDateTime = datetime.utcnow()
-    db_recommendation.ModifiedById = user_id
+    # Use IdempotencyService for deduplication
+    try:
+        result, was_duplicate = IdempotencyService.process_idempotent(
+            db=db,
+            correlation_id=correlation_id,
+            event_type="ACTIVITY_RECOMMENDATION_UPDATED",
+            aggregate_id=str(recommendation_id),
+            processed_by=f"scheduler_service_{updated_by}",
+            operation=update_operation
+        )
+        
+        if was_duplicate:
+            # Return current state for duplicate events
+            existing_recommendation = db.query(RefActivityRecommendation).filter(
+                RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id,
+                RefActivityRecommendation.IsDeleted == "0"
+            ).first()
+            logger.info(f"Duplicate update event for activity recommendation {recommendation_id}, returning current state")
+            return existing_recommendation, True
+        
+        if result is None:
+            logger.warning(f"Activity recommendation {recommendation_id} not found for update")
+            db.commit()  # Commit the idempotency record even if recommendation not found
+            return None, False
+        
+        db.commit()
+        logger.debug(f"Successfully updated activity recommendation {recommendation_id}")
+        return result, False
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating activity recommendation {recommendation_id}: {str(e)}")
+        raise
+
+def delete_ref_activity_recommendation(
+    db: Session,
+    recommendation_id: int,
+    correlation_id: str,
+    deleted_by: str
+) -> Tuple[Optional[RefActivityRecommendation], bool]:
+    """
+    Soft delete an activity recommendation with idempotency protection.
     
-    db.commit()
-    db.refresh(db_recommendation)
+    Args:
+        db: Database session
+        recommendation_id: CentreActivityRecommendationID of recommendation to delete
+        correlation_id: Correlation ID from outbox service for deduplication
+        deleted_by: User/service deleting the recommendation
+        
+    Returns:
+        Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
+        None if recommendation not found
+        
+    Raises:
+        Exception: For database or other errors
+    """
     
-    return db_recommendation
-
-def get_ref_activity_recommendations(db: Session, pageNo: int = 0, pageSize: int = 10, 
-                                    patient_id: Optional[int] = None, activity_id: Optional[int] = None,
-                                    doctor_id: Optional[str] = None, is_recommended: Optional[str] = None):
-    """Get activity recommendations with pagination and filtering"""
-    offset = pageNo * pageSize
-    query = db.query(RefActivityRecommendation).filter(RefActivityRecommendation.IsDeleted == "0")
-
-    # Apply patient filter if provided
-    if patient_id:
-        query = query.filter(RefActivityRecommendation.PatientId == patient_id)
-
-    # Apply activity filter if provided
-    if activity_id:
-        query = query.filter(RefActivityRecommendation.ActivityId == activity_id)
-
-    # Apply doctor filter if provided
-    if doctor_id:
-        query = query.filter(RefActivityRecommendation.DoctorId == doctor_id)
-
-    # Apply is_recommended filter if provided
-    if is_recommended in ["0", "1"]:
-        query = query.filter(RefActivityRecommendation.DoctorRecommendation == is_recommended)
-
-    # Apply the same filters to count query
-    count_query = db.query(func.count(RefActivityRecommendation.Id)).filter(RefActivityRecommendation.IsDeleted == "0")
+    def delete_operation():
+        # Find the recommendation to delete using CentreActivityRecommendationID
+        db_recommendation = db.query(RefActivityRecommendation).filter(
+            RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id
+        ).first()
+        
+        if not db_recommendation:
+            logger.warning(f"Activity recommendation {recommendation_id} not found for deletion")
+            return None
+        
+        if db_recommendation.IsDeleted == "1":
+            logger.info(f"Activity recommendation {recommendation_id} already deleted")
+            return db_recommendation
+        
+        logger.info(f"Soft deleting activity recommendation {recommendation_id}")
+        
+        # Perform soft delete
+        from datetime import datetime
+        db_recommendation.IsDeleted = "1"
+        db_recommendation.UpdatedDateTime = datetime.utcnow()
+        db_recommendation.ModifiedById = deleted_by
+        
+        db.flush()
+        return db_recommendation
     
-    if patient_id:
-        count_query = count_query.filter(RefActivityRecommendation.PatientId == patient_id)
-    if activity_id:
-        count_query = count_query.filter(RefActivityRecommendation.ActivityId == activity_id)
-    if doctor_id:
-        count_query = count_query.filter(RefActivityRecommendation.DoctorId == doctor_id)
-    if is_recommended in ["0", "1"]:
-        count_query = count_query.filter(RefActivityRecommendation.DoctorRecommendation == is_recommended)
-    
-    totalRecords = count_query.scalar()
-    totalPages = math.ceil(totalRecords / pageSize) if pageSize > 0 else 1
+    # Use IdempotencyService for deduplication
+    try:
+        result, was_duplicate = IdempotencyService.process_idempotent(
+            db=db,
+            correlation_id=correlation_id,
+            event_type="ACTIVITY_RECOMMENDATION_DELETED",
+            aggregate_id=str(recommendation_id),
+            processed_by=f"scheduler_service_{deleted_by}",
+            operation=delete_operation
+        )
+        
+        if was_duplicate:
+            # Return current state for duplicate events
+            existing_recommendation = db.query(RefActivityRecommendation).filter(
+                RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id
+            ).first()
+            logger.info(f"Duplicate delete event for activity recommendation {recommendation_id}, returning current state")
+            return existing_recommendation, True
+        
+        if result is None:
+            logger.warning(f"Activity recommendation {recommendation_id} not found for deletion")
+            db.commit()  # Commit the idempotency record even if recommendation not found
+            return None, False
+        
+        db.commit()
+        logger.info(f"Successfully deleted activity recommendation {recommendation_id}")
+        return result, False
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error deleting activity recommendation {recommendation_id}: {str(e)}")
+        raise
 
-    db_recommendations = query.order_by(RefActivityRecommendation.PatientId.asc()).offset(offset).limit(pageSize).all()
+def get_idempotency_stats(db: Session) -> dict:
+    """Get statistics about processed events for monitoring."""
+    return IdempotencyService.get_processing_stats(db)
 
-    return db_recommendations, totalRecords, totalPages
 
-def get_ref_activity_recommendation_by_id(db: Session, recommendation_id: int):
-    """Get activity recommendation by ID"""
-    return db.query(RefActivityRecommendation).filter(
-        RefActivityRecommendation.Id == recommendation_id,
-        RefActivityRecommendation.IsDeleted == "0"
-    ).first()
+def cleanup_old_processed_events(db: Session, older_than_days: int = 30) -> int:
+    """Clean up old processed events - should be run periodically."""
+    return IdempotencyService.cleanup_old_events(db, older_than_days)
 
-def get_recommendations_by_patient_and_activity(db: Session, patient_id: int, activity_id: int):
-    """Get recommendations for a specific patient and activity"""
-    return db.query(RefActivityRecommendation).filter(
-        RefActivityRecommendation.PatientId == patient_id,
-        RefActivityRecommendation.ActivityId == activity_id,
-        RefActivityRecommendation.IsDeleted == "0"
-    ).all()
 
-def get_doctor_recommendations_for_patient(db: Session, patient_id: int, doctor_id: str):
-    """Get all recommendations by a doctor for a specific patient"""
-    return db.query(RefActivityRecommendation).filter(
-        RefActivityRecommendation.PatientId == patient_id,
-        RefActivityRecommendation.DoctorId == doctor_id,
-        RefActivityRecommendation.DoctorRecommendation == "1",
-        RefActivityRecommendation.IsDeleted == "0"
-    ).all()
-
-def get_recommended_activities_for_patient(db: Session, patient_id: int):
-    """Get all recommended activities for a patient"""
-    return db.query(RefActivityRecommendation).filter(
-        RefActivityRecommendation.PatientId == patient_id,
-        RefActivityRecommendation.DoctorRecommendation == "1",
-        RefActivityRecommendation.IsDeleted == "0"
-    ).all()
+def is_event_already_processed(db: Session, correlation_id: str) -> bool:
+    """Check if a specific correlation_id was already processed."""
+    return IdempotencyService.is_already_processed(db, correlation_id)

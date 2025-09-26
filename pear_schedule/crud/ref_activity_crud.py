@@ -36,21 +36,21 @@ def create_ref_activity(
     
     def create_operation():
         # Check if activity already exists - this is a business rule violation for CREATE
-        existing = db.query(RefActivity).filter(RefActivity.ActivityID == activity.Id).first()
+        existing = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
         if existing:
-            raise ValueError(f"Activity with ID {activity.Id} already exists. Use update operation instead.")
+            raise ValueError(f"Activity with ID {activity.ActivityID} already exists. Use update operation instead.")
         
-        logger.info(f"Creating new activity {activity.Id}")
+        logger.info(f"Creating new activity {activity.ActivityID}")
         
         # Use raw SQL for IDENTITY INSERT to handle specific ID
         query = text("""
             SET IDENTITY_INSERT [REF_ACTIVITY] ON;
             
             INSERT INTO [REF_ACTIVITY] (
-                Id, ActivityTitle, ActivityDesc, StartDate, EndDate, IsDeleted,
+                ActivityID, ActivityTitle, ActivityDesc, IsDeleted,
                 CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
             ) VALUES (
-                :Id, :ActivityTitle, :ActivityDesc, :StartDate, :EndDate, :IsDeleted,
+                :ActivityID, :ActivityTitle, :ActivityDesc, :IsDeleted,
                 :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
             );
             
@@ -58,11 +58,9 @@ def create_ref_activity(
         """)
         
         params = {
-            "ActivityID": activity.Id,
-            "ActivityTitle": activity.Title,
-            "ActivityDesc": activity.Desc,
-            "StartDate": activity.StartDate,
-            "EndDate": activity.EndDate,
+            "ActivityID": activity.ActivityID,
+            "ActivityTitle": activity.ActivityTitle,
+            "ActivityDesc": activity.ActivityDesc,
             "IsDeleted": activity.IsDeleted or "0",
             "CreatedDateTime": activity.CreatedDateTime,
             "UpdatedDateTime": activity.UpdatedDateTime,
@@ -74,9 +72,9 @@ def create_ref_activity(
         db.flush()
         
         # Return the created activity
-        created_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.Id).first()
+        created_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
         if not created_activity:
-            raise Exception(f"Failed to create activity {activity.Id}")
+            raise Exception(f"Failed to create activity {activity.ActivityID}")
             
         return created_activity
     
@@ -86,24 +84,24 @@ def create_ref_activity(
             db=db,
             correlation_id=correlation_id,
             event_type="ACTIVITY_CREATED",
-            aggregate_id=str(activity.Id),
+            aggregate_id=str(activity.ActivityID),
             processed_by=f"scheduler_service_{created_by}",
             operation=create_operation
         )
         
         if was_duplicate:
             # Return existing activity for duplicate events
-            existing_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.Id).first()
-            logger.info(f"Duplicate create event for activity {activity.Id}, returning existing")
+            existing_activity = db.query(RefActivity).filter(RefActivity.ActivityID == activity.ActivityID).first()
+            logger.info(f"Duplicate create event for activity {activity.ActivityID}, returning existing")
             return existing_activity, True
         
         db.commit()
-        logger.info(f"Successfully created activity {activity.Id}")
+        logger.info(f"Successfully created activity {activity.ActivityID}")
         return result, False
         
     except Exception as e:
         db.rollback()
-        logger.error(f"Error creating activity {activity.Id}: {str(e)}")
+        logger.error(f"Error creating activity {activity.ActivityID}: {str(e)}")
         raise
 
 def update_ref_activity(
