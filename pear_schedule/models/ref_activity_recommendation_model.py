@@ -11,7 +11,7 @@ class RefActivityRecommendation(Base):
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID'))
     CentreActivityID = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.CentreActivityID'))
     DoctorID = Column(String(255))
-    DoctorRecommendation = Column(String(1), default='1', nullable=False)
+    DoctorRecommendation = Column(String(2), default='1', nullable=False)
     DoctorRemarks = Column(String(255))
 
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)

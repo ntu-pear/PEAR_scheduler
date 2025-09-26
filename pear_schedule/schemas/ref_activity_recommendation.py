@@ -3,15 +3,16 @@ from datetime import datetime
 from typing import Optional
 
 class RefActivityRecommendationBase(BaseModel):
-    PatientId: int
-    ActivityId: int
-    DoctorId: Optional[str] = None
-    DoctorRecommendation: str = Field(default="1", pattern="^[01]$", json_schema_extra={"example": "1"})
+    PatientID: int
+    CentreActivityID: int
+    DoctorID: Optional[str] = None
+    DoctorRecommendation: str = Field(default="1", pattern=r"^(0|1|-1)$", json_schema_extra={"example": "1"})
     DoctorRemarks: Optional[str] = None
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
 
 
 class RefActivityRecommendationCreate(RefActivityRecommendationBase):
+    CentreActivityRecommendationID: int # Include CentreActivityRecommendationID for message queue synchronization
     CreatedDateTime: datetime
     UpdatedDateTime: datetime
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
@@ -19,17 +20,17 @@ class RefActivityRecommendationCreate(RefActivityRecommendationBase):
 
 
 class RefActivityRecommendationUpdate(BaseModel):
-    PatientId: Optional[int] = None
-    ActivityId: Optional[int] = None
-    DoctorId: Optional[str] = None
-    DoctorRecommendation: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "1"})
+    PatientID: Optional[int] = None
+    CentreActivityID: Optional[int] = None
+    DoctorID: Optional[str] = None
+    DoctorRecommendation: Optional[str] = Field(None, pattern=r"^(0|1|-1)$", json_schema_extra={"example": "1"})
     DoctorRemarks: Optional[str] = None
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
 
 
 class RefActivityRecommendation(RefActivityRecommendationBase):
-    Id: int
+    CentreActivityRecommendationID: int
     CreatedDateTime: datetime
     UpdatedDateTime: datetime 
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
