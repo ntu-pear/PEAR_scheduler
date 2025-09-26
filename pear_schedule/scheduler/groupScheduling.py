@@ -169,43 +169,44 @@ class GroupActivityScheduler(BaseScheduler):
        
         logger.info("Second Round Scheduling")
         # Second Round Scheduling
-        secondTimeTable, secondEmptySlots = cls.bruteForceGroupScheduling(
-            secondActivityMap, firstTimeTable, cls.config["GROUP_TIMESLOTS"], firstEmptySlots, groupActivityDF
-        )
+        #BLOCK FIRST
+        # secondTimeTable, secondEmptySlots = cls.bruteForceGroupScheduling(
+        #     secondActivityMap, firstTimeTable, cls.config["GROUP_TIMESLOTS"], firstEmptySlots, groupActivityDF
+        # )
 
         # all activities currently scheduled have hit min size, can continue to add patients to these activities
-        allScheduledActivitiesSet = getAllScheduledActivities(secondTimeTable)
-        activityToTimeSlotMap = getActivityToTimeSlotMap(secondTimeTable)
-        patientActivityCountMap = getpatientActivityCountMap(secondTimeTable)
+        # allScheduledActivitiesSet = getAllScheduledActivities(secondTimeTable)
+        # activityToTimeSlotMap = getActivityToTimeSlotMap(secondTimeTable)
+        # patientActivityCountMap = getpatientActivityCountMap(secondTimeTable)
         
-        for pid in patientDF["PatientID"]:
+        # for pid in patientDF["PatientID"]:
 
-            # if hit target number of group activities, do not need to schedule already
-            if patientActivityCountMap[pid] >= cls.config["TARGET_WEEKLY_GROUP_ACTIVITIES"]:
-                continue
+        #     # if hit target number of group activities, do not need to schedule already
+        #     if patientActivityCountMap[pid] >= cls.config["TARGET_WEEKLY_GROUP_ACTIVITIES"]:
+        #         continue
             
-            curPatientActivitiesSet = set()
-            for activity in secondTimeTable[pid]:
-                curPatientActivitiesSet.add(activity)
+        #     curPatientActivitiesSet = set()
+        #     for activity in secondTimeTable[pid]:
+        #         curPatientActivitiesSet.add(activity)
 
-            # find activities that can be scheduled for patient
-            canBeScheduledSet = allScheduledActivitiesSet.difference(curPatientActivitiesSet)
+        #     # find activities that can be scheduled for patient
+        #     canBeScheduledSet = allScheduledActivitiesSet.difference(curPatientActivitiesSet)
             
-            toAdd = min(len(canBeScheduledSet), cls.config["TARGET_WEEKLY_GROUP_ACTIVITIES"] - patientActivityCountMap[pid])
+        #     toAdd = min(len(canBeScheduledSet), cls.config["TARGET_WEEKLY_GROUP_ACTIVITIES"] - patientActivityCountMap[pid])
 
-            # Add patients to activities
-            while toAdd != 0 and canBeScheduledSet:
-                activity = canBeScheduledSet.pop()
-                activitySlot = activityToTimeSlotMap[activity]
-                if secondTimeTable[pid][activitySlot] == "" and pid not in activityExclusionMap[activity]:
-                    secondTimeTable[pid][activitySlot] = activity
-                    toAdd -= 1
+        #     # Add patients to activities
+        #     while toAdd != 0 and canBeScheduledSet:
+        #         activity = canBeScheduledSet.pop()
+        #         activitySlot = activityToTimeSlotMap[activity]
+        #         if secondTimeTable[pid][activitySlot] == "" and pid not in activityExclusionMap[activity]:
+        #             secondTimeTable[pid][activitySlot] = activity
+        #             toAdd -= 1
             
 
-        # for p, slots in secondTimeTable.items():
-        #     logger.info(f"{p} Schedule: {slots}")
+        # # for p, slots in secondTimeTable.items():
+        # #     logger.info(f"{p} Schedule: {slots}")
         
-        return secondTimeTable
+        # return secondTimeTable
 
     @classmethod
     def bruteForceGroupScheduling(cls, activityMap, timeTable, timeslots, emptySlots, groupActivityDF):
