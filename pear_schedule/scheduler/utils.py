@@ -23,15 +23,15 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
 
     # Schedule individual recommended and routine activities
     RecommendedRoutineActivityScheduler.fillSchedule(patientSchedules)
-
+#BLOCKKKK
     # Schedule group activities
-    groupSchedule = GroupActivityScheduler.fillSchedule(patientSchedules)
-    for patientID, scheduleArr in groupSchedule.items():
-        for i, activity in enumerate(scheduleArr):
-            if activity == "-": # routine activity alr scheduled
-                continue
-            day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
-            patientSchedules[patientID][day][hour] = activity
+    # groupSchedule = GroupActivityScheduler.fillSchedule(patientSchedules)
+    # for patientID, scheduleArr in groupSchedule.items():
+    #     for i, activity in enumerate(scheduleArr):
+    #         if activity == "-": # routine activity alr scheduled
+    #             continue
+    #         day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
+    #         patientSchedules[patientID][day][hour] = activity
 
     # Schedule individual preferred activities
     PreferredActivityScheduler.fillSchedule(patientSchedules)

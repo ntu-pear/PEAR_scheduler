@@ -11,10 +11,11 @@ class CompulsoryActivityScheduler(BaseScheduler):
 
             fixedSlotArr = row["FixedTimeSlots"].split(",")
             for slot in fixedSlotArr:
-                
-                day = int(slot.split("-")[0])
-                hour = int(slot.split("-")[1])
+                if (slot) == "":continue
+                else:
+                    day = int(slot.split("-")[0])
+                    hour = int(slot.split("-")[1])
 
-                for pid in patientSchedules.keys():
-                    patientSchedules[pid][day][hour] = row["ActivityTitle"]
+                    for pid in patientSchedules.keys():
+                        patientSchedules[pid][day][hour] = row["ActivityTitle"]
 
