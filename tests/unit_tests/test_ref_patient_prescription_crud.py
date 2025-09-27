@@ -36,8 +36,8 @@ class TestRefPatientPrescriptionCrud:
             PrescriptionRemarks="For blood thinning",
             Status="Active",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -72,8 +72,8 @@ class TestRefPatientPrescriptionCrud:
             PrescriptionRemarks="Updated - For blood thinning",
             Status="Active",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -105,7 +105,7 @@ class TestRefPatientPrescriptionCrud:
             PrescriptionRemarks="Updated dosage",
             Status="Active",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -133,7 +133,7 @@ class TestRefPatientPrescriptionCrud:
             PrescriptionRemarks="Updated dosage",
             Status="Active",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         

@@ -6,7 +6,7 @@ import logging
 import math
 from ..models.ref_activity_model import RefActivity
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_activity import RefActivityCreate, RefActivityUpdate
+from ..schemas.ref_activity import RefActivityCreate, RefActivityUpdate, RefActivityDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -108,8 +108,7 @@ def update_ref_activity(
     db: Session,
     activity_id: int,
     activity_update: RefActivityUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefActivity], bool]:
     """
     Update an existing activity with idempotency protection.
@@ -117,9 +116,8 @@ def update_ref_activity(
     Args:
         db: Database session
         activity_id: ID of activity to update
-        activity_update: Fields to update
+        activity_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the activity
         
     Returns:
         Tuple of (RefActivity or None, was_duplicate: bool)
@@ -145,19 +143,8 @@ def update_ref_activity(
         # Update only the fields that were provided
         update_data = activity_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_activity, field) and field != 'Id':  # Never update ID
-                # Handle field name mappings
-                if field == "Title":
-                    setattr(db_activity, "ActivityTitle", value)
-                elif field == "Desc":
-                    setattr(db_activity, "ActivityDesc", value)
-                else:
-                    setattr(db_activity, field, value)
-        
-        # Always update the modification timestamp
-        from datetime import datetime
-        db_activity.UpdatedDateTime = datetime.utcnow()
-        db_activity.ModifiedById = updated_by
+            if hasattr(db_activity, field) and field != 'ActivityID':  # Never update ID
+                setattr(db_activity, field, value)
         
         db.flush()
         return db_activity
@@ -169,7 +156,7 @@ def update_ref_activity(
             correlation_id=correlation_id,
             event_type="ACTIVITY_UPDATED",
             aggregate_id=str(activity_id),
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{activity_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -199,8 +186,8 @@ def update_ref_activity(
 def delete_ref_activity(
     db: Session,
     activity_id: int,
-    correlation_id: str,
-    deleted_by: str
+    activity_delete: RefActivityDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefActivity], bool]:
     """
     Soft delete an activity with idempotency protection.
@@ -208,8 +195,8 @@ def delete_ref_activity(
     Args:
         db: Database session
         activity_id: ID of activity to delete
+        activity_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the activity
         
     Returns:
         Tuple of (RefActivity or None, was_duplicate: bool)
@@ -233,11 +220,10 @@ def delete_ref_activity(
         
         logger.info(f"Soft deleting activity {activity_id}")
         
-        # Perform soft delete
-        from datetime import datetime
+        # Perform soft delete using schema data
         db_activity.IsDeleted = "1"
-        db_activity.UpdatedDateTime = datetime.utcnow()
-        db_activity.ModifiedById = deleted_by
+        db_activity.ModifiedById = activity_delete.ModifiedById
+        db_activity.UpdatedDateTime = activity_delete.UpdatedDateTime
         
         db.flush()
         return db_activity
@@ -249,7 +235,7 @@ def delete_ref_activity(
             correlation_id=correlation_id,
             event_type="ACTIVITY_DELETED",
             aggregate_id=str(activity_id),
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{activity_delete.ModifiedById}",
             operation=delete_operation
         )
         

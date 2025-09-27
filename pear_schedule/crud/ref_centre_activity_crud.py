@@ -2,11 +2,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from typing import Optional, Tuple, List
+from datetime import datetime
 import logging
 import math
 from ..models.ref_centre_activity_model import RefCentreActivity
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_centre_activity import RefCentreActivityCreate, RefCentreActivityUpdate
+from ..schemas.ref_centre_activity import RefCentreActivityCreate, RefCentreActivityUpdate, RefCentreActivityDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -124,8 +125,7 @@ def update_ref_centre_activity(
     db: Session,
     centre_activity_id: int,
     centre_activity_update: RefCentreActivityUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefCentreActivity], bool]:
     """
     Update an existing centre activity with idempotency protection.
@@ -133,9 +133,8 @@ def update_ref_centre_activity(
     Args:
         db: Database session
         centre_activity_id: ID of centre activity to update
-        centre_activity_update: Fields to update
+        centre_activity_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the centre activity
         
     Returns:
         Tuple of (RefCentreActivity or None, was_duplicate: bool)
@@ -164,11 +163,6 @@ def update_ref_centre_activity(
             if hasattr(db_centre_activity, field) and field != 'CentreActivityID':  # Never update ID
                 setattr(db_centre_activity, field, value)
         
-        # Always update the modification timestamp
-        from datetime import datetime
-        db_centre_activity.UpdatedDateTime = datetime.utcnow()
-        db_centre_activity.ModifiedById = updated_by
-        
         db.flush()
         return db_centre_activity
     
@@ -179,7 +173,7 @@ def update_ref_centre_activity(
             correlation_id=correlation_id,
             event_type="CENTRE_ACTIVITY_UPDATED",
             aggregate_id=str(centre_activity_id),
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{centre_activity_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -209,8 +203,8 @@ def update_ref_centre_activity(
 def delete_ref_centre_activity(
     db: Session,
     centre_activity_id: int,
-    correlation_id: str,
-    deleted_by: str
+    centre_activity_delete: RefCentreActivityDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefCentreActivity], bool]:
     """
     Soft delete a centre activity with idempotency protection.
@@ -218,8 +212,8 @@ def delete_ref_centre_activity(
     Args:
         db: Database session
         centre_activity_id: ID of centre activity to delete
+        centre_activity_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the centre activity
         
     Returns:
         Tuple of (RefCentreActivity or None, was_duplicate: bool)
@@ -245,11 +239,10 @@ def delete_ref_centre_activity(
         
         logger.info(f"Soft deleting centre activity {centre_activity_id}")
         
-        # Perform soft delete
-        from datetime import datetime
+        # Perform soft delete using schema data
         db_centre_activity.IsDeleted = "1"
-        db_centre_activity.UpdatedDateTime = datetime.utcnow()
-        db_centre_activity.ModifiedById = deleted_by
+        db_centre_activity.ModifiedById = centre_activity_delete.ModifiedById
+        db_centre_activity.UpdatedDateTime = centre_activity_delete.UpdatedDateTime
         
         db.flush()
         return db_centre_activity
@@ -261,7 +254,7 @@ def delete_ref_centre_activity(
             correlation_id=correlation_id,
             event_type="CENTRE_ACTIVITY_DELETED",
             aggregate_id=str(centre_activity_id),
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{centre_activity_delete.ModifiedById}",
             operation=delete_operation
         )
         

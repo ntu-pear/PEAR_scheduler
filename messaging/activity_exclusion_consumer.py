@@ -371,8 +371,7 @@ class ActivityExclusionConsumer:
                 db=db,
                 exclusion_id=exclusion_id,
                 exclusion_update=ref_exclusion_update,
-                correlation_id=correlation_id,
-                updated_by=modified_by
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
@@ -414,16 +413,30 @@ class ActivityExclusionConsumer:
         try:
             correlation_id = message_data['correlation_id']
             exclusion_id = message_data['exclusion_id']
+            updated_datetime = message_data['timestamp']  # Get the iso format, not the raw date_modified in the data
             deleted_by = message_data.get('deleted_by', 'activity_service')
             
             logger.info(f"Handling activity exclusion deletion for exclusion {exclusion_id}")
+               
+            from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionDelete
+            
+            try:
+                ref_exclusion_delete = RefActivityExclusionDelete(
+                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    ModifiedById=deleted_by
+                )
+                
+            except Exception as e:
+                logger.error(f"Pydantic validation failed: {str(e)}")
+                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
+                return MessageProcessingResult.FAILED_PERMANENT
             
             # Delete exclusion using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_activity_exclusion(
                 db=db,
                 exclusion_id=exclusion_id,
-                correlation_id=correlation_id,
-                deleted_by=deleted_by
+                exclusion_delete=ref_exclusion_delete,
+                correlation_id=correlation_id
             )
             
             if was_duplicate:

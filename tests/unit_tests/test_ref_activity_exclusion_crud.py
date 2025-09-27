@@ -26,8 +26,8 @@ class TestRefActivityExclusionCrud:
             EndDate=datetime(2024, 1, 7),
             ExclusionRemarks="Patient has mobility issues",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -54,8 +54,8 @@ class TestRefActivityExclusionCrud:
             EndDate=datetime(2024, 1, 14),
             ExclusionRemarks="Updated remarks",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -77,7 +77,7 @@ class TestRefActivityExclusionCrud:
             EndDate=datetime(2024, 1, 14),
             ExclusionRemarks="Updated exclusion remarks",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -98,7 +98,7 @@ class TestRefActivityExclusionCrud:
             EndDate=datetime(2024, 1, 14),
             ExclusionRemarks="Updated exclusion remarks",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         

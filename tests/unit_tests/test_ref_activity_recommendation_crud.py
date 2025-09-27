@@ -28,8 +28,8 @@ class TestRefActivityRecommendationCrud:
             DoctorRecommendation="1",
             DoctorRemarks="Good for mobility",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -56,8 +56,8 @@ class TestRefActivityRecommendationCrud:
             DoctorRecommendation="0",  # Changed from recommended to not recommended
             DoctorRemarks="Updated remarks - not suitable anymore",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -79,7 +79,7 @@ class TestRefActivityRecommendationCrud:
             DoctorRecommendation="0",
             DoctorRemarks="Updated recommendation",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -100,7 +100,7 @@ class TestRefActivityRecommendationCrud:
             DoctorRecommendation="0",
             DoctorRemarks="Updated recommendation",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
