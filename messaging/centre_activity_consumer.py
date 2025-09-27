@@ -326,6 +326,7 @@ class CentreActivityConsumer:
             old_data = message_data.get('old_data', {})
             new_data = message_data.get('new_data', {})
             changes = message_data.get('changes', {})
+            updated_datetime = message_data['timestamp']
             modified_by = message_data.get('modified_by', 'activity_service')
             
             logger.info(f"Handling centre activity update for centre activity {centre_activity_id}")
@@ -354,8 +355,7 @@ class CentreActivityConsumer:
                 db=db,
                 centre_activity_id=centre_activity_id,
                 centre_activity_update=ref_centre_activity_update,
-                correlation_id=correlation_id,
-                updated_by=modified_by
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
@@ -371,20 +371,6 @@ class CentreActivityConsumer:
             
             logger.info(f"Successfully updated centre activity {centre_activity_id}")
             
-            # Check if changes affect scheduling
-            scheduling_affecting_changes = [
-                'ActivityID', 'IsCompulsory', 'IsFixed', 'IsGroup', 
-                'StartDate', 'EndDate', 'MinDuration', 'MaxDuration', 'MinPeopleReq'
-            ]
-            
-            if any(field in changes for field in scheduling_affecting_changes):
-                logger.info(f"Centre activity {centre_activity_id} scheduling-relevant changes detected: {list(changes.keys())}")
-                # TODO: Trigger schedule recalculation if needed
-                # This could involve:
-                # 1. Updating patient schedules based on centre activity changes
-                # 2. Recalculating activity availability
-                # 3. Notifying affected patients/caregivers
-            
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
@@ -394,20 +380,35 @@ class CentreActivityConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def _handle_centre_activity_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle centre activity deletion events"""
+        """Handle centre activity deletion events - ultra clean approach"""
         try:
             correlation_id = message_data['correlation_id']
             centre_activity_id = message_data['centre_activity_id']
+            updated_datetime = message_data['timestamp'] # Get the iso format, no the raw date_modified in the data
             deleted_by = message_data.get('deleted_by', 'activity_service')
             
             logger.info(f"Handling centre activity deletion for centre activity {centre_activity_id}")
+               
+            from pear_schedule.schemas.ref_centre_activity import RefCentreActivityDelete
+            
+            try:
+                ref_centre_activity_delete = RefCentreActivityDelete(
+                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    ModifiedById=deleted_by
+                )
+                
+                
+            except Exception as e:
+                logger.error(f"Pydantic validation failed: {str(e)}")
+                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
+                return MessageProcessingResult.FAILED_PERMANENT
             
             # Delete centre activity using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_centre_activity(
                 db=db,
                 centre_activity_id=centre_activity_id,
-                correlation_id=correlation_id,
-                deleted_by=deleted_by
+                centre_activity_delete=ref_centre_activity_delete,
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
@@ -419,12 +420,6 @@ class CentreActivityConsumer:
                 # This is acceptable - centre activity might already be deleted
                 
             logger.info(f"Successfully processed deletion for centre activity {centre_activity_id}")
-            
-            # TODO: Handle cascade effects of centre activity deletion
-            # This might involve:
-            # 1. Updating patient schedules to remove deleted activities
-            # 2. Removing related preferences and recommendations
-            # 3. Notifying affected patients/caregivers
             
             return MessageProcessingResult.SUCCESS
             

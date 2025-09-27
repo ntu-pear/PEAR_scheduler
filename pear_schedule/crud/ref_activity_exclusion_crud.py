@@ -6,7 +6,7 @@ import logging
 import math
 from ..models.ref_activity_exclusion_model import RefActivityExclusion
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_activity_exclusion import RefActivityExclusionCreate, RefActivityExclusionUpdate
+from ..schemas.ref_activity_exclusion import RefActivityExclusionCreate, RefActivityExclusionUpdate, RefActivityExclusionDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -159,8 +159,7 @@ def update_ref_activity_exclusion(
     db: Session,
     exclusion_id: int,
     exclusion_update: RefActivityExclusionUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefActivityExclusion], bool]:
     """
     Update an existing activity exclusion with idempotency protection.
@@ -168,9 +167,8 @@ def update_ref_activity_exclusion(
     Args:
         db: Database session
         exclusion_id: ActivityExclusionID of exclusion to update
-        exclusion_update: Fields to update
+        exclusion_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the exclusion
         
     Returns:
         Tuple of (RefActivityExclusion or None, was_duplicate: bool)
@@ -181,18 +179,11 @@ def update_ref_activity_exclusion(
     """
     
     def update_operation():
-        # Find the exclusion to update - try by ActivityExclusionID first, then by internal ID
+        # Find the exclusion to update
         db_exclusion = db.query(RefActivityExclusion).filter(
             RefActivityExclusion.ActivityExclusionID == exclusion_id,
             RefActivityExclusion.IsDeleted == "0"
         ).first()
-        
-        # If not found by ActivityExclusionID, try by internal primary key
-        if not db_exclusion:
-            db_exclusion = db.query(RefActivityExclusion).filter(
-                RefActivityExclusion.ActivityExclusionID == exclusion_id,
-                RefActivityExclusion.IsDeleted == "0"
-            ).first()
         
         if not db_exclusion:
             logger.warning(f"Activity exclusion {exclusion_id} not found for update")
@@ -203,13 +194,8 @@ def update_ref_activity_exclusion(
         # Update only the fields that were provided
         update_data = exclusion_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_exclusion, field) and field not in ['ActivityExclusionID']:  # Never update ID fields
+            if hasattr(db_exclusion, field) and field != 'ActivityExclusionID':  # Never update ID
                 setattr(db_exclusion, field, value)
-        
-        # Always update the modification timestamp
-        from datetime import datetime
-        db_exclusion.UpdatedDateTime = datetime.utcnow()
-        db_exclusion.ModifiedById = updated_by
         
         db.flush()
         return db_exclusion
@@ -221,7 +207,7 @@ def update_ref_activity_exclusion(
             correlation_id=correlation_id,
             event_type="ACTIVITY_EXCLUSION_UPDATED",
             aggregate_id=str(exclusion_id),
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{exclusion_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -251,8 +237,8 @@ def update_ref_activity_exclusion(
 def delete_ref_activity_exclusion(
     db: Session,
     exclusion_id: int,
-    correlation_id: str,
-    deleted_by: str
+    exclusion_delete: RefActivityExclusionDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefActivityExclusion], bool]:
     """
     Soft delete an activity exclusion with idempotency protection.
@@ -260,8 +246,8 @@ def delete_ref_activity_exclusion(
     Args:
         db: Database session
         exclusion_id: ActivityExclusionID of exclusion to delete
+        exclusion_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the exclusion
         
     Returns:
         Tuple of (RefActivityExclusion or None, was_duplicate: bool)
@@ -287,11 +273,10 @@ def delete_ref_activity_exclusion(
         
         logger.info(f"Soft deleting activity exclusion {exclusion_id}")
         
-        # Perform soft delete
-        from datetime import datetime
+        # Perform soft delete using schema data
         db_exclusion.IsDeleted = "1"
-        db_exclusion.UpdatedDateTime = datetime.utcnow()
-        db_exclusion.ModifiedById = deleted_by
+        db_exclusion.ModifiedById = exclusion_delete.ModifiedById
+        db_exclusion.UpdatedDateTime = exclusion_delete.UpdatedDateTime
         
         db.flush()
         return db_exclusion
@@ -303,7 +288,7 @@ def delete_ref_activity_exclusion(
             correlation_id=correlation_id,
             event_type="ACTIVITY_EXCLUSION_DELETED",
             aggregate_id=str(exclusion_id),
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{exclusion_delete.ModifiedById}",
             operation=delete_operation
         )
         

@@ -6,7 +6,7 @@ import logging
 import math
 from ..models.ref_patient_medication_model import RefPatientMedication
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_patient_medication import RefPatientMedicationCreate, RefPatientMedicationUpdate
+from ..schemas.ref_patient_medication import RefPatientMedicationCreate, RefPatientMedicationUpdate, RefPatientMedicationDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -116,8 +116,7 @@ def update_ref_patient_medication(
     db: Session,
     medication_id: int,
     medication_update: RefPatientMedicationUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefPatientMedication], bool]:
     """
     Update an existing patient medication with idempotency protection.
@@ -125,9 +124,8 @@ def update_ref_patient_medication(
     Args:
         db: Database session
         medication_id: ID of medication to update
-        medication_update: Fields to update
+        medication_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the medication
         
     Returns:
         Tuple of (RefPatientMedication or None, was_duplicate: bool)
@@ -153,17 +151,8 @@ def update_ref_patient_medication(
         # Update only the fields that were provided
         update_data = medication_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_medication, field) and field != 'Id':  # Never update ID
-                # Handle field name mappings if needed
-                if field == "PatientId":
-                    setattr(db_medication, "PatientID", value)
-                else:
-                    setattr(db_medication, field, value)
-        
-        # Always update the modification timestamp
-        from datetime import datetime
-        db_medication.UpdatedDateTime = datetime.utcnow()
-        db_medication.ModifiedById = updated_by
+            if hasattr(db_medication, field) and field != 'MedicationID':  # Never update ID
+                setattr(db_medication, field, value)
         
         db.flush()
         return db_medication
@@ -175,7 +164,7 @@ def update_ref_patient_medication(
             correlation_id=correlation_id,
             event_type="PATIENT_MEDICATION_UPDATED",
             aggregate_id=str(medication_id),
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{medication_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -205,8 +194,8 @@ def update_ref_patient_medication(
 def delete_ref_patient_medication(
     db: Session,
     medication_id: int,
-    correlation_id: str,
-    deleted_by: str
+    medication_delete: RefPatientMedicationDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefPatientMedication], bool]:
     """
     Soft delete a patient medication with idempotency protection.
@@ -214,8 +203,8 @@ def delete_ref_patient_medication(
     Args:
         db: Database session
         medication_id: ID of medication to delete
+        medication_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the medication
         
     Returns:
         Tuple of (RefPatientMedication or None, was_duplicate: bool)
@@ -239,11 +228,10 @@ def delete_ref_patient_medication(
         
         logger.info(f"Soft deleting patient medication {medication_id}")
         
-        # Perform soft delete
-        from datetime import datetime
+        # Perform soft delete using schema data
         db_medication.IsDeleted = "1"
-        db_medication.UpdatedDateTime = datetime.utcnow()
-        db_medication.ModifiedById = deleted_by
+        db_medication.ModifiedById = medication_delete.ModifiedById
+        db_medication.UpdatedDateTime = medication_delete.UpdatedDateTime
         
         db.flush()
         return db_medication
@@ -255,7 +243,7 @@ def delete_ref_patient_medication(
             correlation_id=correlation_id,
             event_type="PATIENT_MEDICATION_DELETED",
             aggregate_id=str(medication_id),
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{medication_delete.ModifiedById}",
             operation=delete_operation
         )
         

@@ -39,10 +39,10 @@ class MapperUtil:
                     'IsActive': lambda x: self._convert_boolean(x, "1"),
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"), 
                     'UpdateBit': lambda x: self._convert_boolean(x, "1"),
-                    'StartDate': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'StartDate': lambda x: self._parse_datetime(x) or datetime.now(),
                     'EndDate': lambda x: self._parse_datetime(x),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                 },
                 'defaults': {
                     'IsActive': '1',
@@ -85,16 +85,16 @@ class MapperUtil:
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
                     'StartDate': lambda x: self._parse_datetime(x),
                     'EndDate': lambda x: self._parse_datetime(x),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                     'Dosage': lambda x: str(x) if x is not None else "",
                     'Instruction': lambda x: str(x) if x is not None else "",
                     'PrescriptionRemarks': lambda x: str(x) if x is not None else "",
                 },
                 'defaults': {
                     'IsDeleted': '0',
-                    'CreatedDateTime': datetime.utcnow(),
-                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'patient_service',
                     'ModifiedById': 'patient_service',
                     'PrescriptionRemarks': '',
@@ -127,13 +127,13 @@ class MapperUtil:
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
                     'CreatedById': lambda x: x or "activity_service",
                     'ModifiedById': lambda x: x or "activity_service",
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                 },
                 'defaults': {
                     'IsDeleted': '0',
-                    'CreatedDateTime': datetime.utcnow(),
-                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'activity_service',
                     'ModifiedById': 'activity_service'
                 },
@@ -164,14 +164,14 @@ class MapperUtil:
                     'IsLike': lambda x: self._convert_preference_value(x, "0"),  # Convert to -1, 0, or 1
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
                     'ModifiedById': lambda x: x or "activity_service",
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                 },
                 'defaults': {
                     'IsDeleted': '0',
                     'IsLike': '0',  # Neutral preference
-                    'CreatedDateTime': datetime.utcnow(),
-                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'activity_service',
                     'ModifiedById': 'activity_service'
                 },
@@ -204,15 +204,15 @@ class MapperUtil:
                     'DoctorRecommendation': lambda x: self._convert_preference_value(x, "0"),  # Convert to -1, 0, or 1
                     'DoctorRemarks': lambda x: str(x) if x is not None else "",
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                 },
                 'defaults': {
                     'IsDeleted': '0',
                     'DoctorRecommendation': '0',  # Neutral recommendation
                     'DoctorRemarks': '',
-                    'CreatedDateTime': datetime.utcnow(),
-                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'activity_service',
                     'ModifiedById': 'activity_service'
                 },
@@ -256,8 +256,8 @@ class MapperUtil:
                     'MaxDuration': lambda x: int(x) if x is not None else 60,
                     'MinPeopleReq': lambda x: int(x) if x is not None else 1,
                     'FixedTimeSlots': lambda x: str(x) if x is not None else None,
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                     'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
                     'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
                 },
@@ -269,8 +269,8 @@ class MapperUtil:
                     'MinDuration': 30,
                     'MaxDuration': 60,
                     'MinPeopleReq': 1,
-                    'CreatedDateTime': datetime.utcnow(),
-                    'UpdatedDateTime': datetime.utcnow(),
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'activity_service',
                     'ModifiedById': 'activity_service'
                 },
@@ -299,22 +299,22 @@ class MapperUtil:
                 },
                 'field_transforms': {
                     # Special transformations (target_field: transform_function)
-                    'StartDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'EndDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'StartDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'EndDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                     'ExclusionRemarks': lambda x: str(x) if x is not None else "",
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
-                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.utcnow(),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                     'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
                     'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
                 },
                 'defaults': {
                     'IsDeleted': '0',
                     'ExclusionRemarks': '',
-                    'StartDateTime': datetime.utcnow(),
-                    'EndDateTime': datetime.utcnow(),
-                    'CreatedDateTime': datetime.utcnow(),
-                    'UpdatedDateTime': datetime.utcnow(),
+                    'StartDateTime': datetime.now(),
+                    'EndDateTime': datetime.now(),
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'activity_service',
                     'ModifiedById': 'activity_service'
                 },
@@ -501,7 +501,8 @@ class MapperUtil:
                             return date_part.replace(hour=0, minute=0, second=0)
                         except ValueError:
                             # Try ISO date format
-                            return datetime.fromisoformat(datetime_str)
+                            clean_str = datetime_str.replace('Z', '').replace('+00:00', '')
+                            return datetime.fromisoformat(clean_str)
             elif isinstance(datetime_str, datetime):
                 return datetime_str
             return None
@@ -635,7 +636,7 @@ def map_activity_update(source_data: Dict[str, Any], modified_by: str = None) ->
     
     # Always include UpdatedDateTime for updates
     if 'UpdatedDateTime' not in enhanced_data and 'modifiedDate' not in enhanced_data:
-        enhanced_data['modifiedDate'] = datetime.utcnow().isoformat()
+        enhanced_data['modifiedDate'] = datetime.now().isoformat()
     
     return mapper.map_data(enhanced_data, 'activity_service_to_scheduler', 'update')
 

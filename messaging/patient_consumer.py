@@ -404,8 +404,7 @@ class PatientConsumer:
                 db=db,
                 patient_id=patient_id,
                 patient_update=ref_patient_update,
-                correlation_id=correlation_id,
-                updated_by=modified_by
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
@@ -443,6 +442,7 @@ class PatientConsumer:
         try:
             correlation_id = message_data['correlation_id']
             patient_id = message_data['patient_id']
+            updated_datetime = message_data['timestamp']  # Get the iso format, not the raw date_modified in the data
             deleted_by = message_data.get('deleted_by', 'patient_service')
             is_sync_event = message_data.get('is_sync_event', False)
             
@@ -450,12 +450,23 @@ class PatientConsumer:
                
             from pear_schedule.schemas.ref_patient import RefPatientDelete
             
+            try:
+                ref_patient_delete = RefPatientDelete(
+                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    ModifiedById=deleted_by
+                )
+                
+            except Exception as e:
+                logger.error(f"Pydantic validation failed: {str(e)}")
+                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
+                return MessageProcessingResult.FAILED_PERMANENT
+            
             # Delete patient using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_patient(
                 db=db,
                 patient_id=patient_id,
-                correlation_id=correlation_id,
-                deleted_by=deleted_by
+                patient_delete=ref_patient_delete,
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
