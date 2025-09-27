@@ -7,12 +7,13 @@ import math
 from fastapi import HTTPException
 from typing import Optional
 
+# TODO: Activity Service Routine has not been implemented yet, This file is outdated, REFACTOR THIS FILE IF NEEDED TO FOLLOW THE OTHER REF TABLES
 def create_or_update_ref_activity_routine(db: Session, routine: RefActivityRoutineCreate, user: str):
     """
     Idempotent create/update for message queue usage
     Creates if doesn't exist, updates if exists
     """
-    current_time = datetime.utcnow()
+    current_time = datetime.now()
     
     # For routines, we'll check by PatientId and ActivityId combination
     existing_routine = db.query(RefActivityRoutine).filter(
@@ -73,7 +74,7 @@ def update_ref_activity_routine_idempotent(db: Session, routine_id: int, routine
         if hasattr(db_routine, key):
             setattr(db_routine, key, value)
     
-    db_routine.UpdatedDateTime = datetime.utcnow()
+    db_routine.UpdatedDateTime = datetime.now()
     db_routine.ModifiedById = user
     
     db.commit()
@@ -97,7 +98,7 @@ def soft_delete_ref_activity_routine_idempotent(db: Session, routine_id: int, us
     
     # Perform soft delete
     db_routine.IsDeleted = "1"
-    db_routine.UpdatedDateTime = datetime.utcnow()
+    db_routine.UpdatedDateTime = datetime.now()
     db_routine.ModifiedById = user_id
     
     db.commit()

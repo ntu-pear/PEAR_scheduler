@@ -26,8 +26,8 @@ class TestRefActivityPreferenceCrud:
             ActivityId=1,
             IsLike="1",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -52,8 +52,8 @@ class TestRefActivityPreferenceCrud:
             ActivityId=1,
             IsLike="0",  # Changed from like to dislike
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -73,7 +73,7 @@ class TestRefActivityPreferenceCrud:
             ActivityId=1,
             IsLike="0",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -92,7 +92,7 @@ class TestRefActivityPreferenceCrud:
             ActivityId=1,
             IsLike="0",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         

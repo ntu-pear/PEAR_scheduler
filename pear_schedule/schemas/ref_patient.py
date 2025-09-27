@@ -30,6 +30,13 @@ class RefPatientUpdate(BaseModel):
     EndDate: Optional[datetime] = None
     IsActive: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "1"})
     IsDeleted: Optional[str] = Field(None, json_schema_extra={"example": "0"})
+    UpdatedDateTime: datetime
+    ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
+
+
+class RefPatientDelete(BaseModel):
+    UpdatedDateTime: datetime
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 
 
 class RefPatient(RefPatientBase):

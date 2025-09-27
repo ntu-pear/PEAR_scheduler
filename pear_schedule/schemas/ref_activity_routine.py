@@ -28,6 +28,11 @@ class RefActivityRoutineUpdate(BaseModel):
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
 
 
+class RefActivityRoutineDelete(BaseModel):
+    UpdatedDateTime: datetime
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
+
+
 class RefActivityRoutine(RefActivityRoutineBase):
     Id: int
     CreatedDateTime: datetime

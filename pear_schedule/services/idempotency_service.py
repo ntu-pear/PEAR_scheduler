@@ -196,11 +196,11 @@ class IdempotencyService:
         try:
             # Execute the business operation
             logger.debug(f"Starting business operation for event {correlation_id}")
-            operation_start_time = datetime.utcnow()
+            operation_start_time = datetime.now()
             
             result = operation()
             
-            operation_end_time = datetime.utcnow()
+            operation_end_time = datetime.now()
             processing_duration = (operation_end_time - operation_start_time).total_seconds()
             
             logger.debug(f"Business operation completed for {correlation_id} in {processing_duration:.3f}s")
@@ -270,7 +270,7 @@ class IdempotencyService:
         Returns:
             Number of deleted events
         """
-        cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+        cutoff_date = datetime.now() - timedelta(days=older_than_days)
         
         logger.info(f"Starting cleanup of processed events older than {older_than_days} days (before {cutoff_date})")
         
@@ -317,7 +317,7 @@ class IdempotencyService:
             ).group_by(ProcessedEvent.event_type).all()
             
             # Recent events (last 24 hours)
-            yesterday = datetime.utcnow() - timedelta(hours=24)
+            yesterday = datetime.now() - timedelta(hours=24)
             recent_events = db.query(ProcessedEvent).filter(
                 ProcessedEvent.processed_at >= yesterday
             ).count()
@@ -349,7 +349,7 @@ class IdempotencyService:
                 "events_with_errors": error_events,
                 "events_by_type": [{"event_type": et, "count": count} for et, count in events_by_type],
                 "latest_events": latest_events_info,
-                "stats_generated_at": datetime.utcnow().isoformat()
+                "stats_generated_at": datetime.now().isoformat()
             }
             
             logger.debug(f"Generated processing stats: {total_events} total events, {recent_events} in last 24h")
@@ -359,5 +359,5 @@ class IdempotencyService:
             logger.error(f"Error generating processing stats: {e}")
             return {
                 "error": str(e),
-                "stats_generated_at": datetime.utcnow().isoformat()
+                "stats_generated_at": datetime.now().isoformat()
             }
