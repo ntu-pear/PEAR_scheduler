@@ -6,7 +6,7 @@ import logging
 import math
 from ..models.ref_activity_preference_model import RefActivityPreference
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_activity_preference import RefActivityPreferenceCreate, RefActivityPreferenceUpdate
+from ..schemas.ref_activity_preference import RefActivityPreferenceCreate, RefActivityPreferenceUpdate, RefActivityPreferenceDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -108,8 +108,7 @@ def update_ref_activity_preference(
     db: Session,
     preference_id: int,
     preference_update: RefActivityPreferenceUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefActivityPreference], bool]:
     """
     Update an existing activity preference with idempotency protection.
@@ -117,9 +116,8 @@ def update_ref_activity_preference(
     Args:
         db: Database session
         preference_id: CentreActivityPreferenceID of preference to update
-        preference_update: Fields to update
+        preference_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the preference
         
     Returns:
         Tuple of (RefActivityPreference or None, was_duplicate: bool)
@@ -145,13 +143,8 @@ def update_ref_activity_preference(
         # Update only the fields that were provided
         update_data = preference_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_preference, field) and field != 'Id':  # Never update ID
+            if hasattr(db_preference, field) and field != 'CentreActivityPreferenceID':  # Never update ID
                 setattr(db_preference, field, value)
-        
-        # Always update the modification timestamp
-        from datetime import datetime
-        db_preference.UpdatedDateTime = datetime.utcnow()
-        db_preference.ModifiedById = updated_by
         
         db.flush()
         return db_preference
@@ -163,7 +156,7 @@ def update_ref_activity_preference(
             correlation_id=correlation_id,
             event_type="ACTIVITY_PREFERENCE_UPDATED",
             aggregate_id=str(preference_id),
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{preference_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -193,8 +186,8 @@ def update_ref_activity_preference(
 def delete_ref_activity_preference(
     db: Session,
     preference_id: int,
-    correlation_id: str,
-    deleted_by: str
+    preference_delete: RefActivityPreferenceDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefActivityPreference], bool]:
     """
     Soft delete an activity preference with idempotency protection.
@@ -202,8 +195,8 @@ def delete_ref_activity_preference(
     Args:
         db: Database session
         preference_id: CentreActivityPreferenceID of preference to delete
+        preference_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the preference
         
     Returns:
         Tuple of (RefActivityPreference or None, was_duplicate: bool)
@@ -229,11 +222,10 @@ def delete_ref_activity_preference(
         
         logger.info(f"Soft deleting activity preference {preference_id}")
         
-        # Perform soft delete
-        from datetime import datetime
+        # Perform soft delete using schema data
         db_preference.IsDeleted = "1"
-        db_preference.UpdatedDateTime = datetime.utcnow()
-        db_preference.ModifiedById = deleted_by
+        db_preference.ModifiedById = preference_delete.ModifiedById
+        db_preference.UpdatedDateTime = preference_delete.UpdatedDateTime
         
         db.flush()
         return db_preference
@@ -245,7 +237,7 @@ def delete_ref_activity_preference(
             correlation_id=correlation_id,
             event_type="ACTIVITY_PREFERENCE_DELETED",
             aggregate_id=str(preference_id),
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{preference_delete.ModifiedById}",
             operation=delete_operation
         )
         

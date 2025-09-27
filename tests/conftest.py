@@ -30,8 +30,8 @@ def sample_ref_patient():
         EndDate=datetime(2024, 12, 31),
         IsActive="1",
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
@@ -47,8 +47,8 @@ def sample_ref_activity():
         StartDate=datetime(2024, 1, 1),
         EndDate=datetime(2024, 12, 31),
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
@@ -88,8 +88,8 @@ def sample_activity_exclusion():
         EndDate=datetime(2024, 1, 7),
         ExclusionRemarks="Patient has mobility issues",
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
@@ -104,8 +104,8 @@ def sample_activity_preference():
         ActivityId=1,
         IsLike="1",
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
@@ -122,8 +122,8 @@ def sample_activity_recommendation():
         DoctorRecommendation="1",
         DoctorRemarks="Good for mobility",
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
@@ -163,8 +163,8 @@ def sample_patient_medication():
         PrescriptionRemarks="For blood thinning",
         Status="Active",
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
@@ -204,8 +204,8 @@ def sample_overlapping_schedule():
         Saturday="Weekend Activities",
         Sunday="Sunday Activities",
         IsDeleted="0",
-        CreatedDateTime=datetime.utcnow(),
-        UpdatedDateTime=datetime.utcnow(),
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )

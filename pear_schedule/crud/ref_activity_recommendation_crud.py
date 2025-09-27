@@ -6,7 +6,7 @@ import logging
 import math
 from ..models.ref_activity_recommendation_model import RefActivityRecommendation
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_activity_recommendation import RefActivityRecommendationCreate, RefActivityRecommendationUpdate
+from ..schemas.ref_activity_recommendation import RefActivityRecommendationCreate, RefActivityRecommendationUpdate, RefActivityRecommendationDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -112,8 +112,7 @@ def update_ref_activity_recommendation(
     db: Session,
     recommendation_id: int,
     recommendation_update: RefActivityRecommendationUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
     Update an existing activity recommendation with idempotency protection.
@@ -121,9 +120,8 @@ def update_ref_activity_recommendation(
     Args:
         db: Database session
         recommendation_id: CentreActivityRecommendationID of recommendation to update
-        recommendation_update: Fields to update
+        recommendation_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the recommendation
         
     Returns:
         Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
@@ -149,13 +147,8 @@ def update_ref_activity_recommendation(
         # Update only the fields that were provided
         update_data = recommendation_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_recommendation, field) and field != 'Id':  # Never update ID
+            if hasattr(db_recommendation, field) and field != 'CentreActivityRecommendationID':  # Never update ID
                 setattr(db_recommendation, field, value)
-        
-        # Always update the modification timestamp
-        from datetime import datetime
-        db_recommendation.UpdatedDateTime = datetime.utcnow()
-        db_recommendation.ModifiedById = updated_by
         
         db.flush()
         return db_recommendation
@@ -167,7 +160,7 @@ def update_ref_activity_recommendation(
             correlation_id=correlation_id,
             event_type="ACTIVITY_RECOMMENDATION_UPDATED",
             aggregate_id=str(recommendation_id),
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{recommendation_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -197,8 +190,8 @@ def update_ref_activity_recommendation(
 def delete_ref_activity_recommendation(
     db: Session,
     recommendation_id: int,
-    correlation_id: str,
-    deleted_by: str
+    recommendation_delete: RefActivityRecommendationDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
     Soft delete an activity recommendation with idempotency protection.
@@ -206,8 +199,8 @@ def delete_ref_activity_recommendation(
     Args:
         db: Database session
         recommendation_id: CentreActivityRecommendationID of recommendation to delete
+        recommendation_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the recommendation
         
     Returns:
         Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
@@ -233,11 +226,10 @@ def delete_ref_activity_recommendation(
         
         logger.info(f"Soft deleting activity recommendation {recommendation_id}")
         
-        # Perform soft delete
-        from datetime import datetime
+        # Perform soft delete using schema data
         db_recommendation.IsDeleted = "1"
-        db_recommendation.UpdatedDateTime = datetime.utcnow()
-        db_recommendation.ModifiedById = deleted_by
+        db_recommendation.ModifiedById = recommendation_delete.ModifiedById
+        db_recommendation.UpdatedDateTime = recommendation_delete.UpdatedDateTime
         
         db.flush()
         return db_recommendation
@@ -249,7 +241,7 @@ def delete_ref_activity_recommendation(
             correlation_id=correlation_id,
             event_type="ACTIVITY_RECOMMENDATION_DELETED",
             aggregate_id=str(recommendation_id),
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{recommendation_delete.ModifiedById}",
             operation=delete_operation
         )
         

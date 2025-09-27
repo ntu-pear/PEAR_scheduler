@@ -357,8 +357,7 @@ class PatientMedicationConsumer:
                 db=db,
                 medication_id=medication_id,
                 medication_update=ref_medication_update,
-                correlation_id=correlation_id,
-                updated_by=modified_by
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
@@ -388,16 +387,30 @@ class PatientMedicationConsumer:
             correlation_id = message_data['correlation_id']
             medication_id = message_data['medication_id']
             patient_id = message_data.get('patient_id')
+            updated_datetime = message_data['timestamp']  # Get the iso format, not the raw date_modified in the data
             deleted_by = message_data.get('deleted_by', 'patient_service')
             
             logger.info(f"Handling patient medication deletion for medication {medication_id} (patient: {patient_id})")
+               
+            from pear_schedule.schemas.ref_patient_medication import RefPatientMedicationDelete
+            
+            try:
+                ref_medication_delete = RefPatientMedicationDelete(
+                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    ModifiedById=deleted_by
+                )
+                
+            except Exception as e:
+                logger.error(f"Pydantic validation failed: {str(e)}")
+                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
+                return MessageProcessingResult.FAILED_PERMANENT
             
             # Delete medication using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_patient_medication(
                 db=db,
                 medication_id=medication_id,
-                correlation_id=correlation_id,
-                deleted_by=deleted_by
+                medication_delete=ref_medication_delete,
+                correlation_id=correlation_id
             )
             
             if was_duplicate:

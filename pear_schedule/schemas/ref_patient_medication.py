@@ -35,6 +35,11 @@ class RefPatientMedicationUpdate(BaseModel):
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
 
 
+class RefPatientMedicationDelete(BaseModel):
+    UpdatedDateTime: datetime
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
+
+
 class RefPatientMedication(RefPatientMedicationBase):
     Id: int
     CreatedDateTime: datetime

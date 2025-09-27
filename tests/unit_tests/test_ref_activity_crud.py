@@ -25,8 +25,8 @@ class TestRefActivityCrud:
             StartDate=datetime(2024, 1, 1),
             EndDate=datetime(2024, 12, 31),
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -49,8 +49,8 @@ class TestRefActivityCrud:
             StartDate=datetime(2024, 1, 1),
             EndDate=datetime(2024, 12, 31),
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -72,7 +72,7 @@ class TestRefActivityCrud:
             StartDate=datetime(2024, 1, 1),
             EndDate=datetime(2024, 12, 31),
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -93,7 +93,7 @@ class TestRefActivityCrud:
             StartDate=datetime(2024, 1, 1),
             EndDate=datetime(2024, 12, 31),
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         

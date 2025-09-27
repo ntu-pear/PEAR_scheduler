@@ -23,6 +23,11 @@ class RefActivityUpdate(BaseModel):
     ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 
 
+class RefActivityDelete(BaseModel):
+    UpdatedDateTime: datetime
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
+
+
 class RefActivity(RefActivityBase):
     ActivityID: int
     CreatedDateTime: datetime
