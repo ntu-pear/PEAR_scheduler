@@ -7,15 +7,14 @@ class CompulsoryActivityScheduler(BaseScheduler):
     def fillSchedule(cls, patientSchedules: Mapping[str, List[str]]):
         compulsoryActivitiesDF = CompulsoryActivitiesOnlyView.get_data()
         # Compulsory Activity 
-        for _, row in compulsoryActivitiesDF.loc[:, ["ActivityTitle", "FixedTimeSlots"]].astype(str).iterrows():
-
+        for _, row in compulsoryActivitiesDF.query("IsFixed=='1'").loc[:, ["ActivityTitle", "FixedTimeSlots"]].astype(str).iterrows():
+        
             fixedSlotArr = row["FixedTimeSlots"].split(",")
             for slot in fixedSlotArr:
-                if (slot) == "":continue
-                else:
-                    day = int(slot.split("-")[0])
-                    hour = int(slot.split("-")[1])
+                
+                day = int(slot.split("-")[0])
+                hour = int(slot.split("-")[1])
 
-                    for pid in patientSchedules.keys():
-                        patientSchedules[pid][day][hour] = row["ActivityTitle"]
+                for pid in patientSchedules.keys():
+                    patientSchedules[pid][day][hour] = row["ActivityTitle"]
 
