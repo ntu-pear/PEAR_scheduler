@@ -6,7 +6,7 @@ import logging
 import math
 from ..models import RefPatient
 from ..models.processed_events_model import ProcessedEvent
-from ..schemas.ref_patient import RefPatientCreate, RefPatientUpdate
+from ..schemas.ref_patient import RefPatientCreate, RefPatientUpdate, RefPatientDelete
 from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
@@ -112,8 +112,7 @@ def update_ref_patient(
     db: Session,
     patient_id: str,
     patient_update: RefPatientUpdate,
-    correlation_id: str,
-    updated_by: str
+    correlation_id: str
 ) -> Tuple[Optional[RefPatient], bool]:
     """
     Update an existing patient with idempotency protection.
@@ -121,9 +120,8 @@ def update_ref_patient(
     Args:
         db: Database session
         patient_id: ID of patient to update
-        patient_update: Fields to update
+        patient_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
-        updated_by: User/service updating the patient
         
     Returns:
         Tuple of (RefPatient or None, was_duplicate: bool)
@@ -149,7 +147,7 @@ def update_ref_patient(
         # Update only the fields that were provided
         update_data = patient_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_patient, field) and field != 'Id':  # Never update ID
+            if hasattr(db_patient, field) and field != 'PatientID':  # Never update ID
                 setattr(db_patient, field, value)
         
         db.flush()
@@ -162,7 +160,7 @@ def update_ref_patient(
             correlation_id=correlation_id,
             event_type="PATIENT_UPDATED",
             aggregate_id=patient_id,
-            processed_by=f"scheduler_service_{updated_by}",
+            processed_by=f"scheduler_service_{patient_update.ModifiedById}",
             operation=update_operation
         )
         
@@ -192,8 +190,8 @@ def update_ref_patient(
 def delete_ref_patient(
     db: Session,
     patient_id: str,
-    correlation_id: str,
-    deleted_by: str
+    patient_delete: RefPatientDelete,
+    correlation_id: str
 ) -> Tuple[Optional[RefPatient], bool]:
     """
     Soft delete a patient with idempotency protection.
@@ -201,8 +199,8 @@ def delete_ref_patient(
     Args:
         db: Database session
         patient_id: ID of patient to delete
+        patient_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
-        deleted_by: User/service deleting the patient
         
     Returns:
         Tuple of (RefPatient or None, was_duplicate: bool)
@@ -226,8 +224,11 @@ def delete_ref_patient(
         
         logger.info(f"Soft deleting patient {patient_id}")
         
-        # Perform soft delete
+        # Perform soft delete using schema data
         db_patient.IsDeleted = "1"
+        db_patient.ModifiedById = patient_delete.ModifiedById
+        db_patient.UpdatedDateTime = patient_delete.UpdatedDateTime
+        
         db.flush()
         return db_patient
     
@@ -238,7 +239,7 @@ def delete_ref_patient(
             correlation_id=correlation_id,
             event_type="PATIENT_DELETED",
             aggregate_id=patient_id,
-            processed_by=f"scheduler_service_{deleted_by}",
+            processed_by=f"scheduler_service_{patient_delete.ModifiedById}",
             operation=delete_operation
         )
         

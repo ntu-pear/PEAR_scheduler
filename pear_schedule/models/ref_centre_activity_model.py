@@ -20,7 +20,7 @@ class RefCentreActivity(Base):
     FixedTimeSlots = Column(String, nullable=True)
     
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
-    UpdatedDateTime = Column(DateTime, nullable=True, default=datetime.now)
+    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
     CreatedById = Column(String, nullable=False)
     ModifiedById = Column(String, nullable=True)
 

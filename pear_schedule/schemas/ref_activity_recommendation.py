@@ -29,6 +29,11 @@ class RefActivityRecommendationUpdate(BaseModel):
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
 
 
+class RefActivityRecommendationDelete(BaseModel):
+    UpdatedDateTime: datetime
+    ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
+
+
 class RefActivityRecommendation(RefActivityRecommendationBase):
     CentreActivityRecommendationID: int
     CreatedDateTime: datetime

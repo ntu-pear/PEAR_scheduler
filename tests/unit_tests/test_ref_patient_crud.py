@@ -27,8 +27,8 @@ class TestRefPatientCrud:
             EndDate=datetime(2024, 12, 31),
             IsActive="1",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -55,8 +55,8 @@ class TestRefPatientCrud:
             EndDate=datetime(2024, 12, 31),
             IsActive="1",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -81,7 +81,7 @@ class TestRefPatientCrud:
             EndDate=datetime(2024, 12, 31),
             IsActive="1",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -104,7 +104,7 @@ class TestRefPatientCrud:
             EndDate=datetime(2024, 12, 31),
             IsActive="1",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         

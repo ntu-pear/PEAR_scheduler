@@ -77,7 +77,7 @@ class RabbitMQClient:
         Publish message with fault tolerance
         """
         message_body = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now().isoformat(),
             'source_service': self.service_name,
             'data': message
         }

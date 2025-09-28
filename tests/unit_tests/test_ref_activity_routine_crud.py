@@ -29,8 +29,8 @@ class TestRefActivityRoutineCrud:
             RoutineIssues="Too slow",
             RoutineTimeSlots="0-2,4-2",
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -57,8 +57,8 @@ class TestRefActivityRoutineCrud:
             RoutineIssues="Patient has scheduling conflicts",
             RoutineTimeSlots="14:00-15:00",  # Updated time slot
             IsDeleted="0",
-            CreatedDateTime=datetime.utcnow(),
-            UpdatedDateTime=datetime.utcnow(),
+            CreatedDateTime=datetime.now(),
+            UpdatedDateTime=datetime.now(),
             CreatedById="test_user",
             ModifiedById="test_user"
         )
@@ -80,7 +80,7 @@ class TestRefActivityRoutineCrud:
             RoutineIssues="Updated issues",
             RoutineTimeSlots="16:00-17:00",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         
@@ -101,7 +101,7 @@ class TestRefActivityRoutineCrud:
             RoutineIssues="Updated issues",
             RoutineTimeSlots="16:00-17:00",
             IsDeleted="0",
-            UpdatedDateTime=datetime.utcnow(),
+            UpdatedDateTime=datetime.now(),
             ModifiedById="test_user"
         )
         

@@ -354,8 +354,7 @@ class ActivityConsumer:
                 db=db,
                 activity_id=activity_id,
                 activity_update=ref_activity_update,
-                correlation_id=correlation_id,
-                updated_by=modified_by
+                correlation_id=correlation_id
             )
             
             if was_duplicate:
@@ -397,16 +396,30 @@ class ActivityConsumer:
         try:
             correlation_id = message_data['correlation_id']
             activity_id = message_data['activity_id']
+            updated_datetime = message_data['timestamp']  # Get the iso format, not the raw date_modified in the data
             deleted_by = message_data.get('deleted_by', 'activity_service')
             
             logger.info(f"Handling activity deletion for activity {activity_id}")
+               
+            from pear_schedule.schemas.ref_activity import RefActivityDelete
+            
+            try:
+                ref_activity_delete = RefActivityDelete(
+                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    ModifiedById=deleted_by
+                )
+                
+            except Exception as e:
+                logger.error(f"Pydantic validation failed: {str(e)}")
+                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
+                return MessageProcessingResult.FAILED_PERMANENT
             
             # Delete activity using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_activity(
                 db=db,
                 activity_id=activity_id,
-                correlation_id=correlation_id,
-                deleted_by=deleted_by
+                activity_delete=ref_activity_delete,
+                correlation_id=correlation_id
             )
             
             if was_duplicate:

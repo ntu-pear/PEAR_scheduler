@@ -95,8 +95,8 @@ def create_schedule(db: Session, schedule: ScheduleCreate, user: str, user_full_
         "Friday": schedule.Friday,
         "Saturday": schedule.Saturday,
         "Sunday": schedule.Sunday,
-        "CreatedDateTime": datetime.utcnow(),
-        "UpdatedDateTime": datetime.utcnow(),
+        "CreatedDateTime": datetime.now(),
+        "UpdatedDateTime": datetime.now(),
         "CreatedById": user,
         "ModifiedById": user,
         "IsDeleted": schedule.IsDeleted or "0",
@@ -176,7 +176,7 @@ def update_schedule(db: Session, schedule_id: int, schedule: ScheduleUpdate, use
     for key, value in schedule.model_dump().items():
         setattr(db_schedule, key, value)
     
-    db_schedule.UpdatedDateTime = datetime.utcnow()
+    db_schedule.UpdatedDateTime = datetime.now()
     db_schedule.ModifiedById = user
 
     db.commit()
@@ -212,7 +212,7 @@ def delete_schedule(db: Session, schedule_id: int, user_id: str, user_full_name:
         original_data_dict = "{}"
 
     setattr(db_schedule, "IsDeleted", "1")
-    db_schedule.UpdatedDateTime = datetime.utcnow()
+    db_schedule.UpdatedDateTime = datetime.now()
     db_schedule.ModifiedById = user_id
     db.commit()
 
