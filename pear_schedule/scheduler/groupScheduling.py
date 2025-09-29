@@ -244,7 +244,7 @@ class GroupActivityScheduler(BaseScheduler):
 
 
             isFixed = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['IsFixed']
-            
+
             # for fixed time activity, try all given fixed timeslots
             if int(isFixed) == 1:
                 fixedTimeSlots = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['FixedTimeSlots']
@@ -291,7 +291,7 @@ class GroupActivityScheduler(BaseScheduler):
 
             logger.info('start scheduling')
             schedule_activities(0, activityList, timeTable, timeSlotsArr, activityMap, groupActivityDF)
-            logger.info('stuck here?')
+
             # # Print the scheduled activities for each individual
             # for p, slots in optimalTimeTable.items():
             #     logger.info(f"{p} Schedule: {slots}")
