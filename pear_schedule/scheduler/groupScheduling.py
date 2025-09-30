@@ -206,13 +206,13 @@ class GroupActivityScheduler(BaseScheduler):
         #     logger.info(f"{p} Schedule: {slots}")
         
         return secondTimeTable
+ 
 
     @classmethod
     def bruteForceGroupScheduling(cls, activityMap, timeTable, timeslots, emptySlots, groupActivityDF):
         timeSlotsArr = [i for i in range(timeslots)]
         minEmptySlots = float('inf')
         optimalTimeTable = {}
-
 
         def can_schedule(activity, time_slot, timeTable, activityMap):
             for person in activityMap[activity]:
@@ -229,30 +229,23 @@ class GroupActivityScheduler(BaseScheduler):
 
         def schedule_activities(activity_index, activityList, timeTable, timeSlots, activityMap, groupActivityDF):
             nonlocal minEmptySlots
-            nonlocal emptySlots # current number of empty slots
-            nonlocal optimalTimeTable #final result
-            # we choose the timetable that has the min empty slots in total
-            if emptySlots < minEmptySlots:
-                minEmptySlots = emptySlots
-                optimalTimeTable = deepcopy(timeTable)
+            nonlocal emptySlots
+            nonlocal optimalTimeTable
 
-            # base case we finish all the activities
+            # --- PRUNING: stop if no better than best so far ---
+            if emptySlots >= minEmptySlots:
+                return
+
+            # Base case: all activities handled
             if activity_index >= len(activityList):
+                if emptySlots < minEmptySlots:
+                    minEmptySlots = emptySlots
+                    optimalTimeTable = deepcopy(timeTable)
                 return
 
             activity = activityList[activity_index]
-
-
-            isFixed = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['IsFixed']
-
-            # for fixed time activity, try all given fixed timeslots
-            if int(isFixed) == 1:
-                fixedTimeSlots = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['FixedTimeSlots']
-                possibleTimeSlots = cls.getFixedTimeArr(fixedTimeSlots)
-
-            # for flexible time activity, try all possible timeslots
-            else:
-                possibleTimeSlots = timeSlots.copy()
+            possibleTimeSlots = get_possible_slots(activity)
+            isScheduled = False
 
             for ts in possibleTimeSlots:
                 if can_schedule(activity, ts, timeTable, activityMap):
@@ -291,12 +284,6 @@ class GroupActivityScheduler(BaseScheduler):
 
             logger.info('start scheduling')
             schedule_activities(0, activityList, timeTable, timeSlotsArr, activityMap, groupActivityDF)
-
-            # # Print the scheduled activities for each individual
-            # for p, slots in optimalTimeTable.items():
-            #     logger.info(f"{p} Schedule: {slots}")
-
-            # logger.info(minEmptySlots)
             logger.info("end scheduling")
 
         runSchedule(activityMap, timeTable, timeSlotsArr, groupActivityDF)
