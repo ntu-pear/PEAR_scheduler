@@ -71,7 +71,7 @@ class GroupActivityScheduler(BaseScheduler):
             # Find preferred patients of activity
             preferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == 1")
             for id in preferredDF["PatientID"]:
-                if id in patients:
+                if id in patients and id not in activityExclusionMap[activityTitle]:
                     activityMap[activityTitle].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
@@ -206,6 +206,7 @@ class GroupActivityScheduler(BaseScheduler):
         #     logger.info(f"{p} Schedule: {slots}")
         
         return secondTimeTable
+ 
 
     @classmethod
     def bruteForceGroupScheduling(cls, activityMap, timeTable, timeslots, emptySlots, groupActivityDF):
@@ -213,82 +214,81 @@ class GroupActivityScheduler(BaseScheduler):
         minEmptySlots = float('inf')
         optimalTimeTable = {}
 
-
         def can_schedule(activity, time_slot, timeTable, activityMap):
             for person in activityMap[activity]:
                 if timeTable[person][time_slot] != "":
                     return False
             return True
 
+        def get_possible_slots(activity):
+            row = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]
+            if int(row['IsFixed']) == 1:
+                return cls.getFixedTimeArr(row['FixedTimeSlots'])
+            else:
+                return timeSlotsArr.copy()
+
         def schedule_activities(activity_index, activityList, timeTable, timeSlots, activityMap, groupActivityDF):
             nonlocal minEmptySlots
-            nonlocal emptySlots # current number of empty slots
-            nonlocal optimalTimeTable #final result
-            # we choose the timetable that has the min empty slots in total
-            if emptySlots < minEmptySlots:
-                minEmptySlots = emptySlots
-                optimalTimeTable = deepcopy(timeTable)
+            nonlocal emptySlots
+            nonlocal optimalTimeTable
 
-            # base case we finish all the activities
-            if activity_index >= len(activityList):
+            # --- PRUNING: stop if no better than best so far ---
+            if emptySlots >= minEmptySlots:
                 return
-            
 
-            isScheduled = False
+            # Base case: all activities handled
+            if activity_index >= len(activityList):
+                if emptySlots < minEmptySlots:
+                    minEmptySlots = emptySlots
+                    optimalTimeTable = deepcopy(timeTable)
+                return
+
             activity = activityList[activity_index]
-
-
-            isFixed = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['IsFixed']
-
-            # for fixed time activity, try all given fixed timeslots
-            if int(isFixed) == 1:
-                fixedTimeSlots = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]['FixedTimeSlots']
-                possibleTimeSlots = cls.getFixedTimeArr(fixedTimeSlots)
-
-            # for flexible time activity, try all possible timeslots
-            else:
-                possibleTimeSlots = timeSlots.copy()
+            possibleTimeSlots = get_possible_slots(activity)
+            isScheduled = False
 
             for ts in possibleTimeSlots:
                 if can_schedule(activity, ts, timeTable, activityMap):
                     isScheduled = True
 
-                    # Schedule in each patient timetable
+                    # Place activity
                     for person in activityMap[activity]:
                         timeTable[person][ts] = activity
                         emptySlots -= 1
-                    
-                    # schedule next activity
-                    schedule_activities(activity_index + 1, activityList ,timeTable, timeSlots, activityMap,groupActivityDF)
-                        
-                    # Backtrack and remove scheduled activity
+
+                    # Recurse
+                    schedule_activities(activity_index + 1, activityList, timeTable, timeSlots, activityMap, groupActivityDF)
+
+                    # Backtrack
                     for person in activityMap[activity]:
-                        timeTable[person][ts] = ""  
+                        timeTable[person][ts] = ""
                         emptySlots += 1
 
-            
-
-            if not isScheduled: # means this activity cannot be scheduled already, skip and go to next activity
-                schedule_activities(activity_index + 1, activityList ,timeTable, timeSlots, activityMap,groupActivityDF)
-
+            if not isScheduled:
+                schedule_activities(activity_index + 1, activityList, timeTable, timeSlots, activityMap, groupActivityDF)
 
         def runSchedule(activityMap, timeTable, timeSlotsArr, groupActivityDF):
             nonlocal optimalTimeTable
-            activityList = list(activityMap.keys())
 
+            # --- ACTIVITY ORDERING: fixed first, then by # of possible slots ---
+            def slot_count(activity):
+                return len(get_possible_slots(activity))
+
+            activityList = sorted(
+                list(activityMap.keys()),
+                key=lambda a: (
+                    int(groupActivityDF.query(f"ActivityTitle == '{a}'").iloc[0]['IsFixed']) == 0,  # fixed first
+                    slot_count(a)
+                )
+            )
 
             logger.info('start scheduling')
             schedule_activities(0, activityList, timeTable, timeSlotsArr, activityMap, groupActivityDF)
-
-            # # Print the scheduled activities for each individual
-            # for p, slots in optimalTimeTable.items():
-            #     logger.info(f"{p} Schedule: {slots}")
-
-            # logger.info(minEmptySlots)
             logger.info("end scheduling")
 
-        runSchedule(activityMap, timeTable, timeSlotsArr,groupActivityDF)
+        runSchedule(activityMap, timeTable, timeSlotsArr, groupActivityDF)
         return optimalTimeTable, minEmptySlots
+
 
     @classmethod
     def getFixedTimeArr(cls, fixedTimeSlots):
