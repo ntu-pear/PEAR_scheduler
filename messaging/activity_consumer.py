@@ -418,9 +418,8 @@ class ActivityConsumer:
             
             logger.info(f"Handling activity deletion for activity {activity_id}")
             
-            # Extract timestamp in the data modified_date
-            deleted_datetime = activity_data.get('modified_date')
-            
+            # Extract timestamp in the timestamp
+            deleted_datetime = message_data['timestamp']
             
             # Parse datetime string if needed
             if deleted_datetime and isinstance(deleted_datetime, str):
