@@ -341,7 +341,7 @@ class ActivityExclusionConsumer:
             correlation_id = message_data['correlation_id']
             exclusion_id = message_data['exclusion_id']
             old_data = message_data.get('old_data', {})
-            new_data = message_data.get('new_data', {})
+            exclusion_data = message_data.get('new_data', {})
             changes = message_data.get('changes', {})
             modified_by = message_data.get('modified_by', 'activity_service')
             
@@ -349,10 +349,10 @@ class ActivityExclusionConsumer:
             logger.debug(f"Changes: {changes}")
             
             # Convert new exclusion data to scheduler's RefActivityExclusion format
-            mapped_update_data = self.map_activity_exclusion_update(new_data)
+            mapped_update_data = self.map_activity_exclusion_update(exclusion_data)
             if not mapped_update_data:
                 logger.error(f"Failed to map activity exclusion update data for exclusion {exclusion_id}")
-                logger.debug(f"Source update data: {new_data}")
+                logger.debug(f"Source update data: {exclusion_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
@@ -379,10 +379,28 @@ class ActivityExclusionConsumer:
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                # Exclusion doesn't exist in scheduler DB 
-                # For UPDATE messages, this might be acceptable depending on business rules
-                logger.warning(f"Activity exclusion {exclusion_id} not found for update")
-                logger.warning("Exclusion should be created by ACTIVITY_EXCLUSION_CREATED message first")
+                if is_sync_event:
+                    # For sync events, try to create if doesn't exist
+                    logger.warning(f"Exclusion {exclusion_id} not found during sync - attempting to create")
+                    try:
+                        from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionCreate
+                        mapped_exclusion_data = self.map_activity_exclusion_create(exclusion_data)
+                        if mapped_exclusion_data:
+                            ref_exclusion_data = RefActivityExclusionCreate(**mapped_exclusion_data)
+                            create_result, _ = self.create_ref_activity_exclusion(
+                                db=db,
+                                exclusion=ref_exclusion_data,
+                                correlation_id=correlation_id,
+                                created_by=modified_by
+                            )
+                            if create_result:
+                                logger.info(f"Successfully created exclusion {exclusion_id} during sync")
+                                return MessageProcessingResult.SUCCESS
+                    except Exception as e:
+                        logger.error(f"Failed to create exclusion during sync: {str(e)}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                else:
+                    logger.warning(f"Activity exclusion {exclusion_id} not found for update")
                 return MessageProcessingResult.SUCCESS  # Don't requeue
             
             logger.info(f"Successfully updated activity exclusion {exclusion_id}")
