@@ -395,7 +395,7 @@ class ActivityExclusionConsumer:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE
     
-    def _handle_exclusion_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
+    def _handle_activity_exclusion_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
         """Handle exclusion deletion events with source timestamp extraction"""
         try:
             correlation_id = message_data['correlation_id']
@@ -406,7 +406,7 @@ class ActivityExclusionConsumer:
             
             logger.info(f"Handling exclusion deletion for {exclusion_id}")
             
-            deleted_datetime = exclusion_data.get('timestamp')
+            deleted_datetime = message_data['timestamp']
             
             from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionDelete
             

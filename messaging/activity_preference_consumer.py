@@ -356,7 +356,7 @@ class ActivityPreferenceConsumer:
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return MessageProcessingResult.FAILED_RETRYABLE
     
-    def _handle_preference_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
+    def _handle_activity_preference_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
         """Handle preference deletion events with source timestamp extraction"""
         try:
             correlation_id = message_data['correlation_id']
@@ -367,7 +367,7 @@ class ActivityPreferenceConsumer:
             
             logger.info(f"Handling preference deletion for {preference_id}")
             
-            deleted_datetime = preference_data.get('timestamp')
+            deleted_datetime = message_data['timestamp']
             
             from pear_schedule.schemas.ref_activity_preference import RefActivityPreferenceDelete
             
