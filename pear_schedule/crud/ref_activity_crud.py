@@ -108,7 +108,8 @@ def update_ref_activity(
     db: Session,
     activity_id: int,
     activity_update: RefActivityUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivity], bool]:
     """
     Update an existing activity with idempotency protection.
@@ -118,6 +119,7 @@ def update_ref_activity(
         activity_id: ID of activity to update
         activity_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivity or None, was_duplicate: bool)
@@ -149,16 +151,34 @@ def update_ref_activity(
         db.flush()
         return db_activity
     
-    # Use IdempotencyService for deduplication
+    # Use IdempotencyService for deduplication (unless skipped for sync events)
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_UPDATED",
-            aggregate_id=str(activity_id),
-            processed_by=f"scheduler_service_{activity_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity {activity_id} (sync event)")
+            # Execute update directly without idempotency check
+            result = update_operation()
+            was_duplicate = False
+            
+            # Still record the event for tracking, but don't check for duplicates
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_UPDATED",
+                    aggregate_id=str(activity_id),
+                    processed_by=f"scheduler_service_{activity_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_UPDATED",
+                aggregate_id=str(activity_id),
+                processed_by=f"scheduler_service_{activity_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
             # Return current state for duplicate events
@@ -187,7 +207,8 @@ def delete_ref_activity(
     db: Session,
     activity_id: int,
     activity_delete: RefActivityDelete,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivity], bool]:
     """
     Soft delete an activity with idempotency protection.
@@ -197,6 +218,7 @@ def delete_ref_activity(
         activity_id: ID of activity to delete
         activity_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivity or None, was_duplicate: bool)
@@ -228,16 +250,34 @@ def delete_ref_activity(
         db.flush()
         return db_activity
     
-    # Use IdempotencyService for deduplication
+    # Use IdempotencyService for deduplication (unless skipped for sync events)
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_DELETED",
-            aggregate_id=str(activity_id),
-            processed_by=f"scheduler_service_{activity_delete.ModifiedById}",
-            operation=delete_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity {activity_id} (sync event)")
+            # Execute delete directly without idempotency check
+            result = delete_operation()
+            was_duplicate = False
+            
+            # Still record the event for tracking, but don't check for duplicates
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_DELETED",
+                    aggregate_id=str(activity_id),
+                    processed_by=f"scheduler_service_{activity_delete.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_DELETED",
+                aggregate_id=str(activity_id),
+                processed_by=f"scheduler_service_{activity_delete.ModifiedById}",
+                operation=delete_operation
+            )
         
         if was_duplicate:
             # Return current state for duplicate events

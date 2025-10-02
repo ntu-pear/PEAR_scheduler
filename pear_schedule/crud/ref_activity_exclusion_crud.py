@@ -15,7 +15,8 @@ def create_ref_activity_exclusion(
     db: Session,
     exclusion: RefActivityExclusionCreate,
     correlation_id: str,
-    created_by: str
+    created_by: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityExclusion], bool]:
     """
     Create a new activity exclusion with idempotency protection.
@@ -25,6 +26,7 @@ def create_ref_activity_exclusion(
         exclusion: Activity exclusion data to create
         correlation_id: Correlation ID from outbox service for deduplication
         created_by: User/service creating the exclusion
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityExclusion or None, was_duplicate: bool)
@@ -35,17 +37,13 @@ def create_ref_activity_exclusion(
     """
     
     def create_operation():
-        # For exclusions, we need to handle the fact that we might not have an ActivityExclusionID
-        # from the activity service. Check if one is provided, otherwise create based on combination
         if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID:
-            # Check by ActivityExclusionID if provided
             existing = db.query(RefActivityExclusion).filter(
                 RefActivityExclusion.ActivityExclusionID == exclusion.ActivityExclusionID
             ).first()
             
             if existing:
                 if existing.IsDeleted == "1":
-                    # Reactivate soft-deleted exclusion
                     logger.info(f"Reactivating soft-deleted exclusion {exclusion.ActivityExclusionID}")
                     existing.IsDeleted = "0"
                     existing.PatientID = exclusion.PatientID
@@ -60,7 +58,6 @@ def create_ref_activity_exclusion(
                 else:
                     raise ValueError(f"Activity exclusion with ActivityExclusionID {exclusion.ActivityExclusionID} already exists.")
         else:
-            # Check by PatientID and ActivityID combination if no ActivityExclusionID provided
             existing = db.query(RefActivityExclusion).filter(
                 RefActivityExclusion.PatientID == exclusion.PatientID,
                 RefActivityExclusion.ActivityID == exclusion.ActivityID,
@@ -68,9 +65,7 @@ def create_ref_activity_exclusion(
             ).first()
             
             if existing:
-                # For combination-based duplicates, we could update instead of error
                 logger.info(f"Found existing exclusion for Patient {exclusion.PatientID}, Activity {exclusion.ActivityID}")
-                # Update the existing record
                 existing.StartDateTime = exclusion.StartDateTime
                 existing.EndDateTime = exclusion.EndDateTime
                 existing.ExclusionRemarks = exclusion.ExclusionRemarks
@@ -81,7 +76,6 @@ def create_ref_activity_exclusion(
         
         logger.info(f"Creating new activity exclusion for Patient {exclusion.PatientID}, Activity {exclusion.ActivityID}")
         
-        # Create new exclusion
         new_exclusion = RefActivityExclusion(
             PatientID=exclusion.PatientID,
             ActivityID=exclusion.ActivityID,
@@ -95,33 +89,42 @@ def create_ref_activity_exclusion(
             ModifiedById=created_by
         )
         
-        # Set ActivityExclusionID if provided
         if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID:
             new_exclusion.ActivityExclusionID = exclusion.ActivityExclusionID
         
         db.add(new_exclusion)
         db.flush()
-        
-        db.add(new_exclusion)
-        db.flush()
         return new_exclusion
     
-    # Use IdempotencyService for deduplication
+    aggregate_key = str(exclusion.ActivityExclusionID) if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID else f"{exclusion.PatientID}_{exclusion.ActivityID}"
+    
     try:
-        # Use a combination key if no ActivityExclusionID provided
-        aggregate_key = str(exclusion.ActivityExclusionID) if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID else f"{exclusion.PatientID}_{exclusion.ActivityID}"
-        
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_EXCLUSION_CREATED",
-            aggregate_id=aggregate_key,
-            processed_by=f"scheduler_service_{created_by}",
-            operation=create_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity exclusion {aggregate_key} (sync event)")
+            result = create_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_EXCLUSION_CREATED",
+                    aggregate_id=aggregate_key,
+                    processed_by=f"scheduler_service_{created_by}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_EXCLUSION_CREATED",
+                aggregate_id=aggregate_key,
+                processed_by=f"scheduler_service_{created_by}",
+                operation=create_operation
+            )
         
         if was_duplicate:
-            # Return existing exclusion for duplicate events
             if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID:
                 existing_exclusion = db.query(RefActivityExclusion).filter(
                     RefActivityExclusion.ActivityExclusionID == exclusion.ActivityExclusionID
@@ -143,14 +146,11 @@ def create_ref_activity_exclusion(
         db.rollback()
         error_msg = str(e)
         
-        # Check for foreign key constraint violations
         if "FOREIGN KEY constraint" in error_msg:
             if "REF_PATIENT" in error_msg:
                 logger.warning(f"Patient does not exist in scheduler database for exclusion {aggregate_key}")
-                # This is not necessarily an error - patient sync might be pending
             elif "REF_ACTIVITY" in error_msg:
                 logger.warning(f"Activity does not exist in scheduler database for exclusion {aggregate_key}")
-                # This is not necessarily an error - activity sync might be pending
         
         logger.error(f"Error creating activity exclusion {aggregate_key}: {error_msg}")
         raise
@@ -159,7 +159,8 @@ def update_ref_activity_exclusion(
     db: Session,
     exclusion_id: int,
     exclusion_update: RefActivityExclusionUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityExclusion], bool]:
     """
     Update an existing activity exclusion with idempotency protection.
@@ -169,6 +170,7 @@ def update_ref_activity_exclusion(
         exclusion_id: ActivityExclusionID of exclusion to update
         exclusion_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityExclusion or None, was_duplicate: bool)
@@ -179,7 +181,6 @@ def update_ref_activity_exclusion(
     """
     
     def update_operation():
-        # Find the exclusion to update
         db_exclusion = db.query(RefActivityExclusion).filter(
             RefActivityExclusion.ActivityExclusionID == exclusion_id,
             RefActivityExclusion.IsDeleted == "0"
@@ -191,28 +192,41 @@ def update_ref_activity_exclusion(
         
         logger.debug(f"Updating activity exclusion {exclusion_id}")
         
-        # Update only the fields that were provided
         update_data = exclusion_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_exclusion, field) and field != 'ActivityExclusionID':  # Never update ID
+            if hasattr(db_exclusion, field) and field != 'ActivityExclusionID':
                 setattr(db_exclusion, field, value)
         
         db.flush()
         return db_exclusion
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_EXCLUSION_UPDATED",
-            aggregate_id=str(exclusion_id),
-            processed_by=f"scheduler_service_{exclusion_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity exclusion {exclusion_id} (sync event)")
+            result = update_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_EXCLUSION_UPDATED",
+                    aggregate_id=str(exclusion_id),
+                    processed_by=f"scheduler_service_{exclusion_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_EXCLUSION_UPDATED",
+                aggregate_id=str(exclusion_id),
+                processed_by=f"scheduler_service_{exclusion_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_exclusion = db.query(RefActivityExclusion).filter(
                 RefActivityExclusion.ActivityExclusionID == exclusion_id,
                 RefActivityExclusion.IsDeleted == "0"
@@ -222,7 +236,7 @@ def update_ref_activity_exclusion(
         
         if result is None:
             logger.warning(f"Activity exclusion {exclusion_id} not found for update")
-            db.commit()  # Commit the idempotency record even if exclusion not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -238,7 +252,8 @@ def delete_ref_activity_exclusion(
     db: Session,
     exclusion_id: int,
     exclusion_delete: RefActivityExclusionDelete,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityExclusion], bool]:
     """
     Soft delete an activity exclusion with idempotency protection.
@@ -248,6 +263,7 @@ def delete_ref_activity_exclusion(
         exclusion_id: ActivityExclusionID of exclusion to delete
         exclusion_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityExclusion or None, was_duplicate: bool)
@@ -258,7 +274,6 @@ def delete_ref_activity_exclusion(
     """
     
     def delete_operation():
-        # Find the exclusion to delete using ActivityExclusionID
         db_exclusion = db.query(RefActivityExclusion).filter(
             RefActivityExclusion.ActivityExclusionID == exclusion_id
         ).first()
@@ -273,7 +288,6 @@ def delete_ref_activity_exclusion(
         
         logger.info(f"Soft deleting activity exclusion {exclusion_id}")
         
-        # Perform soft delete using schema data
         db_exclusion.IsDeleted = "1"
         db_exclusion.ModifiedById = exclusion_delete.ModifiedById
         db_exclusion.UpdatedDateTime = exclusion_delete.UpdatedDateTime
@@ -281,19 +295,33 @@ def delete_ref_activity_exclusion(
         db.flush()
         return db_exclusion
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_EXCLUSION_DELETED",
-            aggregate_id=str(exclusion_id),
-            processed_by=f"scheduler_service_{exclusion_delete.ModifiedById}",
-            operation=delete_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity exclusion {exclusion_id} (sync event)")
+            result = delete_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_EXCLUSION_DELETED",
+                    aggregate_id=str(exclusion_id),
+                    processed_by=f"scheduler_service_{exclusion_delete.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_EXCLUSION_DELETED",
+                aggregate_id=str(exclusion_id),
+                processed_by=f"scheduler_service_{exclusion_delete.ModifiedById}",
+                operation=delete_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_exclusion = db.query(RefActivityExclusion).filter(
                 RefActivityExclusion.ActivityExclusionID == exclusion_id
             ).first()
@@ -302,7 +330,7 @@ def delete_ref_activity_exclusion(
         
         if result is None:
             logger.warning(f"Activity exclusion {exclusion_id} not found for deletion")
-            db.commit()  # Commit the idempotency record even if exclusion not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -318,11 +346,9 @@ def get_idempotency_stats(db: Session) -> dict:
     """Get statistics about processed events for monitoring."""
     return IdempotencyService.get_processing_stats(db)
 
-
 def cleanup_old_processed_events(db: Session, older_than_days: int = 30) -> int:
     """Clean up old processed events - should be run periodically."""
     return IdempotencyService.cleanup_old_events(db, older_than_days)
-
 
 def is_event_already_processed(db: Session, correlation_id: str) -> bool:
     """Check if a specific correlation_id was already processed."""
