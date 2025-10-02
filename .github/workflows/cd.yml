@@ -39,6 +39,7 @@ jobs:
       RABBITMQ_VIRTUAL_HOST: ${{ secrets.RABBITMQ_VIRTUAL_HOST }}
       WEB_FE_ORIGIN: ${{ secrets.WEB_FE_ORIGIN }}
       WEB_FE_ORIGIN_STAGING: ${{ secrets.WEB_FE_ORIGIN_STAGING }}
+      USER_BE_ORIGIN: ${{ secrets.USER_BE_ORIGIN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -57,6 +58,7 @@ jobs:
           echo "RABBITMQ_VIRTUAL_HOST=${{ secrets.RABBITMQ_VIRTUAL_HOST }}" >> .env
           echo "WEB_FE_ORIGIN=${{ secrets.WEB_FE_ORIGIN }}" >> .env
           echo "WEB_FE_ORIGIN_STAGING=${{ secrets.WEB_FE_ORIGIN_STAGING }}" >> .env
+          echo "USER_BE_ORIGIN=${{ secrets.USER_BE_ORIGIN }}" >> .env
 
       - name: Create/Update ConfigMap in Kubernetes
         run: |
