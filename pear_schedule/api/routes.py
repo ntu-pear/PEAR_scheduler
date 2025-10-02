@@ -1,9 +1,9 @@
 import logging
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Depends
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
-from typing import List, Optional
+from typing import List, Optional, Annotated
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, GroupActivitiesOnlyView, WeeklyScheduleView, CompulsoryActivitiesOnlyView,PatientsOnlyView,AllActivitiesView
 import pandas as pd
 
@@ -18,6 +18,8 @@ from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.utils import DBTABLES
 
+from pear_schedule.api.auth_util import Token, generateAccessToken_onLogin, JWTPayload, get_current_user, is_supervisor
+from fastapi.security import OAuth2PasswordRequestForm
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +78,11 @@ def generate_schedule(request: Request):
 
 
 @router.api_route("/regenerate/", methods=["GET"])
-def generate_schedule(request: Request):
+def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_current_user)):
+    if current_user and not is_supervisor(current_user):
+        responseData = {"Status": "403", "Message": "You do not have permission to regenerate schedules"} 
+        return JSONResponse(jsonable_encoder(responseData))
+    
     config = request.app.state.config
     
     # Set up patient schedule structure
@@ -337,3 +343,8 @@ async def system_report(request: Request):
     responseData = {"Status": "200", "Message": "System Report Generated", "Data": {"SystemTest": systemTestArray, "Statistics": statisticsArray, "Warnings": warningArray}} 
     return JSONResponse(jsonable_encoder(responseData))
 
+# include_in_schema=False hides this endpoint from the docs
+@router.post("/token", response_model=Token, include_in_schema=False)
+# Depends(): automatically extracts data fields, creates an OAuth2PasswordRequestForm instance with fields
+async def authenticate_user(form_data: Annotated[OAuth2PasswordRequestForm, Depends()]):
+    return await generateAccessToken_onLogin(form_data)

@@ -731,7 +731,7 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
                 if pd.isnull(endDate):
                     continue
 
-                if not (startDate <= dateOfActivity <= endDate.date()):
+                if not (startDate <= dateOfActivity <= endDate):
                     result = False
                     testRemarks.append(
                         f"{activityTitle} for patient ID {scheduleRecord['PatientID']} "

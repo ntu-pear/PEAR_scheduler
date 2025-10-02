@@ -195,7 +195,8 @@ def init_app(config: Mapping[str, Any], args):
         workers=args.workers, 
         factory=True,
         # Add signal handlers for uvicorn
-        loop="asyncio"
+        loop="asyncio",
+        reload=True
     )
 
 def refresh_schedules(config: Mapping[str, Any], args):
