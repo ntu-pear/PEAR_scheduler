@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
+from sqlalchemy.dialects.mssql import VARCHAR
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from pear_schedule.database import Base
@@ -11,13 +12,13 @@ class Schedule(Base):
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID')) 
     StartDate = Column(DateTime, nullable=False, default=datetime.now)
     EndDate = Column(DateTime, nullable=False, default=datetime.now)
-    Monday = Column(String(255))
-    Tuesday = Column(String(255))
-    Wednesday = Column(String(255))
-    Thursday = Column(String(255))
-    Friday = Column(String(255))
-    Saturday = Column(String(255))
-    Sunday = Column(String(255))
+    Monday = Column(VARCHAR("max"))
+    Tuesday = Column(VARCHAR("max"))
+    Wednesday = Column(VARCHAR("max"))
+    Thursday = Column(VARCHAR("max"))
+    Friday = Column(VARCHAR("max"))
+    Saturday = Column(VARCHAR("max"))
+    Sunday = Column(VARCHAR("max"))
     
 
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
