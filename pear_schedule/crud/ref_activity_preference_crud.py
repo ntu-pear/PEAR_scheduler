@@ -15,7 +15,8 @@ def create_ref_activity_preference(
     db: Session,
     preference: RefActivityPreferenceCreate,
     correlation_id: str,
-    created_by: str
+    created_by: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityPreference], bool]:
     """
     Create a new activity preference with idempotency protection.
@@ -25,6 +26,7 @@ def create_ref_activity_preference(
         preference: Activity preference data to create
         correlation_id: Correlation ID from outbox service for deduplication
         created_by: User/service creating the preference
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityPreference or None, was_duplicate: bool)
@@ -35,15 +37,12 @@ def create_ref_activity_preference(
     """
     
     def create_operation():
-        # Check if preference already exists - this is a business rule for CREATE
-        # We use the CentreActivityPreferenceID from the activity service as unique identifier
         existing = db.query(RefActivityPreference).filter(
             RefActivityPreference.CentreActivityPreferenceID == preference.CentreActivityPreferenceID
         ).first()
         
         if existing:
             if existing.IsDeleted == "1":
-                # Reactivate soft-deleted preference
                 logger.info(f"Reactivating soft-deleted preference {preference.CentreActivityPreferenceID}")
                 existing.IsDeleted = "0"
                 existing.PatientID = preference.PatientID
@@ -58,7 +57,6 @@ def create_ref_activity_preference(
         
         logger.info(f"Creating new activity preference {preference.CentreActivityPreferenceID}")
         
-        # Create new preference
         new_preference = RefActivityPreference(
             CentreActivityPreferenceID=preference.CentreActivityPreferenceID,
             PatientID=preference.PatientID,
@@ -73,22 +71,35 @@ def create_ref_activity_preference(
         
         db.add(new_preference)
         db.flush()
-        
         return new_preference
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_PREFERENCE_CREATED",
-            aggregate_id=str(preference.CentreActivityPreferenceID),
-            processed_by=f"scheduler_service_{created_by}",
-            operation=create_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity preference {preference.CentreActivityPreferenceID} (sync event)")
+            result = create_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_PREFERENCE_CREATED",
+                    aggregate_id=str(preference.CentreActivityPreferenceID),
+                    processed_by=f"scheduler_service_{created_by}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_PREFERENCE_CREATED",
+                aggregate_id=str(preference.CentreActivityPreferenceID),
+                processed_by=f"scheduler_service_{created_by}",
+                operation=create_operation
+            )
         
         if was_duplicate:
-            # Return existing preference for duplicate events
             existing_preference = db.query(RefActivityPreference).filter(
                 RefActivityPreference.CentreActivityPreferenceID == preference.CentreActivityPreferenceID
             ).first()
@@ -108,7 +119,8 @@ def update_ref_activity_preference(
     db: Session,
     preference_id: int,
     preference_update: RefActivityPreferenceUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityPreference], bool]:
     """
     Update an existing activity preference with idempotency protection.
@@ -118,6 +130,7 @@ def update_ref_activity_preference(
         preference_id: CentreActivityPreferenceID of preference to update
         preference_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityPreference or None, was_duplicate: bool)
@@ -128,7 +141,6 @@ def update_ref_activity_preference(
     """
     
     def update_operation():
-        # Find the preference to update using CentreActivityPreferenceID
         db_preference = db.query(RefActivityPreference).filter(
             RefActivityPreference.CentreActivityPreferenceID == preference_id,
             RefActivityPreference.IsDeleted == "0"
@@ -140,28 +152,41 @@ def update_ref_activity_preference(
         
         logger.debug(f"Updating activity preference {preference_id}")
         
-        # Update only the fields that were provided
         update_data = preference_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_preference, field) and field != 'CentreActivityPreferenceID':  # Never update ID
+            if hasattr(db_preference, field) and field != 'CentreActivityPreferenceID':
                 setattr(db_preference, field, value)
         
         db.flush()
         return db_preference
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_PREFERENCE_UPDATED",
-            aggregate_id=str(preference_id),
-            processed_by=f"scheduler_service_{preference_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity preference {preference_id} (sync event)")
+            result = update_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_PREFERENCE_UPDATED",
+                    aggregate_id=str(preference_id),
+                    processed_by=f"scheduler_service_{preference_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_PREFERENCE_UPDATED",
+                aggregate_id=str(preference_id),
+                processed_by=f"scheduler_service_{preference_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_preference = db.query(RefActivityPreference).filter(
                 RefActivityPreference.CentreActivityPreferenceID == preference_id,
                 RefActivityPreference.IsDeleted == "0"
@@ -171,7 +196,7 @@ def update_ref_activity_preference(
         
         if result is None:
             logger.warning(f"Activity preference {preference_id} not found for update")
-            db.commit()  # Commit the idempotency record even if preference not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -187,7 +212,8 @@ def delete_ref_activity_preference(
     db: Session,
     preference_id: int,
     preference_delete: RefActivityPreferenceDelete,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityPreference], bool]:
     """
     Soft delete an activity preference with idempotency protection.
@@ -197,6 +223,7 @@ def delete_ref_activity_preference(
         preference_id: CentreActivityPreferenceID of preference to delete
         preference_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityPreference or None, was_duplicate: bool)
@@ -207,7 +234,6 @@ def delete_ref_activity_preference(
     """
     
     def delete_operation():
-        # Find the preference to delete using CentreActivityPreferenceID
         db_preference = db.query(RefActivityPreference).filter(
             RefActivityPreference.CentreActivityPreferenceID == preference_id
         ).first()
@@ -222,7 +248,6 @@ def delete_ref_activity_preference(
         
         logger.info(f"Soft deleting activity preference {preference_id}")
         
-        # Perform soft delete using schema data
         db_preference.IsDeleted = "1"
         db_preference.ModifiedById = preference_delete.ModifiedById
         db_preference.UpdatedDateTime = preference_delete.UpdatedDateTime
@@ -230,19 +255,33 @@ def delete_ref_activity_preference(
         db.flush()
         return db_preference
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_PREFERENCE_DELETED",
-            aggregate_id=str(preference_id),
-            processed_by=f"scheduler_service_{preference_delete.ModifiedById}",
-            operation=delete_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity preference {preference_id} (sync event)")
+            result = delete_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_PREFERENCE_DELETED",
+                    aggregate_id=str(preference_id),
+                    processed_by=f"scheduler_service_{preference_delete.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_PREFERENCE_DELETED",
+                aggregate_id=str(preference_id),
+                processed_by=f"scheduler_service_{preference_delete.ModifiedById}",
+                operation=delete_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_preference = db.query(RefActivityPreference).filter(
                 RefActivityPreference.CentreActivityPreferenceID == preference_id
             ).first()
@@ -251,7 +290,7 @@ def delete_ref_activity_preference(
         
         if result is None:
             logger.warning(f"Activity preference {preference_id} not found for deletion")
-            db.commit()  # Commit the idempotency record even if preference not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -267,11 +306,9 @@ def get_idempotency_stats(db: Session) -> dict:
     """Get statistics about processed events for monitoring."""
     return IdempotencyService.get_processing_stats(db)
 
-
 def cleanup_old_processed_events(db: Session, older_than_days: int = 30) -> int:
     """Clean up old processed events - should be run periodically."""
     return IdempotencyService.cleanup_old_events(db, older_than_days)
-
 
 def is_event_already_processed(db: Session, correlation_id: str) -> bool:
     """Check if a specific correlation_id was already processed."""

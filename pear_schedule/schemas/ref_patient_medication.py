@@ -24,6 +24,7 @@ class RefPatientMedicationCreate(RefPatientMedicationBase):
 
 class RefPatientMedicationUpdate(BaseModel):
     PatientID: Optional[int] = None
+    IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
     PrescriptionName: Optional[str] = None
     Dosage: Optional[str] = None
     AdministerTime: str

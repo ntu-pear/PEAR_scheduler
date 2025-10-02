@@ -28,7 +28,6 @@ class PatientConsumer:
         self.shutdown_event = None
         self.is_consuming = False
         
-
         from pear_schedule.crud.ref_patient_crud import (
             create_ref_patient,
             update_ref_patient,
@@ -55,10 +54,8 @@ class PatientConsumer:
         """Context manager for database transactions with proper cleanup"""
         db = next(self.get_db())
         try:
-            # SQLAlchemy sessions have implicit transactions - no need for explicit begin()
             logger.debug("Started database session transaction")
             yield db
-            # Don't commit here - let the CRUD functions handle commits
             logger.debug("Database session transaction completed")
         except Exception as e:
             logger.error(f"Rolling back transaction due to error: {e}")
@@ -76,7 +73,7 @@ class PatientConsumer:
             for handler in logger.handlers:
                 handler.flush()
         except Exception:
-            pass  # Don't let logging issues break message processing
+            pass
     
     def set_shutdown_event(self, shutdown_event: threading.Event):
         """Set the shutdown event for graceful shutdown"""
@@ -89,17 +86,13 @@ class PatientConsumer:
         try:
             self.client.connect()
             
-            # Declare the patient.updates exchange (idempotent)
             self.client.channel.exchange_declare(
                 exchange='patient.updates',
                 exchange_type='topic',
                 durable=True
             )
             
-            # Set up consumers for each existing patient queue
             for queue_name in self.patient_queues:
-                # Don't declare the queue - it already exists as quorum queue
-                # Set up the consumer with proper message handling
                 self.client.consume(queue_name, self._handle_message_wrapper)
                 logger.info(f"Set up consumer for scheduler queue: {queue_name}")
             
@@ -130,62 +123,44 @@ class PatientConsumer:
             self.client.stop_consuming()
     
     def _handle_message_wrapper(self, message: Dict[str, Any]) -> bool:
-        """
-        Wrapper for message handling with proper acknowledgment logic.
-        
-        Returns True if message should be acknowledged (success or permanent failure),
-        False if message should be rejected/requeued (temporary failure).
-        """
+        """Wrapper for message handling with proper acknowledgment logic."""
         try:
-            # Log every message received for debugging
             message_correlation = message.get('data', {}).get('correlation_id', 'UNKNOWN')
             logger.debug(f"RECEIVED MESSAGE: correlation_id={message_correlation}")
             
-            # Check if we should shutdown
             if self.shutdown_event and self.shutdown_event.is_set():
                 logger.info("Shutdown signal received, stopping message processing")
                 return False
             
-            # Process the message
             result = self._process_patient_message(message)
-            
-            # Force log flush after processing each message
             self._flush_logs()
             
-            # Handle different processing results
             if result == MessageProcessingResult.SUCCESS:
                 logger.debug("Message processed successfully")
-                return True  # Acknowledge
-                
+                return True
             elif result == MessageProcessingResult.DUPLICATE:
                 logger.info("Duplicate message processed (idempotent)")
-                return True  # Acknowledge - duplicate is success
-                
+                return True
             elif result == MessageProcessingResult.FAILED_RETRYABLE:
                 logger.warning("Message processing failed (retryable)")
-                return False  # Reject and requeue
-                
+                return False
             elif result == MessageProcessingResult.FAILED_PERMANENT:
                 logger.error("Message processing failed permanently")
-                return True  # Acknowledge to send to DLQ
-                
+                return True
             else:
                 logger.error(f"Unknown processing result: {result}")
-                return False  # Reject and requeue
+                return False
                 
         except Exception as e:
             logger.error(f"Fatal error in message wrapper: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             self._flush_logs()
-            return False  # Reject and requeue
+            return False
     
     def _process_patient_message(self, message: Dict[str, Any]) -> MessageProcessingResult:
-        """
-        Process patient message with FIXED session management and error handling.
-        """
+        """Process patient message with sync event support."""
         try:
-            # Parse and validate message structure
             message_data = self._parse_message(message)
             if not message_data:
                 return MessageProcessingResult.FAILED_PERMANENT
@@ -193,17 +168,19 @@ class PatientConsumer:
             correlation_id = message_data['correlation_id']
             event_type = message_data['event_type']
             patient_id = message_data['patient_id']
+            is_sync_event = message_data.get('is_sync_event', False)
+            sync_reason = message_data.get('sync_reason')
             
-            logger.info(f"Processing {event_type} for patient {patient_id} (correlation: {correlation_id})")
+            logger.info(f"Processing {event_type} for patient {patient_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
             
-            # Use context manager for guaranteed transaction handling
             with self.get_db_transaction() as db:
-                # Quick check for duplicates
-                if self.is_event_already_processed(db, correlation_id):
+                # For sync events, bypass duplicate check in CRUD
+                if not is_sync_event and self.is_event_already_processed(db, correlation_id):
                     logger.info(f"Event already processed: {correlation_id}")
                     return MessageProcessingResult.DUPLICATE
+                elif is_sync_event:
+                    logger.info(f"Sync event detected - bypassing idempotency check for {correlation_id}")
                 
-                # Route to appropriate handler
                 if event_type == 'PATIENT_CREATED':
                     result = self._handle_patient_created(db, message_data)
                 elif event_type == 'PATIENT_UPDATED':
@@ -214,10 +191,8 @@ class PatientConsumer:
                     logger.error(f"Unknown event type: {event_type}")
                     return MessageProcessingResult.FAILED_PERMANENT
                 
-                # Transaction will be committed automatically by context manager
                 logger.debug(f"Transaction completed for {correlation_id}")
             
-            # Verification step outside the transaction
             verification_db = next(self.get_db())
             try:
                 verified = self.is_event_already_processed(verification_db, correlation_id)
@@ -236,23 +211,16 @@ class PatientConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def _parse_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Parse and validate message structure.
-        
-        Returns parsed message data or None if invalid.
-        """
+        """Parse and validate message structure."""
         try:
-            # Extract message data
             message_data = message.get('data', {})
             
-            # Validate required fields for idempotency
             required_fields = ['correlation_id', 'event_type', 'patient_id']
             for field in required_fields:
                 if field not in message_data:
                     logger.error(f"Missing required field '{field}' in message")
                     return None
             
-            # Log the full message for debugging
             logger.debug(f"Parsed message: {message_data}")
             return message_data
             
@@ -261,7 +229,7 @@ class PatientConsumer:
             return None
     
     def _handle_patient_created(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle patient creation events with separation"""
+        """Handle patient creation events"""
         try:
             correlation_id = message_data['correlation_id']
             patient_id = message_data['patient_id']
@@ -271,7 +239,6 @@ class PatientConsumer:
             logger.info(f"Handling patient creation for patient {patient_id}")
             logger.debug(f"Patient data: {patient_data}")
             
-            # Convert patient data to scheduler's RefPatient format
             mapped_patient_data = self.map_patient_create(patient_data)
             if not mapped_patient_data:
                 logger.error(f"Failed to map patient data for patient {patient_id}")
@@ -280,7 +247,6 @@ class PatientConsumer:
             
             logger.debug(f"Mapped patient data: {mapped_patient_data}")
             
-            # Convert to Pydantic schema for CRUD function
             from pear_schedule.schemas.ref_patient import RefPatientCreate
             try:
                 ref_patient_data = RefPatientCreate(**mapped_patient_data)
@@ -289,7 +255,6 @@ class PatientConsumer:
                 logger.error(f"Mapped data: {mapped_patient_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Create patient using CRUD operation with idempotency
             result, was_duplicate = self.create_ref_patient(
                 db=db,
                 patient=ref_patient_data,
@@ -309,7 +274,6 @@ class PatientConsumer:
                 return MessageProcessingResult.FAILED_RETRYABLE
             
         except ValueError as e:
-            # Business logic error (patient already exists)
             logger.warning(f"Business logic error creating patient: {str(e)}")
             return MessageProcessingResult.FAILED_PERMANENT
         except Exception as e:
@@ -322,25 +286,21 @@ class PatientConsumer:
         """Handle patient update events"""
         try:
             correlation_id = message_data['correlation_id']
-            patient_id = message_data['patient_id']
-            old_data = message_data.get('old_data', {})
-            new_data = message_data.get('new_data', {})
-            changes = message_data.get('changes', {})
+            patient_id = message_data['patient_id'] 
+            patient_data = message_data.get('new_data', {}) # use new_data based on new payload standardisation
             modified_by = message_data.get('modified_by', 'patient_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling patient update for patient {patient_id}")
-            logger.debug(f"Changes: {changes}")
             
-            # Convert new patient data to scheduler's RefPatient format
-            mapped_update_data = self.map_patient_update(new_data)
+            mapped_update_data = self.map_patient_update(patient_data)
             if not mapped_update_data:
                 logger.error(f"Failed to map patient update data for patient {patient_id}")
-                logger.debug(f"Source update data: {new_data}")
+                logger.debug(f"Source update data: {patient_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
-            # Convert to Pydantic schema for CRUD function
             from pear_schedule.schemas.ref_patient import RefPatientUpdate
             try:
                 ref_patient_update = RefPatientUpdate(**mapped_update_data)
@@ -349,36 +309,45 @@ class PatientConsumer:
                 logger.error(f"Mapped data: {mapped_update_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Update patient using CRUD operation with idempotency
+            # For sync events, bypass duplicate check in CRUD
             result, was_duplicate = self.update_ref_patient(
                 db=db,
                 patient_id=patient_id,
                 patient_update=ref_patient_update,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate update event for patient {patient_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                # Patient doesn't exist in scheduler DB 
-                # For UPDATE messages, this might be acceptable depending on business rules
-                logger.warning(f"Patient {patient_id} not found for update")
-                logger.warning("Patient should be created by PATIENT_CREATED message first")
-                return MessageProcessingResult.SUCCESS  # Don't requeue
+                if is_sync_event:
+                    # For sync events, try to create if doesn't exist
+                    logger.warning(f"Patient {patient_id} not found during sync - attempting to create")
+                    try:
+                        from pear_schedule.schemas.ref_patient import RefPatientCreate
+                        mapped_patient_data = self.map_patient_create(patient_data)
+                        if mapped_patient_data:
+                            ref_patient_data = RefPatientCreate(**mapped_patient_data)
+                            create_result, _ = self.create_ref_patient(
+                                db=db,
+                                patient=ref_patient_data,
+                                correlation_id=correlation_id,
+                                created_by=modified_by
+                            )
+                            if create_result:
+                                logger.info(f"Successfully created patient {patient_id} during sync")
+                                return MessageProcessingResult.SUCCESS
+                    except Exception as e:
+                        logger.error(f"Failed to create patient during sync: {str(e)}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                else:
+                    logger.warning(f"Patient {patient_id} not found for update")
+                return MessageProcessingResult.SUCCESS
             
             logger.info(f"Successfully updated patient {patient_id}")
-            
-            # Check if changes affect scheduling
-            scheduling_affecting_changes = [
-                'IsActive', 'StartDate', 'EndDate', 'UpdateBit'
-            ]
-            
-            if any(field in changes for field in scheduling_affecting_changes):
-                logger.info(f"Patient {patient_id} scheduling-relevant changes detected: {list(changes.keys())}")
-                # TODO: Trigger schedule recalculation if needed
-            
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
@@ -392,14 +361,20 @@ class PatientConsumer:
         try:
             correlation_id = message_data['correlation_id']
             patient_id = message_data['patient_id']
-            updated_datetime = message_data['timestamp']  # Get the iso format, not the raw date_modified in the data
+            updated_datetime = message_data.get('timestamp')
             deleted_by = message_data.get('deleted_by', 'patient_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling patient deletion for patient {patient_id}")
                
             from pear_schedule.schemas.ref_patient import RefPatientDelete
             
             try:
+                # Force update timestamp for sync events
+                if is_sync_event:
+                    updated_datetime = datetime.now()
+                    logger.debug(f"Sync event - forcing timestamp update to {updated_datetime}")
+                
                 ref_patient_delete = RefPatientDelete(
                     UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
                     ModifiedById=deleted_by
@@ -410,21 +385,21 @@ class PatientConsumer:
                 logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Delete patient using CRUD operation with idempotency
+            # For sync events, bypass duplicate check in CRUD
             result, was_duplicate = self.delete_ref_patient(
                 db=db,
                 patient_id=patient_id,
                 patient_delete=ref_patient_delete,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate deletion event for patient {patient_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
                 logger.warning(f"Patient {patient_id} not found for deletion")
-                # This is acceptable - patient might already be deleted
                 
             logger.info(f"Successfully processed deletion for patient {patient_id}")
             return MessageProcessingResult.SUCCESS
@@ -436,9 +411,7 @@ class PatientConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def get_health_status(self) -> Dict[str, Any]:
-        """
-        Get health status for monitoring.
-        """
+        """Get health status for monitoring."""
         try:
             return {
                 "status": "healthy",

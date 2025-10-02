@@ -74,12 +74,16 @@ consumer_manager = None
 shutdown_event = threading.Event()
 
 def create_app():
-    from pear_schedule.api.routes import router as sched_router
+    from pear_schedule.api import (
+        schedule_router,
+        integrity_router
+    )
     app = FastAPI(
         title="PEAR FYP Scheduler Service",
         description="Scheduler Service API Documentation"
     )
-    app.include_router(sched_router, prefix="/schedule")
+    app.include_router(schedule_router.router, prefix="/schedule")
+    app.include_router(integrity_router.router, prefix="/integrity")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
         "http://localhost",

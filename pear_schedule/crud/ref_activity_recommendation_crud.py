@@ -15,7 +15,8 @@ def create_ref_activity_recommendation(
     db: Session,
     recommendation: RefActivityRecommendationCreate,
     correlation_id: str,
-    created_by: str
+    created_by: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
     Create a new activity recommendation with idempotency protection.
@@ -25,6 +26,7 @@ def create_ref_activity_recommendation(
         recommendation: Activity recommendation data to create
         correlation_id: Correlation ID from outbox service for deduplication
         created_by: User/service creating the recommendation
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
@@ -35,15 +37,12 @@ def create_ref_activity_recommendation(
     """
     
     def create_operation():
-        # Check if recommendation already exists - this is a business rule for CREATE
-        # We use the CentreActivityRecommendationID from the activity service as unique identifier
         existing = db.query(RefActivityRecommendation).filter(
             RefActivityRecommendation.CentreActivityRecommendationID == recommendation.CentreActivityRecommendationID
         ).first()
         
         if existing:
             if existing.IsDeleted == "1":
-                # Reactivate soft-deleted recommendation
                 logger.info(f"Reactivating soft-deleted recommendation {recommendation.CentreActivityRecommendationID}")
                 existing.IsDeleted = "0"
                 existing.PatientID = recommendation.PatientID
@@ -60,7 +59,6 @@ def create_ref_activity_recommendation(
         
         logger.info(f"Creating new activity recommendation {recommendation.CentreActivityRecommendationID}")
         
-        # Create new recommendation
         new_recommendation = RefActivityRecommendation(
             CentreActivityRecommendationID=recommendation.CentreActivityRecommendationID,
             PatientID=recommendation.PatientID,
@@ -77,22 +75,35 @@ def create_ref_activity_recommendation(
         
         db.add(new_recommendation)
         db.flush()
-        
         return new_recommendation
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_RECOMMENDATION_CREATED",
-            aggregate_id=str(recommendation.CentreActivityRecommendationID),
-            processed_by=f"scheduler_service_{created_by}",
-            operation=create_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity recommendation {recommendation.CentreActivityRecommendationID} (sync event)")
+            result = create_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_RECOMMENDATION_CREATED",
+                    aggregate_id=str(recommendation.CentreActivityRecommendationID),
+                    processed_by=f"scheduler_service_{created_by}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_RECOMMENDATION_CREATED",
+                aggregate_id=str(recommendation.CentreActivityRecommendationID),
+                processed_by=f"scheduler_service_{created_by}",
+                operation=create_operation
+            )
         
         if was_duplicate:
-            # Return existing recommendation for duplicate events
             existing_recommendation = db.query(RefActivityRecommendation).filter(
                 RefActivityRecommendation.CentreActivityRecommendationID == recommendation.CentreActivityRecommendationID
             ).first()
@@ -112,7 +123,8 @@ def update_ref_activity_recommendation(
     db: Session,
     recommendation_id: int,
     recommendation_update: RefActivityRecommendationUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
     Update an existing activity recommendation with idempotency protection.
@@ -122,6 +134,7 @@ def update_ref_activity_recommendation(
         recommendation_id: CentreActivityRecommendationID of recommendation to update
         recommendation_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
@@ -132,7 +145,6 @@ def update_ref_activity_recommendation(
     """
     
     def update_operation():
-        # Find the recommendation to update using CentreActivityRecommendationID
         db_recommendation = db.query(RefActivityRecommendation).filter(
             RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id,
             RefActivityRecommendation.IsDeleted == "0"
@@ -144,28 +156,41 @@ def update_ref_activity_recommendation(
         
         logger.debug(f"Updating activity recommendation {recommendation_id}")
         
-        # Update only the fields that were provided
         update_data = recommendation_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_recommendation, field) and field != 'CentreActivityRecommendationID':  # Never update ID
+            if hasattr(db_recommendation, field) and field != 'CentreActivityRecommendationID':
                 setattr(db_recommendation, field, value)
         
         db.flush()
         return db_recommendation
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_RECOMMENDATION_UPDATED",
-            aggregate_id=str(recommendation_id),
-            processed_by=f"scheduler_service_{recommendation_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity recommendation {recommendation_id} (sync event)")
+            result = update_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_RECOMMENDATION_UPDATED",
+                    aggregate_id=str(recommendation_id),
+                    processed_by=f"scheduler_service_{recommendation_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_RECOMMENDATION_UPDATED",
+                aggregate_id=str(recommendation_id),
+                processed_by=f"scheduler_service_{recommendation_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_recommendation = db.query(RefActivityRecommendation).filter(
                 RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id,
                 RefActivityRecommendation.IsDeleted == "0"
@@ -175,7 +200,7 @@ def update_ref_activity_recommendation(
         
         if result is None:
             logger.warning(f"Activity recommendation {recommendation_id} not found for update")
-            db.commit()  # Commit the idempotency record even if recommendation not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -191,7 +216,8 @@ def delete_ref_activity_recommendation(
     db: Session,
     recommendation_id: int,
     recommendation_delete: RefActivityRecommendationDelete,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefActivityRecommendation], bool]:
     """
     Soft delete an activity recommendation with idempotency protection.
@@ -201,6 +227,7 @@ def delete_ref_activity_recommendation(
         recommendation_id: CentreActivityRecommendationID of recommendation to delete
         recommendation_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefActivityRecommendation or None, was_duplicate: bool)
@@ -211,7 +238,6 @@ def delete_ref_activity_recommendation(
     """
     
     def delete_operation():
-        # Find the recommendation to delete using CentreActivityRecommendationID
         db_recommendation = db.query(RefActivityRecommendation).filter(
             RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id
         ).first()
@@ -226,7 +252,6 @@ def delete_ref_activity_recommendation(
         
         logger.info(f"Soft deleting activity recommendation {recommendation_id}")
         
-        # Perform soft delete using schema data
         db_recommendation.IsDeleted = "1"
         db_recommendation.ModifiedById = recommendation_delete.ModifiedById
         db_recommendation.UpdatedDateTime = recommendation_delete.UpdatedDateTime
@@ -234,19 +259,33 @@ def delete_ref_activity_recommendation(
         db.flush()
         return db_recommendation
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="ACTIVITY_RECOMMENDATION_DELETED",
-            aggregate_id=str(recommendation_id),
-            processed_by=f"scheduler_service_{recommendation_delete.ModifiedById}",
-            operation=delete_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for activity recommendation {recommendation_id} (sync event)")
+            result = delete_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="ACTIVITY_RECOMMENDATION_DELETED",
+                    aggregate_id=str(recommendation_id),
+                    processed_by=f"scheduler_service_{recommendation_delete.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="ACTIVITY_RECOMMENDATION_DELETED",
+                aggregate_id=str(recommendation_id),
+                processed_by=f"scheduler_service_{recommendation_delete.ModifiedById}",
+                operation=delete_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_recommendation = db.query(RefActivityRecommendation).filter(
                 RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id
             ).first()
@@ -255,7 +294,7 @@ def delete_ref_activity_recommendation(
         
         if result is None:
             logger.warning(f"Activity recommendation {recommendation_id} not found for deletion")
-            db.commit()  # Commit the idempotency record even if recommendation not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -271,11 +310,9 @@ def get_idempotency_stats(db: Session) -> dict:
     """Get statistics about processed events for monitoring."""
     return IdempotencyService.get_processing_stats(db)
 
-
 def cleanup_old_processed_events(db: Session, older_than_days: int = 30) -> int:
     """Clean up old processed events - should be run periodically."""
     return IdempotencyService.cleanup_old_events(db, older_than_days)
-
 
 def is_event_already_processed(db: Session, correlation_id: str) -> bool:
     """Check if a specific correlation_id was already processed."""

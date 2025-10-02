@@ -11,8 +11,8 @@ class RefActivity(Base):
     ActivityTitle = Column(String(255))
     ActivityDesc = Column(String(255))
 
-    CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
-    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    CreatedDateTime = Column(DateTime, nullable=False)
+    UpdatedDateTime = Column(DateTime, nullable=False)
     CreatedById = Column(String, nullable=False)
     ModifiedById = Column(String, nullable=False) 
 
