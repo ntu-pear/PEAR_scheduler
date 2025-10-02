@@ -375,7 +375,6 @@ class ActivityConsumer:
                     logger.warning(f"Activity {activity_id} not found during sync - attempting to create")
                     try:
                         from pear_schedule.schemas.ref_activity import RefActivityCreate
-                        activity_data = message_data.get('activity_data', {})
                         mapped_activity_data = self.map_activity_create(activity_data)
                         if mapped_activity_data:
                             ref_activity_data = RefActivityCreate(**mapped_activity_data)
