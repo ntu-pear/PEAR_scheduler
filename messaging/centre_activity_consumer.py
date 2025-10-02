@@ -367,13 +367,16 @@ class CentreActivityConsumer:
             
             logger.info(f"Handling centre activity deletion for {centre_activity_id}")
             
-            deleted_datetime = centre_activity_data.get('timestamp')
+            # Extract timestamp from 'timestamp'
+            deleted_datetime = message_data['timestamp']
+            
+            logger.debug(f"Using deletion timestamp: {deleted_datetime}")
             
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityDelete
             
             try:
                 ref_centre_activity_delete = RefCentreActivityDelete(
-                    UpdatedDateTime=updated_dadeleted_datetimetetime,
+                    UpdatedDateTime=deleted_datetime,
                     ModifiedById=deleted_by
                 )
             except Exception as e:
@@ -389,9 +392,14 @@ class CentreActivityConsumer:
             )
             
             if was_duplicate and not is_sync_event:
+                logger.info(f"Duplicate deletion event for centre activity {centre_activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
-            logger.info(f"Successfully processed deletion for centre activity {centre_activity_id}")
+            if result is None:
+                logger.warning(f"Centre activity {centre_activity_id} not found for deletion")
+            else:
+                logger.info(f"Successfully processed deletion for centre activity {centre_activity_id}")
+            
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
