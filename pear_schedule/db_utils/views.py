@@ -87,6 +87,7 @@ class ActivitiesView(BaseView):
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             centre_activity.c["IsGroup"] == False,
+            centre_activity.c["IsDeleted"] == False
         )
 
         return query
@@ -153,6 +154,7 @@ class PatientsUnpreferredView(BaseView):
         ).where(
             centre_activity_preference.c["IsLike"] == 0,
             centre_activity_preference.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
         ).cte()
 
         query: Select = select(
