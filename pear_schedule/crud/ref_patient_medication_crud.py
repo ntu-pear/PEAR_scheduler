@@ -116,7 +116,8 @@ def update_ref_patient_medication(
     db: Session,
     medication_id: int,
     medication_update: RefPatientMedicationUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefPatientMedication], bool]:
     """
     Update an existing patient medication with idempotency protection.
@@ -126,6 +127,7 @@ def update_ref_patient_medication(
         medication_id: ID of medication to update
         medication_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefPatientMedication or None, was_duplicate: bool)
@@ -157,16 +159,34 @@ def update_ref_patient_medication(
         db.flush()
         return db_medication
     
-    # Use IdempotencyService for deduplication
+    # Use IdempotencyService for deduplication (unless skipped for sync events)
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="PATIENT_MEDICATION_UPDATED",
-            aggregate_id=str(medication_id),
-            processed_by=f"scheduler_service_{medication_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for patient medication {medication_id} (sync event)")
+            # Execute update directly without idempotency check
+            result = update_operation()
+            was_duplicate = False
+            
+            # Still record the event for tracking, but don't check for duplicates
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="PATIENT_MEDICATION_UPDATED",
+                    aggregate_id=str(medication_id),
+                    processed_by=f"scheduler_service_{medication_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="PATIENT_MEDICATION_UPDATED",
+                aggregate_id=str(medication_id),
+                processed_by=f"scheduler_service_{medication_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
             # Return current state for duplicate events
