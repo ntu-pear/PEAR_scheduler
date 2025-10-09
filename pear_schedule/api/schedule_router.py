@@ -285,12 +285,12 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
     return JSONResponse(jsonable_encoder(responseData))
 
 
+#refresh currently is disabled
+# @router.api_route("/refresh/", methods=["GET"])
+# def refresh_schedules():
+#     ScheduleRefresher.refresh_schedules()
 
-@router.api_route("/refresh/", methods=["GET"])
-def refresh_schedules():
-    ScheduleRefresher.refresh_schedules()
-
-    return PlainTextResponse("Successfully updated schedules", status_code=200)
+#     return PlainTextResponse("Successfully updated schedules", status_code=200)
 
 
 @router.api_route("/systemTest/", methods=["GET"])

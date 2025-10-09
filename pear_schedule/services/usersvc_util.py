@@ -7,7 +7,7 @@ from fastapi import HTTPException
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-BASE_URL = f'http://{os.getenv("USER_BE_ORIGIN")}/api/v1'
+BASE_URL = f'{os.getenv("USER_BE_ORIGIN")}/api/v1'
 
 def user_login(username: str, password: str):
     logger.info("Making login request to user service")
