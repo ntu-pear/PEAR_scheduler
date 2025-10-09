@@ -112,7 +112,8 @@ def update_ref_patient(
     db: Session,
     patient_id: str,
     patient_update: RefPatientUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefPatient], bool]:
     """
     Update an existing patient with idempotency protection.
@@ -122,6 +123,7 @@ def update_ref_patient(
         patient_id: ID of patient to update
         patient_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefPatient or None, was_duplicate: bool)
@@ -153,16 +155,34 @@ def update_ref_patient(
         db.flush()
         return db_patient
     
-    # Use IdempotencyService for deduplication
+    # Use IdempotencyService for deduplication (unless skipped for sync events)
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="PATIENT_UPDATED",
-            aggregate_id=patient_id,
-            processed_by=f"scheduler_service_{patient_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for patient {patient_id} (sync event)")
+            # Execute update directly without idempotency check
+            result = update_operation()
+            was_duplicate = False
+            
+            # Still record the event for tracking, but don't check for duplicates
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="PATIENT_UPDATED",
+                    aggregate_id=patient_id,
+                    processed_by=f"scheduler_service_{patient_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="PATIENT_UPDATED",
+                aggregate_id=patient_id,
+                processed_by=f"scheduler_service_{patient_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
             # Return current state for duplicate events
@@ -191,7 +211,8 @@ def delete_ref_patient(
     db: Session,
     patient_id: str,
     patient_delete: RefPatientDelete,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefPatient], bool]:
     """
     Soft delete a patient with idempotency protection.
@@ -201,6 +222,7 @@ def delete_ref_patient(
         patient_id: ID of patient to delete
         patient_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefPatient or None, was_duplicate: bool)
