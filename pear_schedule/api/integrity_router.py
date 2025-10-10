@@ -12,7 +12,7 @@ from pear_schedule.models.ref_activity_recommendation_model import RefActivityRe
 from pear_schedule.models.ref_patient_model import RefPatient
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 
-router = APIRouter()
+router = APIRouter(tags=["Integrity"])
 
 
 @router.get("/ref-activity")
