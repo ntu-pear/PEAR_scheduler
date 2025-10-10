@@ -28,7 +28,7 @@ from colorama import init, Fore
 init(autoreset=True)
 
 
-router = APIRouter()
+router = APIRouter(tags=["Scheduler"])
 
 @router.api_route("/getSchedule/", methods=["GET"])
 def get_schedule(request: Request):
