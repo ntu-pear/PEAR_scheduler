@@ -28,7 +28,6 @@ class CentreActivityConsumer:
         self.shutdown_event = None
         self.is_consuming = False
         
-        # Import dependencies - adjust imports based on your actual structure
         from pear_schedule.crud.ref_centre_activity_crud import (
             create_ref_centre_activity,
             update_ref_centre_activity,
@@ -55,10 +54,8 @@ class CentreActivityConsumer:
         """Context manager for database transactions with proper cleanup"""
         db = next(self.get_db())
         try:
-            # SQLAlchemy sessions have implicit transactions - no need for explicit begin()
             logger.debug("Started database session transaction")
             yield db
-            # Don't commit here - let the CRUD functions handle commits
             logger.debug("Database session transaction completed")
         except Exception as e:
             logger.error(f"Rolling back transaction due to error: {e}")
@@ -76,7 +73,7 @@ class CentreActivityConsumer:
             for handler in logger.handlers:
                 handler.flush()
         except Exception:
-            pass  # Don't let logging issues break message processing
+            pass
     
     def set_shutdown_event(self, shutdown_event: threading.Event):
         """Set the shutdown event for graceful shutdown"""
@@ -89,17 +86,13 @@ class CentreActivityConsumer:
         try:
             self.client.connect()
             
-            # Declare the activity.updates exchange (idempotent)
             self.client.channel.exchange_declare(
                 exchange='activity.updates',
                 exchange_type='topic',
                 durable=True
             )
             
-            # Set up consumers for each existing centre activity queue
             for queue_name in self.centre_activity_queues:
-                # Don't declare the queue - it already exists as quorum queue
-                # Set up the consumer with proper message handling
                 self.client.consume(queue_name, self._handle_message_wrapper)
                 logger.info(f"Set up consumer for scheduler queue: {queue_name}")
             
@@ -130,62 +123,44 @@ class CentreActivityConsumer:
             self.client.stop_consuming()
     
     def _handle_message_wrapper(self, message: Dict[str, Any]) -> bool:
-        """
-        Wrapper for message handling with proper acknowledgment logic.
-        
-        Returns True if message should be acknowledged (success or permanent failure),
-        False if message should be rejected/requeued (temporary failure).
-        """
+        """Wrapper for message handling with proper acknowledgment logic."""
         try:
-            # Log every message received for debugging
             message_correlation = message.get('data', {}).get('correlation_id', 'UNKNOWN')
             logger.debug(f"RECEIVED MESSAGE: correlation_id={message_correlation}")
             
-            # Check if we should shutdown
             if self.shutdown_event and self.shutdown_event.is_set():
                 logger.info("Shutdown signal received, stopping message processing")
                 return False
             
-            # Process the message
             result = self._process_centre_activity_message(message)
-            
-            # Force log flush after processing each message
             self._flush_logs()
             
-            # Handle different processing results
             if result == MessageProcessingResult.SUCCESS:
                 logger.debug("Message processed successfully")
-                return True  # Acknowledge
-                
+                return True
             elif result == MessageProcessingResult.DUPLICATE:
                 logger.info("Duplicate message processed (idempotent)")
-                return True  # Acknowledge - duplicate is success
-                
+                return True
             elif result == MessageProcessingResult.FAILED_RETRYABLE:
                 logger.warning("Message processing failed (retryable)")
-                return False  # Reject and requeue
-                
+                return False
             elif result == MessageProcessingResult.FAILED_PERMANENT:
                 logger.error("Message processing failed permanently")
-                return True  # Acknowledge to send to DLQ
-                
+                return True
             else:
                 logger.error(f"Unknown processing result: {result}")
-                return False  # Reject and requeue
+                return False
                 
         except Exception as e:
             logger.error(f"Fatal error in message wrapper: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
             self._flush_logs()
-            return False  # Reject and requeue
+            return False
     
     def _process_centre_activity_message(self, message: Dict[str, Any]) -> MessageProcessingResult:
-        """
-        Process centre activity message with FIXED session management and error handling.
-        """
+        """Process centre activity message with sync event support."""
         try:
-            # Parse and validate message structure
             message_data = self._parse_message(message)
             if not message_data:
                 return MessageProcessingResult.FAILED_PERMANENT
@@ -193,17 +168,19 @@ class CentreActivityConsumer:
             correlation_id = message_data['correlation_id']
             event_type = message_data['event_type']
             centre_activity_id = message_data['centre_activity_id']
+            is_sync_event = message_data.get('is_sync_event', False)
+            sync_reason = message_data.get('sync_reason')
             
-            logger.info(f"Processing {event_type} for centre activity {centre_activity_id} (correlation: {correlation_id})")
+            logger.info(f"Processing {event_type} for centre activity {centre_activity_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
             
-            # Use context manager for guaranteed transaction handling
             with self.get_db_transaction() as db:
-                # Quick check for duplicates
-                if self.is_event_already_processed(db, correlation_id):
+                # For sync events, bypass duplicate check in CRUD
+                if not is_sync_event and self.is_event_already_processed(db, correlation_id):
                     logger.info(f"Event already processed: {correlation_id}")
                     return MessageProcessingResult.DUPLICATE
+                elif is_sync_event:
+                    logger.info(f"Sync event detected - bypassing idempotency check for {correlation_id}")
                 
-                # Route to appropriate handler
                 if event_type == 'CENTRE_ACTIVITY_CREATED':
                     result = self._handle_centre_activity_created(db, message_data)
                 elif event_type == 'CENTRE_ACTIVITY_UPDATED':
@@ -214,10 +191,8 @@ class CentreActivityConsumer:
                     logger.error(f"Unknown event type: {event_type}")
                     return MessageProcessingResult.FAILED_PERMANENT
                 
-                # Transaction will be committed automatically by context manager
                 logger.debug(f"Transaction completed for {correlation_id}")
             
-            # Verification step outside the transaction
             verification_db = next(self.get_db())
             try:
                 verified = self.is_event_already_processed(verification_db, correlation_id)
@@ -236,23 +211,16 @@ class CentreActivityConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def _parse_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        Parse and validate message structure.
-        
-        Returns parsed message data or None if invalid.
-        """
+        """Parse and validate message structure."""
         try:
-            # Extract message data
             message_data = message.get('data', {})
             
-            # Validate required fields for idempotency
             required_fields = ['correlation_id', 'event_type', 'centre_activity_id']
             for field in required_fields:
                 if field not in message_data:
                     logger.error(f"Missing required field '{field}' in message")
                     return None
             
-            # Log the full message for debugging
             logger.debug(f"Parsed message: {message_data}")
             return message_data
             
@@ -261,7 +229,7 @@ class CentreActivityConsumer:
             return None
     
     def _handle_centre_activity_created(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle centre activity creation events with separation"""
+        """Handle centre activity creation events"""
         try:
             correlation_id = message_data['correlation_id']
             centre_activity_id = message_data['centre_activity_id']
@@ -271,7 +239,6 @@ class CentreActivityConsumer:
             logger.info(f"Handling centre activity creation for centre activity {centre_activity_id}")
             logger.debug(f"Centre activity data: {centre_activity_data}")
             
-            # Convert centre activity data to scheduler's RefCentreActivity format
             mapped_centre_activity_data = self.map_centre_activity_create(centre_activity_data)
             if not mapped_centre_activity_data:
                 logger.error(f"Failed to map centre activity data for centre activity {centre_activity_id}")
@@ -280,7 +247,6 @@ class CentreActivityConsumer:
             
             logger.debug(f"Mapped centre activity data: {mapped_centre_activity_data}")
             
-            # Convert to Pydantic schema for CRUD function
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityCreate
             try:
                 ref_centre_activity_data = RefCentreActivityCreate(**mapped_centre_activity_data)
@@ -289,7 +255,6 @@ class CentreActivityConsumer:
                 logger.error(f"Mapped data: {mapped_centre_activity_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Create centre activity using CRUD operation with idempotency
             result, was_duplicate = self.create_ref_centre_activity(
                 db=db,
                 centre_activity=ref_centre_activity_data,
@@ -309,7 +274,6 @@ class CentreActivityConsumer:
                 return MessageProcessingResult.FAILED_RETRYABLE
             
         except ValueError as e:
-            # Business logic error (centre activity already exists)
             logger.warning(f"Business logic error creating centre activity: {str(e)}")
             return MessageProcessingResult.FAILED_PERMANENT
         except Exception as e:
@@ -323,25 +287,20 @@ class CentreActivityConsumer:
         try:
             correlation_id = message_data['correlation_id']
             centre_activity_id = message_data['centre_activity_id']
-            old_data = message_data.get('old_data', {})
-            new_data = message_data.get('new_data', {})
-            changes = message_data.get('changes', {})
-            updated_datetime = message_data['timestamp']
+            centre_activity_data = message_data.get('new_data', {})
             modified_by = message_data.get('modified_by', 'activity_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling centre activity update for centre activity {centre_activity_id}")
-            logger.debug(f"Changes: {changes}")
             
-            # Convert new centre activity data to scheduler's RefCentreActivity format
-            mapped_update_data = self.map_centre_activity_update(new_data)
+            mapped_update_data = self.map_centre_activity_update(centre_activity_data)
             if not mapped_update_data:
                 logger.error(f"Failed to map centre activity update data for centre activity {centre_activity_id}")
-                logger.debug(f"Source update data: {new_data}")
+                logger.debug(f"Source update data: {centre_activity_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
-            # Convert to Pydantic schema for CRUD function
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityUpdate
             try:
                 ref_centre_activity_update = RefCentreActivityUpdate(**mapped_update_data)
@@ -350,27 +309,45 @@ class CentreActivityConsumer:
                 logger.error(f"Mapped data: {mapped_update_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Update centre activity using CRUD operation with idempotency
+            # For sync events, bypass duplicate check in CRUD
             result, was_duplicate = self.update_ref_centre_activity(
                 db=db,
                 centre_activity_id=centre_activity_id,
                 centre_activity_update=ref_centre_activity_update,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate update event for centre activity {centre_activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                # Centre activity doesn't exist in scheduler DB 
-                # For UPDATE messages, this might be acceptable depending on business rules
-                logger.warning(f"Centre activity {centre_activity_id} not found for update")
-                logger.warning("Centre activity should be created by CENTRE_ACTIVITY_CREATED message first")
-                return MessageProcessingResult.SUCCESS  # Don't requeue
+                if is_sync_event:
+                    # For sync events, try to create if doesn't exist
+                    logger.warning(f"Centre activity {centre_activity_id} not found during sync - attempting to create")
+                    try:
+                        from pear_schedule.schemas.ref_centre_activity import RefCentreActivityCreate
+                        mapped_centre_activity_data = self.map_centre_activity_create(centre_activity_data)
+                        if mapped_centre_activity_data:
+                            ref_centre_activity_data = RefCentreActivityCreate(**mapped_centre_activity_data)
+                            create_result, _ = self.create_ref_centre_activity(
+                                db=db,
+                                centre_activity=ref_centre_activity_data,
+                                correlation_id=correlation_id,
+                                created_by=modified_by
+                            )
+                            if create_result:
+                                logger.info(f"Successfully created centre activity {centre_activity_id} during sync")
+                                return MessageProcessingResult.SUCCESS
+                    except Exception as e:
+                        logger.error(f"Failed to create centre activity during sync: {str(e)}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                else:
+                    logger.warning(f"Centre activity {centre_activity_id} not found for update")
+                return MessageProcessingResult.SUCCESS
             
             logger.info(f"Successfully updated centre activity {centre_activity_id}")
-            
             return MessageProcessingResult.SUCCESS
             
         except Exception as e:
@@ -380,46 +357,48 @@ class CentreActivityConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def _handle_centre_activity_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle centre activity deletion events - ultra clean approach"""
+        """Handle centre activity deletion events with source timestamp extraction"""
         try:
             correlation_id = message_data['correlation_id']
             centre_activity_id = message_data['centre_activity_id']
-            updated_datetime = message_data['timestamp'] # Get the iso format, no the raw date_modified in the data
+            centre_activity_data = message_data.get('centre_activity_data', {}) 
             deleted_by = message_data.get('deleted_by', 'activity_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
-            logger.info(f"Handling centre activity deletion for centre activity {centre_activity_id}")
-               
+            logger.info(f"Handling centre activity deletion for {centre_activity_id}")
+            
+            # Extract timestamp from 'timestamp'
+            deleted_datetime = message_data['timestamp']
+            
+            logger.debug(f"Using deletion timestamp: {deleted_datetime}")
+            
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityDelete
             
             try:
                 ref_centre_activity_delete = RefCentreActivityDelete(
-                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    UpdatedDateTime=deleted_datetime,
                     ModifiedById=deleted_by
                 )
-                
-                
             except Exception as e:
                 logger.error(f"Pydantic validation failed: {str(e)}")
-                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Delete centre activity using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_centre_activity(
                 db=db,
                 centre_activity_id=centre_activity_id,
                 centre_activity_delete=ref_centre_activity_delete,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate deletion event for centre activity {centre_activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
                 logger.warning(f"Centre activity {centre_activity_id} not found for deletion")
-                # This is acceptable - centre activity might already be deleted
-                
-            logger.info(f"Successfully processed deletion for centre activity {centre_activity_id}")
+            else:
+                logger.info(f"Successfully processed deletion for centre activity {centre_activity_id}")
             
             return MessageProcessingResult.SUCCESS
             
@@ -430,9 +409,7 @@ class CentreActivityConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def get_health_status(self) -> Dict[str, Any]:
-        """
-        Get health status for monitoring.
-        """
+        """Get health status for monitoring."""
         try:
             return {
                 "status": "healthy",

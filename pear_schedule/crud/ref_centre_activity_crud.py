@@ -16,7 +16,8 @@ def create_ref_centre_activity(
     db: Session,
     centre_activity: RefCentreActivityCreate,
     correlation_id: str,
-    created_by: str
+    created_by: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[RefCentreActivity, bool]:
     """
     Create a new centre activity with idempotency protection.
@@ -26,6 +27,7 @@ def create_ref_centre_activity(
         centre_activity: Centre activity data to create
         correlation_id: Correlation ID from outbox service for deduplication
         created_by: User/service creating the centre activity
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefCentreActivity, was_duplicate: bool)
@@ -36,7 +38,6 @@ def create_ref_centre_activity(
     """
     
     def create_operation():
-        # Check if centre activity already exists - this is a business rule violation for CREATE
         existing = db.query(RefCentreActivity).filter(
             RefCentreActivity.CentreActivityID == centre_activity.CentreActivityID
         ).first()
@@ -84,7 +85,6 @@ def create_ref_centre_activity(
         db.execute(query, params)
         db.flush()
         
-        # Return the created centre activity
         created_centre_activity = db.query(RefCentreActivity).filter(
             RefCentreActivity.CentreActivityID == centre_activity.CentreActivityID
         ).first()
@@ -93,19 +93,33 @@ def create_ref_centre_activity(
             
         return created_centre_activity
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="CENTRE_ACTIVITY_CREATED",
-            aggregate_id=str(centre_activity.CentreActivityID),
-            processed_by=f"scheduler_service_{created_by}",
-            operation=create_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for centre activity {centre_activity.CentreActivityID} (sync event)")
+            result = create_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="CENTRE_ACTIVITY_CREATED",
+                    aggregate_id=str(centre_activity.CentreActivityID),
+                    processed_by=f"scheduler_service_{created_by}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="CENTRE_ACTIVITY_CREATED",
+                aggregate_id=str(centre_activity.CentreActivityID),
+                processed_by=f"scheduler_service_{created_by}",
+                operation=create_operation
+            )
         
         if was_duplicate:
-            # Return existing centre activity for duplicate events
             existing_centre_activity = db.query(RefCentreActivity).filter(
                 RefCentreActivity.CentreActivityID == centre_activity.CentreActivityID
             ).first()
@@ -125,7 +139,8 @@ def update_ref_centre_activity(
     db: Session,
     centre_activity_id: int,
     centre_activity_update: RefCentreActivityUpdate,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefCentreActivity], bool]:
     """
     Update an existing centre activity with idempotency protection.
@@ -135,6 +150,7 @@ def update_ref_centre_activity(
         centre_activity_id: ID of centre activity to update
         centre_activity_update: Fields to update (includes UpdatedDateTime and ModifiedById)
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefCentreActivity or None, was_duplicate: bool)
@@ -145,7 +161,6 @@ def update_ref_centre_activity(
     """
     
     def update_operation():
-        # Find the centre activity to update
         db_centre_activity = db.query(RefCentreActivity).filter(
             RefCentreActivity.CentreActivityID == centre_activity_id,
             RefCentreActivity.IsDeleted == "0"
@@ -157,28 +172,41 @@ def update_ref_centre_activity(
         
         logger.debug(f"Updating centre activity {centre_activity_id}")
         
-        # Update only the fields that were provided
         update_data = centre_activity_update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
-            if hasattr(db_centre_activity, field) and field != 'CentreActivityID':  # Never update ID
+            if hasattr(db_centre_activity, field) and field != 'CentreActivityID':
                 setattr(db_centre_activity, field, value)
         
         db.flush()
         return db_centre_activity
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="CENTRE_ACTIVITY_UPDATED",
-            aggregate_id=str(centre_activity_id),
-            processed_by=f"scheduler_service_{centre_activity_update.ModifiedById}",
-            operation=update_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for centre activity {centre_activity_id} (sync event)")
+            result = update_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="CENTRE_ACTIVITY_UPDATED",
+                    aggregate_id=str(centre_activity_id),
+                    processed_by=f"scheduler_service_{centre_activity_update.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="CENTRE_ACTIVITY_UPDATED",
+                aggregate_id=str(centre_activity_id),
+                processed_by=f"scheduler_service_{centre_activity_update.ModifiedById}",
+                operation=update_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_centre_activity = db.query(RefCentreActivity).filter(
                 RefCentreActivity.CentreActivityID == centre_activity_id,
                 RefCentreActivity.IsDeleted == "0"
@@ -188,7 +216,7 @@ def update_ref_centre_activity(
         
         if result is None:
             logger.warning(f"Centre Activity {centre_activity_id} not found for update")
-            db.commit()  # Commit the idempotency record even if centre activity not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -204,7 +232,8 @@ def delete_ref_centre_activity(
     db: Session,
     centre_activity_id: int,
     centre_activity_delete: RefCentreActivityDelete,
-    correlation_id: str
+    correlation_id: str,
+    skip_duplicate_check: bool = False
 ) -> Tuple[Optional[RefCentreActivity], bool]:
     """
     Soft delete a centre activity with idempotency protection.
@@ -214,6 +243,7 @@ def delete_ref_centre_activity(
         centre_activity_id: ID of centre activity to delete
         centre_activity_delete: Delete data including timestamp and user info
         correlation_id: Correlation ID from outbox service for deduplication
+        skip_duplicate_check: If True, bypass idempotency check (for sync events)
         
     Returns:
         Tuple of (RefCentreActivity or None, was_duplicate: bool)
@@ -224,7 +254,6 @@ def delete_ref_centre_activity(
     """
     
     def delete_operation():
-        # Find the centre activity to delete
         db_centre_activity = db.query(RefCentreActivity).filter(
             RefCentreActivity.CentreActivityID == centre_activity_id
         ).first()
@@ -239,7 +268,6 @@ def delete_ref_centre_activity(
         
         logger.info(f"Soft deleting centre activity {centre_activity_id}")
         
-        # Perform soft delete using schema data
         db_centre_activity.IsDeleted = "1"
         db_centre_activity.ModifiedById = centre_activity_delete.ModifiedById
         db_centre_activity.UpdatedDateTime = centre_activity_delete.UpdatedDateTime
@@ -247,19 +275,33 @@ def delete_ref_centre_activity(
         db.flush()
         return db_centre_activity
     
-    # Use IdempotencyService for deduplication
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="CENTRE_ACTIVITY_DELETED",
-            aggregate_id=str(centre_activity_id),
-            processed_by=f"scheduler_service_{centre_activity_delete.ModifiedById}",
-            operation=delete_operation
-        )
+        if skip_duplicate_check:
+            logger.info(f"Skipping duplicate check for centre activity {centre_activity_id} (sync event)")
+            result = delete_operation()
+            was_duplicate = False
+            
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="CENTRE_ACTIVITY_DELETED",
+                    aggregate_id=str(centre_activity_id),
+                    processed_by=f"scheduler_service_{centre_activity_delete.ModifiedById}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="CENTRE_ACTIVITY_DELETED",
+                aggregate_id=str(centre_activity_id),
+                processed_by=f"scheduler_service_{centre_activity_delete.ModifiedById}",
+                operation=delete_operation
+            )
         
         if was_duplicate:
-            # Return current state for duplicate events
             existing_centre_activity = db.query(RefCentreActivity).filter(
                 RefCentreActivity.CentreActivityID == centre_activity_id
             ).first()
@@ -268,7 +310,7 @@ def delete_ref_centre_activity(
         
         if result is None:
             logger.warning(f"Centre Activity {centre_activity_id} not found for deletion")
-            db.commit()  # Commit the idempotency record even if centre activity not found
+            db.commit()
             return None, False
         
         db.commit()
@@ -284,11 +326,9 @@ def get_idempotency_stats(db: Session) -> dict:
     """Get statistics about processed events for monitoring."""
     return IdempotencyService.get_processing_stats(db)
 
-
 def cleanup_old_processed_events(db: Session, older_than_days: int = 30) -> int:
     """Clean up old processed events - should be run periodically."""
     return IdempotencyService.cleanup_old_events(db, older_than_days)
-
 
 def is_event_already_processed(db: Session, correlation_id: str) -> bool:
     """Check if a specific correlation_id was already processed."""

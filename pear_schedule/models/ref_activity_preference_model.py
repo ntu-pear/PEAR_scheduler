@@ -12,8 +12,8 @@ class RefActivityPreference(Base):
     CentreActivityID = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.CentreActivityID'))
     IsLike = Column(String(2), default='0', nullable=False)
 
-    CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
-    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    CreatedDateTime = Column(DateTime, nullable=False)
+    UpdatedDateTime = Column(DateTime, nullable=False)
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)  
 

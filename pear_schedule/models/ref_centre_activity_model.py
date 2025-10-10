@@ -19,8 +19,8 @@ class RefCentreActivity(Base):
     MinPeopleReq = Column(Integer, nullable=False)
     FixedTimeSlots = Column(String, nullable=True)
     
-    CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
-    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    CreatedDateTime = Column(DateTime, nullable=False)
+    UpdatedDateTime = Column(DateTime, nullable=False)
     CreatedById = Column(String, nullable=False)
     ModifiedById = Column(String, nullable=True)
 

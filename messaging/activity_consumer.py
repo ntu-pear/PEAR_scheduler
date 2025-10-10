@@ -193,15 +193,19 @@ class ActivityConsumer:
             correlation_id = message_data['correlation_id']
             event_type = message_data['event_type']
             activity_id = message_data['activity_id']
+            is_sync_event = message_data.get('is_sync_event', False)
+            sync_reason = message_data.get('sync_reason')
             
-            logger.info(f"Processing {event_type} for activity {activity_id} (correlation: {correlation_id})")
+            logger.info(f"Processing {event_type} for activity {activity_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
             
             # Use context manager for guaranteed transaction handling
             with self.get_db_transaction() as db:
-                # Quick check for duplicates
-                if self.is_event_already_processed(db, correlation_id):
+                # Quick check for duplicates (BYPASS for sync events)
+                if not is_sync_event and self.is_event_already_processed(db, correlation_id):
                     logger.info(f"Event already processed: {correlation_id}")
                     return MessageProcessingResult.DUPLICATE
+                elif is_sync_event:
+                    logger.info(f"Sync event detected - bypassing idempotency check for {correlation_id}")
                 
                 # Route to appropriate handler
                 if event_type == 'ACTIVITY_CREATED':
@@ -265,6 +269,7 @@ class ActivityConsumer:
         try:
             correlation_id = message_data['correlation_id']
             activity_id = message_data['activity_id']
+            # Standard: CREATE events use 'activity_data'
             activity_data = message_data.get('activity_data', {})
             created_by = message_data.get('created_by', 'activity_service')
             
@@ -323,19 +328,19 @@ class ActivityConsumer:
         try:
             correlation_id = message_data['correlation_id']
             activity_id = message_data['activity_id']
-            old_data = message_data.get('old_data', {})
-            new_data = message_data.get('new_data', {})
-            changes = message_data.get('changes', {})
+            # Standard: UPDATE events use 'new_data'
+            activity_data = message_data.get('new_data', {})
             modified_by = message_data.get('modified_by', 'activity_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling activity update for activity {activity_id}")
-            logger.debug(f"Changes: {changes}")
+            logger.debug(f"Raw activity data received: {activity_data}")
             
             # Convert new activity data to scheduler's RefActivity format
-            mapped_update_data = self.map_activity_update(new_data)
+            mapped_update_data = self.map_activity_update(activity_data)
             if not mapped_update_data:
                 logger.error(f"Failed to map activity update data for activity {activity_id}")
-                logger.debug(f"Source update data: {new_data}")
+                logger.debug(f"Source update data: {activity_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
@@ -350,38 +355,47 @@ class ActivityConsumer:
                 return MessageProcessingResult.FAILED_PERMANENT
             
             # Update activity using CRUD operation with idempotency
+            # For sync events, bypass duplicate check in CRUD
             result, was_duplicate = self.update_ref_activity(
                 db=db,
                 activity_id=activity_id,
                 activity_update=ref_activity_update,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate update event for activity {activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
-                # Activity doesn't exist in scheduler DB 
-                # For UPDATE messages, this might be acceptable depending on business rules
-                logger.warning(f"Activity {activity_id} not found for update")
-                logger.warning("Activity should be created by ACTIVITY_CREATED message first")
+                # Activity doesn't exist in scheduler DB
+                if is_sync_event:
+                    # For sync events, try to create the activity if it doesn't exist
+                    logger.warning(f"Activity {activity_id} not found during sync - attempting to create")
+                    try:
+                        from pear_schedule.schemas.ref_activity import RefActivityCreate
+                        mapped_activity_data = self.map_activity_create(activity_data)
+                        if mapped_activity_data:
+                            ref_activity_data = RefActivityCreate(**mapped_activity_data)
+                            create_result, _ = self.create_ref_activity(
+                                db=db,
+                                activity=ref_activity_data,
+                                correlation_id=correlation_id,
+                                created_by=modified_by
+                            )
+                            if create_result:
+                                logger.info(f"Successfully created activity {activity_id} during sync")
+                                return MessageProcessingResult.SUCCESS
+                    except Exception as e:
+                        logger.error(f"Failed to create activity during sync: {str(e)}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                else:
+                    logger.warning(f"Activity {activity_id} not found for update")
+                    logger.warning("Activity should be created by ACTIVITY_CREATED message first")
                 return MessageProcessingResult.SUCCESS  # Don't requeue
             
             logger.info(f"Successfully updated activity {activity_id}")
-            
-            # Check if changes affect scheduling
-            scheduling_affecting_changes = [
-                'active', 'title', 'description', 'start_date', 'end_date'
-            ]
-            
-            if any(field in changes for field in scheduling_affecting_changes):
-                logger.info(f"Activity {activity_id} scheduling-relevant changes detected: {list(changes.keys())}")
-                # TODO: Trigger schedule recalculation if needed
-                # This could involve:
-                # 1. Updating related centre activities
-                # 2. Recalculating patient schedules
-                # 3. Notifying affected patients/caregivers
             
             return MessageProcessingResult.SUCCESS
             
@@ -392,51 +406,63 @@ class ActivityConsumer:
             return MessageProcessingResult.FAILED_RETRYABLE
     
     def _handle_activity_deleted(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
-        """Handle activity deletion events"""
+        """Handle activity deletion events with source timestamp extraction"""
         try:
             correlation_id = message_data['correlation_id']
             activity_id = message_data['activity_id']
-            updated_datetime = message_data['timestamp']  # Get the iso format, not the raw date_modified in the data
+            # Standard: DELETE events use 'activity_data'
+            activity_data = message_data.get('activity_data', {})
             deleted_by = message_data.get('deleted_by', 'activity_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling activity deletion for activity {activity_id}")
-               
+            
+            # Extract timestamp in the timestamp
+            deleted_datetime = message_data['timestamp']
+            
+            # Parse datetime string if needed
+            if deleted_datetime and isinstance(deleted_datetime, str):
+                from datetime import datetime
+                try:
+                    deleted_datetime = datetime.fromisoformat(deleted_datetime.replace('Z', '+00:00'))
+                except ValueError:
+                    logger.warning(f"Failed to parse timestamp: {deleted_datetime}, using current time")
+                    deleted_datetime = datetime.now()
+            elif not deleted_datetime:
+                # Fallback to current time if no timestamp provided
+                from datetime import datetime
+                deleted_datetime = datetime.now()
+                logger.warning(f"No timestamp in delete message for activity {activity_id}, using current time")
+            
+            logger.debug(f"Using deletion timestamp: {deleted_datetime}")
+            
             from pear_schedule.schemas.ref_activity import RefActivityDelete
             
             try:
                 ref_activity_delete = RefActivityDelete(
-                    UpdatedDateTime=updated_datetime if updated_datetime else datetime.now(),
+                    UpdatedDateTime=deleted_datetime,
                     ModifiedById=deleted_by
                 )
-                
             except Exception as e:
                 logger.error(f"Pydantic validation failed: {str(e)}")
-                logger.error(f"Raw data - UpdatedDateTime: {updated_datetime}, ModifiedById: {deleted_by}")
                 return MessageProcessingResult.FAILED_PERMANENT
             
-            # Delete activity using CRUD operation with idempotency
             result, was_duplicate = self.delete_ref_activity(
                 db=db,
                 activity_id=activity_id,
                 activity_delete=ref_activity_delete,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate deletion event for activity {activity_id}")
                 return MessageProcessingResult.DUPLICATE
             
             if result is None:
                 logger.warning(f"Activity {activity_id} not found for deletion")
-                # This is acceptable - activity might already be deleted
-                
-            logger.info(f"Successfully processed deletion for activity {activity_id}")
-            
-            # TODO: Handle cascade effects of activity deletion
-            # This might involve:
-            # 1. Removing activity from patient schedules
-            # 2. Notifying affected patients/caregivers
-            # 3. Updating centre activity configurations
+            else:
+                logger.info(f"Successfully processed deletion for activity {activity_id}")
             
             return MessageProcessingResult.SUCCESS
             

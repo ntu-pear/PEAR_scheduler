@@ -259,6 +259,51 @@ class IdempotencyService:
             raise
     
     @staticmethod
+    def record_processed_event(
+        db: Session,
+        correlation_id: str,
+        event_type: str,
+        aggregate_id: str,
+        processed_by: str
+    ) -> ProcessedEvent:
+        """
+        Record a processed event without checking for duplicates.
+        Used for sync events where we want to track but not prevent processing.
+        
+        Args:
+            db: Database session
+            correlation_id: The correlation ID from the event
+            event_type: Type of event (e.g., 'ACTIVITY_UPDATED')
+            aggregate_id: The entity ID that was processed
+            processed_by: Service/user that processed the event
+            
+        Returns:
+            The created ProcessedEvent record
+        """
+        try:
+            logger.debug(f"Recording processed event {correlation_id} (no duplicate check)")
+            
+            processed_event = ProcessedEvent.create_from_correlation_id(
+                correlation_id=correlation_id,
+                event_type=event_type,
+                aggregate_id=aggregate_id,
+                processed_by=processed_by,
+                operation_result=json.dumps({"status": "recorded", "sync_event": True}, default=str),
+                error_message=None
+            )
+            
+            db.add(processed_event)
+            db.flush()
+            
+            logger.debug(f"Recorded event {correlation_id} without duplicate check")
+            return processed_event
+            
+        except Exception as e:
+            # Non-critical failure - just log it
+            logger.warning(f"Failed to record event {correlation_id}: {str(e)}")
+            raise
+    
+    @staticmethod
     def cleanup_old_events(db: Session, older_than_days: int = 30) -> int:
         """
         Clean up old processed events to prevent table growth.

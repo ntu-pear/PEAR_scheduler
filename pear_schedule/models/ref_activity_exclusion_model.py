@@ -10,12 +10,12 @@ class RefActivityExclusion(Base):
     IsDeleted = Column(String(1), default='0', nullable=False)
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID')) 
     ActivityID = Column(Integer, ForeignKey('REF_ACTIVITY.ActivityID')) 
-    StartDateTime = Column(DateTime, nullable=False, default=datetime.now)
-    EndDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    StartDateTime = Column(DateTime, nullable=False)
+    EndDateTime = Column(DateTime, nullable=False)
     ExclusionRemarks = Column(String(255))
     
-    CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
-    UpdatedDateTime = Column(DateTime, nullable=False, default=datetime.now)
+    CreatedDateTime = Column(DateTime, nullable=False)
+    UpdatedDateTime = Column(DateTime, nullable=False)
     CreatedById = Column(String, nullable=False) 
     ModifiedById = Column(String, nullable=False)
 

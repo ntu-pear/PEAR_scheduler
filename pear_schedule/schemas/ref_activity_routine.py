@@ -21,6 +21,7 @@ class RefActivityRoutineCreate(RefActivityRoutineBase):
 class RefActivityRoutineUpdate(BaseModel):
     PatientId: Optional[int] = None
     ActivityId: Optional[int] = None
+    IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
     IncludeInSchedule: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "1"})
     RoutineIssues: Optional[str] = None
     RoutineTimeSlots: Optional[str] = None

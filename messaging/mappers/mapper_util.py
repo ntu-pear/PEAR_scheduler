@@ -371,17 +371,26 @@ class MapperUtil:
                 if source_field in source_data:
                     value = source_data[source_field]
                     
+                    # Debug logging for timestamp fields
+                    if target_field == 'UpdatedDateTime':
+                        logger.debug(f"Processing timestamp: {source_field}={value} (type: {type(value)})")
+                    
                     # Apply transformation if defined
                     if target_field in config.get('field_transforms', {}):
                         transform_func = config['field_transforms'][target_field]
                         try:
-                            value = transform_func(value)
+                            transformed_value = transform_func(value)
+                            if target_field == 'UpdatedDateTime':
+                                logger.debug(f"Transformed to: {transformed_value} (type: {type(transformed_value)})")
+                            value = transformed_value
                         except Exception as e:
                             logger.warning(f"Transform failed for {target_field}: {e}")
                             continue
                     
                     # Only add non-None values for updates
                     if operation == 'update' and value is None:
+                        if target_field == 'UpdatedDateTime':
+                            logger.error(f"UpdatedDateTime is None after transform! Source: {source_field}={source_data.get(source_field)}")
                         continue
                         
                     mapped_data[target_field] = value
@@ -392,8 +401,9 @@ class MapperUtil:
                     if target_field not in mapped_data:
                         mapped_data[target_field] = default_value
             elif operation == 'update':
-                # For updates, apply defaults only for critical fields that are missing
-                critical_defaults = {'UpdatedDateTime', 'ModifiedById'}
+                # For updates, ONLY default ModifiedById if missing
+                # UpdatedDateTime should ALWAYS come from source data
+                critical_defaults = {'ModifiedById'}  # Removed UpdatedDateTime
                 for target_field, default_value in config.get('defaults', {}).items():
                     if target_field in critical_defaults and target_field not in mapped_data:
                         mapped_data[target_field] = default_value
@@ -618,18 +628,10 @@ def map_activity_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]
     """Map activity data for create operation"""
     return mapper.map_data(source_data, 'activity_service_to_scheduler', 'create')
 
-def map_activity_update(source_data: Dict[str, Any], modified_by: str = None) -> Optional[Dict[str, Any]]:
-    """Map activity data for update operation with optional context"""
-    # Add context data if provided
-    enhanced_data = source_data.copy()
-    if modified_by:
-        enhanced_data['modified_by'] = modified_by
-    
-    # Always include UpdatedDateTime for updates
-    if 'UpdatedDateTime' not in enhanced_data and 'modifiedDate' not in enhanced_data:
-        enhanced_data['modifiedDate'] = datetime.now().isoformat()
-    
-    return mapper.map_data(enhanced_data, 'activity_service_to_scheduler', 'update')
+def map_activity_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity data for update operation"""
+    # Simply pass through to the mapper - no magic, no defaults
+    return mapper.map_data(source_data, 'activity_service_to_scheduler', 'update')
 
 def get_activity_mapping_info() -> Optional[Dict[str, Any]]:
     """Get activity mapping information"""
