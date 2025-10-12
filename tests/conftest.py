@@ -79,11 +79,11 @@ def sample_schedule():
 def sample_activity_exclusion():
     """Create a sample RefActivityExclusion instance"""
     return RefActivityExclusion(
-        Id=1,
-        PatientId=1,
-        ActivityId=1,
-        StartDate=datetime(2024, 1, 1),
-        EndDate=datetime(2024, 1, 7),
+        ActivityExclusionID=1,
+        PatientID=1,
+        ActivityID=1,
+        StartDateTime=datetime(2024, 1, 1),
+        EndDateTime=datetime(2024, 1, 7),
         ExclusionRemarks="Patient has mobility issues",
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
