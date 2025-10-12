@@ -466,173 +466,113 @@ def test_get_ref_activities_no_filters(db_session_mock, sample_ref_activity):
     count_filter_mock = db_session_mock.query.return_value.filter.return_value
     count_filter_mock.scalar.return_value = 1
     
-    def test_create_or_update_ref_activity_create_new(self, db_session_mock, sample_ref_activity):
-        """Test creating a new activity when one doesn't exist"""
-        # Mock that no existing activity is found
-        db_session_mock.query().filter().first.side_effect = [None, sample_ref_activity]
-        
-        activity_data = RefActivityCreate(
-            Id=1,
-            Title="Morning Exercise",
-            Desc="Light exercise for seniors",
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 12, 31),
-            IsDeleted="0",
-            CreatedDateTime=datetime.now(),
-            UpdatedDateTime=datetime.now(),
-            CreatedById="test_user",
-            ModifiedById="test_user"
+    activities, total_records, total_pages = get_ref_activities(
+        db=db_session_mock,
+        page_no=0,
+        page_size=10
+    )
+    
+    assert len(activities) == 1
+    assert activities[0] == sample_ref_activity
+    assert total_records == 1
+    assert total_pages == 1
+
+def test_get_ref_activities_with_title_filter(db_session_mock, sample_ref_activity):
+    """Test fetching activities with title filter."""
+    db_session_mock.query().filter().all.return_value = [sample_ref_activity]
+
+    count_filter_mock = db_session_mock.query.return_value.filter.return_value
+    count_filter_mock.scalar.return_value = 1
+
+    activities, total_records, total_pages = get_ref_activities(
+        db=db_session_mock,
+        title_filter="Morning",
+        page_no=0,
+        page_size=10
+    )
+
+    assert len(activities) == 1
+    assert activities[0] == sample_ref_activity
+    assert total_records == 1
+    assert total_pages == 1
+
+def test_get_ref_activities_pagination(db_session_mock, sample_ref_activity):
+    """Test fetching activities with pagination."""
+    db_session_mock.query().filter().all.return_value = [sample_ref_activity]
+
+    count_filter_mock = db_session_mock.query.return_value.filter.return_value
+    count_filter_mock.scalar.return_value = 35  # Simulate 15 total records
+
+    activities, total_records, total_pages = get_ref_activities(
+        db=db_session_mock,
+        page_no=2,
+        page_size=10
+    )
+
+    assert len(activities) == 1
+    assert activities[0] == sample_ref_activity
+    assert total_records == 35
+    assert total_pages == 4  # 35 records with page size 10 should yield 2 pages
+
+# ===== check_activity_exists tests ===
+def test_check_activity_exists_true(db_session_mock):
+    """Test activity exists returns True."""
+    db_session_mock.query.return_value.filter.return_value.scalar.return_value = 1
+
+    exists = check_activity_exists(db=db_session_mock, activity_id=1)
+
+    assert exists is True
+    db_session_mock.query.return_value.filter.return_value.scalar.assert_called_once()
+
+
+def test_check_activity_exists_false(db_session_mock):
+    """Test activity exists returns False."""
+    db_session_mock.query.return_value.filter.return_value.scalar.return_value = 0
+
+    exists = check_activity_exists(db=db_session_mock, activity_id=999)
+
+    assert exists is False
+    db_session_mock.query.return_value.filter.return_value.scalar.assert_called_once()
+
+# ===== get_idempotency_stats tests ===
+def test_get_idempotency_stats(db_session_mock):
+    """Test fetching idempotency stats. Makes sure that get_idempotency_stats calls the service and returns its data."""
+    expected_stats = {
+        "total_processed_events": 10,
+        "events_last_24h": 2,
+        "events_with_errors": 1,
+        "events_by_type": [{"event_type": "ACTIVITY_CREATED", "count": 5}],
+        "latest_events": [],
+        "stats_generated_at": "2025-10-12T00:00:00"
+    }
+
+    with mock.patch.object(IdempotencyService, "get_processing_stats", return_value=expected_stats) as mock_get_stats:
+        results = get_idempotency_stats(db=db_session_mock)
+
+        assert results == expected_stats
+        mock_get_stats.assert_called_once_with(db_session_mock)
+
+# ===== cleanup_old_processed_events tests ===
+def test_cleanup_old_processed_events(db_session_mock):
+    """Test cleanup of old processed events. Ensures that cleanup_old_processed_events calls the service method."""
+
+    expected_deleted = 5
+    older_than_days = 60
+    with mock.patch.object(IdempotencyService, "cleanup_old_events", return_value=expected_deleted) as mock_cleanup:
+        result = cleanup_old_processed_events(db=db_session_mock, older_than_days=older_than_days)
+
+        assert result == expected_deleted
+
+        mock_cleanup.assert_called_once_with(db_session_mock, older_than_days)
+
+# ===== is_event_already_processed tests ===
+def test_is_event_already_processed(db_session_mock):
+    """Test checking if event is already processed. Ensures that is_event_already_processed calls the service method."""
+    with mock.patch.object(IdempotencyService, "is_already_processed", return_value=True) as mock_is_processed:
+        result = is_event_already_processed(
+            db=db_session_mock,
+            correlation_id="corr-123",
         )
 
-    def test_create_or_update_ref_activity_update_existing(self, db_session_mock, sample_ref_activity):
-        """Test updating an existing activity"""
-        db_session_mock.query().filter().first.return_value = sample_ref_activity
-        
-        activity_data = RefActivityCreate(
-            Id=1,
-            Title="Updated Exercise",
-            Desc="Updated description",
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 12, 31),
-            IsDeleted="0",
-            CreatedDateTime=datetime.now(),
-            UpdatedDateTime=datetime.now(),
-            CreatedById="test_user",
-            ModifiedById="test_user"
-        )
-        
-        result = create_or_update_ref_activity(db_session_mock, activity_data, "test_user")
-        
-        db_session_mock.commit.assert_called_once()
-        db_session_mock.refresh.assert_called_once_with(sample_ref_activity)
-        assert result == sample_ref_activity
-
-    def test_update_ref_activity_idempotent_activity_exists(self, db_session_mock, sample_ref_activity):
-        """Test updating an activity that exists"""
-        db_session_mock.query().filter().first.return_value = sample_ref_activity
-        
-        update_data = RefActivityUpdate(
-            Id=1,
-            Title="Updated Title",
-            Desc="Updated Description",
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 12, 31),
-            IsDeleted="0",
-            UpdatedDateTime=datetime.now(),
-            ModifiedById="test_user"
-        )
-        
-        result = update_ref_activity_idempotent(db_session_mock, 1, update_data, "test_user")
-        
-        db_session_mock.commit.assert_called_once()
-        db_session_mock.refresh.assert_called_once_with(sample_ref_activity)
-        assert result == sample_ref_activity
-
-    def test_update_ref_activity_idempotent_activity_not_exists(self, db_session_mock):
-        """Test updating an activity that doesn't exist"""
-        db_session_mock.query().filter().first.return_value = None
-        
-        update_data = RefActivityUpdate(
-            Id=1,
-            Title="Updated Title",
-            Desc="Updated Description",
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 12, 31),
-            IsDeleted="0",
-            UpdatedDateTime=datetime.now(),
-            ModifiedById="test_user"
-        )
-        
-        result = update_ref_activity_idempotent(db_session_mock, 999, update_data, "test_user")
-        
-        assert result is None
-        db_session_mock.commit.assert_not_called()
-
-    def test_soft_delete_ref_activity_idempotent_activity_exists(self, db_session_mock, sample_ref_activity):
-        """Test soft deleting an activity that exists"""
-        db_session_mock.query().filter().first.return_value = sample_ref_activity
-        
-        result = soft_delete_ref_activity_idempotent(db_session_mock, 1, "test_user")
-        
-        assert sample_ref_activity.IsDeleted == "1"
-        db_session_mock.commit.assert_called_once()
-        db_session_mock.refresh.assert_called_once_with(sample_ref_activity)
-        assert result == sample_ref_activity
-
-    def test_soft_delete_ref_activity_idempotent_activity_not_exists(self, db_session_mock):
-        """Test soft deleting an activity that doesn't exist"""
-        db_session_mock.query().filter().first.return_value = None
-        
-        result = soft_delete_ref_activity_idempotent(db_session_mock, 999, "test_user")
-        
-        assert result is None
-        db_session_mock.commit.assert_not_called()
-
-    def test_soft_delete_ref_activity_idempotent_already_deleted(self, db_session_mock, sample_ref_activity):
-        """Test soft deleting an activity that's already deleted"""
-        sample_ref_activity.IsDeleted = "1"
-        db_session_mock.query().filter().first.return_value = sample_ref_activity
-        
-        result = soft_delete_ref_activity_idempotent(db_session_mock, 1, "test_user")
-        
-        assert result == sample_ref_activity
-        db_session_mock.commit.assert_not_called()
-
-    def test_get_ref_activities_with_filters(self, db_session_mock, sample_ref_activity):
-        """Test getting activities with title and start_date filters"""
-        db_session_mock.query().filter().filter().filter().order_by().offset().limit().all.return_value = [sample_ref_activity]
-        db_session_mock.query().scalar.return_value = 1
-        
-        activities, total_records, total_pages = get_ref_activities(
-            db_session_mock,
-            pageNo=0,
-            pageSize=10,
-            title="Exercise",
-            start_date=datetime(2024, 1, 1)
-        )
-        
-        assert len(activities) == 1
-        assert activities[0] == sample_ref_activity
-        assert total_records == 1
-        assert total_pages == 1
-
-    def test_get_ref_activities_no_filters(self, db_session_mock, sample_ref_activity):
-        """Test getting activities without filters"""
-        db_session_mock.query().filter().order_by().offset().limit().all.return_value = [sample_ref_activity]
-        db_session_mock.query().scalar.return_value = 1
-        
-        activities, total_records, total_pages = get_ref_activities(db_session_mock)
-        
-        assert len(activities) == 1
-        assert total_records == 1
-        assert total_pages == 1
-
-    def test_get_ref_activity_by_id_found(self, db_session_mock, sample_ref_activity):
-        """Test getting an activity by ID when it exists"""
-        db_session_mock.query().filter().first.return_value = sample_ref_activity
-        
-        result = get_ref_activity_by_id(db_session_mock, 1)
-        
-        assert result == sample_ref_activity
-
-    def test_get_ref_activity_by_id_not_found(self, db_session_mock):
-        """Test getting an activity by ID when it doesn't exist"""
-        db_session_mock.query().filter().first.return_value = None
-        
-        result = get_ref_activity_by_id(db_session_mock, 999)
-        
-        assert result is None
-
-    def test_get_ref_activities_pagination(self, db_session_mock):
-        """Test pagination calculations"""
-        db_session_mock.query().filter().order_by().offset().limit().all.return_value = []
-        db_session_mock.query().scalar.return_value = 35
-        
-        activities, total_records, total_pages = get_ref_activities(
-            db_session_mock,
-            pageNo=2,
-            pageSize=10
-        )
-        
-        assert total_records == 35
-        assert total_pages == 4  # math.ceil(35/10) = 4
+        assert result is True
+        mock_is_processed.assert_called_once_with(db_session_mock, "corr-123")

@@ -59,20 +59,14 @@ def test_create_ref_activity_preference_success(mock_idempotent_process, db_sess
         result = operation() # executes create_operation
         return result, False
     
-    def test_create_or_update_ref_activity_preference_create_new(self, db_session_mock, sample_activity_preference):
-        """Test creating a new activity preference when one doesn't exist"""
-        # Mock that no existing preference is found
-        db_session_mock.query.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = None
-        
-        preference_data = RefActivityPreferenceCreate(
-            PatientId=1,
-            ActivityId=1,
-            IsLike="1",
-            IsDeleted="0",
-            CreatedDateTime=datetime.now(),
-            UpdatedDateTime=datetime.now(),
-            CreatedById="test_user",
-            ModifiedById="test_user"
+    mock_idempotent_process.side_effect = fake_process_idempotent
+
+    with mock.patch('pear_schedule.crud.ref_activity_preference_crud.RefActivityPreference', return_value=sample_activity_preference):
+        result, was_duplicate = create_ref_activity_preference(
+            db=db_session_mock,
+            preference=sample_created_ref_activity_preference_data,
+            correlation_id="corr_id_123",
+            created_by="test_user"
         )
 
         assert result == sample_activity_preference
@@ -109,19 +103,22 @@ def test_create_ref_activity_preference_skip_duplicate_check(mock_records_proces
 def test_create_ref_activity_preference_reactivate_soft_deleted(mock_idempotent_process, db_session_mock, sample_created_ref_activity_preference_data, sample_activity_preference):
     """Should reactivate a soft-deleted activity preference"""
 
-    def test_create_or_update_ref_activity_preference_update_existing(self, db_session_mock, sample_activity_preference):
-        """Test updating an existing activity preference"""
-        db_session_mock.query.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = sample_activity_preference
-        
-        preference_data = RefActivityPreferenceCreate(
-            PatientId=1,
-            ActivityId=1,
-            IsLike="0",  # Changed from like to dislike
-            IsDeleted="0",
-            CreatedDateTime=datetime.now(),
-            UpdatedDateTime=datetime.now(),
-            CreatedById="test_user",
-            ModifiedById="test_user"
+    # Mock existing soft-deleted preference found
+    soft_deleted_preference = sample_activity_preference
+    soft_deleted_preference.IsDeleted = "1"
+    db_session_mock.query().filter().first.side_effect = [soft_deleted_preference, soft_deleted_preference]
+
+    # Mock idempotency service returns not duplicate
+    def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
+        result = operation()
+        return result, False
+    mock_idempotent_process.side_effect = fake_process_idempotent
+    with mock.patch('pear_schedule.crud.ref_activity_preference_crud.RefActivityPreference', return_value=soft_deleted_preference):
+        result, was_duplicate = create_ref_activity_preference(
+            db=db_session_mock,
+            preference=sample_created_ref_activity_preference_data,
+            correlation_id="corr_id_456",
+            created_by="test_user"
         )
 
         assert result == soft_deleted_preference
@@ -129,30 +126,61 @@ def test_create_ref_activity_preference_reactivate_soft_deleted(mock_idempotent_
         assert was_duplicate is False
         db_session_mock.commit.assert_called_once()
 
-    def test_update_ref_activity_preference_idempotent_exists(self, db_session_mock, sample_activity_preference):
-        """Test updating an activity preference that exists"""
-        db_session_mock.query.return_value.filter.return_value.first.return_value = sample_activity_preference
-        
-        update_data = RefActivityPreferenceUpdate(
-            PatientId=1,
-            ActivityId=1,
-            IsLike="0",
-            IsDeleted="0",
-            UpdatedDateTime=datetime.now(),
-            ModifiedById="test_user"
+def test_create_ref_activity_preference_duplicate_raises(db_session_mock, sample_created_ref_activity_preference_data, sample_activity_preference):
+    """Should raise error when trying to create a duplicate activity preference"""
+
+    # Mock existing preference found
+    db_session_mock.query().filter().first.return_value = sample_activity_preference
+
+    with pytest.raises(ValueError):
+        create_ref_activity_preference(
+            db=db_session_mock,
+            preference=sample_created_ref_activity_preference_data,
+            correlation_id="corr_id_789",
+            created_by="test_user"
         )
 
-    def test_update_ref_activity_preference_idempotent_not_exists(self, db_session_mock):
-        """Test updating an activity preference that doesn't exist"""
-        db_session_mock.query.return_value.filter.return_value.first.return_value = None
-        
-        update_data = RefActivityPreferenceUpdate(
-            PatientId=1,
-            ActivityId=1,
-            IsLike="0",
-            IsDeleted="0",
-            UpdatedDateTime=datetime.now(),
-            ModifiedById="test_user"
+@mock.patch('pear_schedule.crud.ref_activity_preference_crud.IdempotencyService.process_idempotent')
+def test_create_ref_activity_preference_duplicate_detected(mock_idempotent_process, db_session_mock, sample_created_ref_activity_preference_data, sample_activity_preference):
+    """Should return existing record if duplicate detected by idempotency service"""
+
+    # Mock idempotency service returns duplicate
+    def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
+        return None, True
+
+    mock_idempotent_process.side_effect = fake_process_idempotent
+    db_session_mock.query().filter().first.return_value = sample_activity_preference
+
+    result, was_duplicate = create_ref_activity_preference(
+        db=db_session_mock,
+        preference=sample_created_ref_activity_preference_data,
+        correlation_id="corr_id_101",
+        created_by="test_user"
+    )
+
+    assert was_duplicate is True
+    assert result == sample_activity_preference
+
+@mock.patch('pear_schedule.crud.ref_activity_preference_crud.IdempotencyService.process_idempotent')
+def test_create_ref_activity_preference_foreign_key_patient_error(mock_idempotent_process, db_session_mock, sample_created_ref_activity_preference_data):
+    """Should raise foreign key error for invalid PatientID"""
+
+    # Mock no existing preference found
+    db_session_mock.query().filter().first.return_value = None
+    db_session_mock.add.side_effect = Exception("FOREIGN KEY constraint failed: REF_PATIENT")
+
+    # Mock idempotency service returns not duplicate
+    def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
+        return operation(), False
+
+    mock_idempotent_process.side_effect = fake_process_idempotent
+
+    with pytest.raises(Exception) as exc_info:
+        create_ref_activity_preference(
+            db=db_session_mock,
+            preference=sample_created_ref_activity_preference_data,
+            correlation_id="corr_id_102",
+            created_by="test_user"
         )
     assert "foreign key" in str(exc_info.value).lower()
     db_session_mock.rollback.assert_called_once()

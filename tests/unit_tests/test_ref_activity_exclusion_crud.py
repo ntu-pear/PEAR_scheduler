@@ -61,22 +61,14 @@ def test_create_ref_activity_exclusion_success(mock_idempotent_process, db_sessi
         result = operation() # executes create_operation
         return result, False
     
-    def test_create_or_update_ref_activity_exclusion_create_new(self, db_session_mock, sample_activity_exclusion):
-        """Test creating a new activity exclusion when one doesn't exist"""
-        # Mock that no existing exclusion is found
-        db_session_mock.query.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = None
-        
-        exclusion_data = RefActivityExclusionCreate(
-            PatientId=1,
-            ActivityId=1,
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 1, 7),
-            ExclusionRemarks="Patient has mobility issues",
-            IsDeleted="0",
-            CreatedDateTime=datetime.now(),
-            UpdatedDateTime=datetime.now(),
-            CreatedById="test_user",
-            ModifiedById="test_user"
+    mock_idempotent_process.side_effect = fake_process_idempotent
+
+    with mock.patch('pear_schedule.crud.ref_activity_exclusion_crud.RefActivityExclusion', return_value=sample_activity_exclusion):
+        result, was_duplicate = create_ref_activity_exclusion(
+            db=db_session_mock,
+            exclusion=sample_created_ref_activity_exclusion_data,
+            correlation_id="corr_id_123",
+            created_by="test_user"
         )
 
         assert result == sample_activity_exclusion
@@ -113,21 +105,22 @@ def test_create_ref_activity_exclusion_skip_duplicate_check(mock_records_process
 def test_create_ref_activity_exclusion_reactivate_soft_deleted(mock_idempotent_process, db_session_mock, sample_created_ref_activity_exclusion_data, sample_activity_exclusion):
     """Should reactivate a soft-deleted activity exclusion"""
 
-    def test_create_or_update_ref_activity_exclusion_update_existing(self, db_session_mock, sample_activity_exclusion):
-        """Test updating an existing activity exclusion"""
-        db_session_mock.query.return_value.filter.return_value.filter.return_value.filter.return_value.first.return_value = sample_activity_exclusion
-        
-        exclusion_data = RefActivityExclusionCreate(
-            PatientId=1,
-            ActivityId=1,
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 1, 14),
-            ExclusionRemarks="Updated remarks",
-            IsDeleted="0",
-            CreatedDateTime=datetime.now(),
-            UpdatedDateTime=datetime.now(),
-            CreatedById="test_user",
-            ModifiedById="test_user"
+    # Mock existing soft-deleted exclusion found
+    soft_deleted_exclusion = sample_activity_exclusion
+    soft_deleted_exclusion.IsDeleted = "1"
+    db_session_mock.query().filter().first.side_effect = [soft_deleted_exclusion, soft_deleted_exclusion]
+
+    # Mock idempotency service returns not duplicate
+    def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
+        result = operation()
+        return result, False
+    mock_idempotent_process.side_effect = fake_process_idempotent
+    with mock.patch('pear_schedule.crud.ref_activity_exclusion_crud.RefActivityExclusion', return_value=soft_deleted_exclusion):
+        result, was_duplicate = create_ref_activity_exclusion(
+            db=db_session_mock,
+            exclusion=sample_created_ref_activity_exclusion_data,
+            correlation_id="corr_id_456",
+            created_by="test_user"
         )
 
         assert result == soft_deleted_exclusion
@@ -135,34 +128,61 @@ def test_create_ref_activity_exclusion_reactivate_soft_deleted(mock_idempotent_p
         assert was_duplicate is False
         db_session_mock.commit.assert_called_once()
 
-    def test_update_ref_activity_exclusion_idempotent_exists(self, db_session_mock, sample_activity_exclusion):
-        """Test updating an activity exclusion that exists"""
-        db_session_mock.query.return_value.filter.return_value.first.return_value = sample_activity_exclusion
-        
-        update_data = RefActivityExclusionUpdate(
-            PatientId=1,
-            ActivityId=1,
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 1, 14),
-            ExclusionRemarks="Updated exclusion remarks",
-            IsDeleted="0",
-            UpdatedDateTime=datetime.now(),
-            ModifiedById="test_user"
+def test_create_ref_activity_exclusion_duplicate_raises(db_session_mock, sample_created_ref_activity_exclusion_data, sample_activity_exclusion):
+    """Should raise error when trying to create a duplicate activity exclusion"""
+
+    # Mock existing exclusion found
+    db_session_mock.query().filter().first.return_value = sample_activity_exclusion
+
+    with pytest.raises(ValueError):
+        create_ref_activity_exclusion(
+            db=db_session_mock,
+            exclusion=sample_created_ref_activity_exclusion_data,
+            correlation_id="corr_id_789",
+            created_by="test_user"
         )
 
-    def test_update_ref_activity_exclusion_idempotent_not_exists(self, db_session_mock):
-        """Test updating an activity exclusion that doesn't exist"""
-        db_session_mock.query.return_value.filter.return_value.first.return_value = None
-        
-        update_data = RefActivityExclusionUpdate(
-            PatientId=1,
-            ActivityId=1,
-            StartDate=datetime(2024, 1, 1),
-            EndDate=datetime(2024, 1, 14),
-            ExclusionRemarks="Updated exclusion remarks",
-            IsDeleted="0",
-            UpdatedDateTime=datetime.now(),
-            ModifiedById="test_user"
+@mock.patch('pear_schedule.crud.ref_activity_exclusion_crud.IdempotencyService.process_idempotent')
+def test_create_ref_activity_exclusion_duplicate_detected(mock_idempotent_process, db_session_mock, sample_created_ref_activity_exclusion_data, sample_activity_exclusion):
+    """Should return existing record if duplicate detected by idempotency service"""
+
+    # Mock idempotency service returns duplicate
+    def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
+        return None, True
+
+    mock_idempotent_process.side_effect = fake_process_idempotent
+    db_session_mock.query().filter().first.return_value = sample_activity_exclusion
+
+    result, was_duplicate = create_ref_activity_exclusion(
+        db=db_session_mock,
+        exclusion=sample_created_ref_activity_exclusion_data,
+        correlation_id="corr_id_101",
+        created_by="test_user"
+    )
+
+    assert was_duplicate is True
+    assert result == sample_activity_exclusion
+
+@mock.patch('pear_schedule.crud.ref_activity_exclusion_crud.IdempotencyService.process_idempotent')
+def test_create_ref_activity_exclusion_foreign_key_patient_error(mock_idempotent_process, db_session_mock, sample_created_ref_activity_exclusion_data):
+    """Should raise foreign key error for invalid PatientID"""
+
+    # Mock no existing exclusion found
+    db_session_mock.query().filter().first.return_value = None
+    db_session_mock.add.side_effect = Exception("FOREIGN KEY constraint failed: REF_PATIENT")
+
+    # Mock idempotency service returns not duplicate
+    def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
+        return operation(), False
+
+    mock_idempotent_process.side_effect = fake_process_idempotent
+
+    with pytest.raises(Exception) as exc_info:
+        create_ref_activity_exclusion(
+            db=db_session_mock,
+            exclusion=sample_created_ref_activity_exclusion_data,
+            correlation_id="corr_id_102",
+            created_by="test_user"
         )
     assert "foreign key" in str(exc_info.value).lower()
     db_session_mock.rollback.assert_called_once()
