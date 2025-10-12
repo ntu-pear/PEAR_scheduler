@@ -8,6 +8,7 @@ from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusi
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
 from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
 from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
+from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 from pear_schedule.models.schedule_model import Schedule
 
@@ -41,11 +42,9 @@ def sample_ref_patient():
 def sample_ref_activity():
     """Create a sample RefActivity instance"""
     return RefActivity(
-        Id=1,
+        ActivityID=1,
         ActivityTitle="Morning Exercise",
         ActivityDesc="Light exercise for seniors",
-        StartDate=datetime(2024, 1, 1),
-        EndDate=datetime(2024, 12, 31),
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
         UpdatedDateTime=datetime.now(),
@@ -81,11 +80,11 @@ def sample_schedule():
 def sample_activity_exclusion():
     """Create a sample RefActivityExclusion instance"""
     return RefActivityExclusion(
-        Id=1,
-        PatientId=1,
-        ActivityId=1,
-        StartDate=datetime(2024, 1, 1),
-        EndDate=datetime(2024, 1, 7),
+        ActivityExclusionID=1,
+        PatientID=1,
+        ActivityID=1,
+        StartDateTime=datetime(2024, 1, 1),
+        EndDateTime=datetime(2024, 1, 7),
         ExclusionRemarks="Patient has mobility issues",
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
@@ -99,9 +98,9 @@ def sample_activity_exclusion():
 def sample_activity_preference():
     """Create a sample RefActivityPreference instance"""
     return RefActivityPreference(
-        Id=1,
-        PatientId=1,
-        ActivityId=1,
+        CentreActivityPreferenceID=1,
+        PatientID=1,
+        CentreActivityID=1,
         IsLike="1",
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
@@ -115,10 +114,10 @@ def sample_activity_preference():
 def sample_activity_recommendation():
     """Create a sample RefActivityRecommendation instance"""
     return RefActivityRecommendation(
-        Id=1,
-        PatientId=1,
-        ActivityId=1,
-        DoctorId="doc123",
+        CentreActivityRecommendationID=1,
+        PatientID=1,
+        CentreActivityID=1,
+        DoctorID="doc123",
         DoctorRecommendation="1",
         DoctorRemarks="Good for mobility",
         IsDeleted="0",
@@ -142,6 +141,28 @@ def sample_activity_routine():
         IsDeleted="0",
         CreatedDateTime=datetime(2024, 2, 27, 0, 54, 33, 981608),
         UpdatedDateTime=datetime(2024, 2, 27, 0, 54, 33, 981609),
+        CreatedById="test_user",
+        ModifiedById="test_user"
+    )
+
+@pytest.fixture
+def sample_centre_activity():
+    """Create a sample RefCentreActivity instance"""
+    return RefCentreActivity(
+        CentreActivityID=1,
+        ActivityID=1,
+        IsDeleted="0",
+        IsCompulsory="0",
+        IsFixed="0",
+        IsGroup="0",
+        StartDate=datetime(2024, 1, 1),
+        EndDate=datetime(2024, 12, 31),
+        MinDuration=30,
+        MaxDuration=60,
+        MinPeopleReq=1,
+        FixedTimeSlots=None,
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
