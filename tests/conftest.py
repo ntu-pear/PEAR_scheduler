@@ -41,11 +41,9 @@ def sample_ref_patient():
 def sample_ref_activity():
     """Create a sample RefActivity instance"""
     return RefActivity(
-        Id=1,
+        ActivityID=1,
         ActivityTitle="Morning Exercise",
         ActivityDesc="Light exercise for seniors",
-        StartDate=datetime(2024, 1, 1),
-        EndDate=datetime(2024, 12, 31),
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
         UpdatedDateTime=datetime.now(),
