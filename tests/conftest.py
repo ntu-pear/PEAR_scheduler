@@ -97,9 +97,9 @@ def sample_activity_exclusion():
 def sample_activity_preference():
     """Create a sample RefActivityPreference instance"""
     return RefActivityPreference(
-        Id=1,
-        PatientId=1,
-        ActivityId=1,
+        CentreActivityPreferenceID=1,
+        PatientID=1,
+        CentreActivityID=1,
         IsLike="1",
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
