@@ -8,6 +8,7 @@ from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusi
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
 from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
 from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
+from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 from pear_schedule.models.schedule_model import Schedule
 
@@ -140,6 +141,28 @@ def sample_activity_routine():
         IsDeleted="0",
         CreatedDateTime=datetime(2024, 2, 27, 0, 54, 33, 981608),
         UpdatedDateTime=datetime(2024, 2, 27, 0, 54, 33, 981609),
+        CreatedById="test_user",
+        ModifiedById="test_user"
+    )
+
+@pytest.fixture
+def sample_centre_activity():
+    """Create a sample RefCentreActivity instance"""
+    return RefCentreActivity(
+        CentreActivityID=1,
+        ActivityID=1,
+        IsDeleted="0",
+        IsCompulsory="0",
+        IsFixed="0",
+        IsGroup="0",
+        StartDate=datetime(2024, 1, 1),
+        EndDate=datetime(2024, 12, 31),
+        MinDuration=30,
+        MaxDuration=60,
+        MinPeopleReq=1,
+        FixedTimeSlots=None,
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
     )
