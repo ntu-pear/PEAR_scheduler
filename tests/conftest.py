@@ -113,10 +113,10 @@ def sample_activity_preference():
 def sample_activity_recommendation():
     """Create a sample RefActivityRecommendation instance"""
     return RefActivityRecommendation(
-        Id=1,
-        PatientId=1,
-        ActivityId=1,
-        DoctorId="doc123",
+        CentreActivityRecommendationID=1,
+        PatientID=1,
+        CentreActivityID=1,
+        DoctorID="doc123",
         DoctorRecommendation="1",
         DoctorRemarks="Good for mobility",
         IsDeleted="0",
