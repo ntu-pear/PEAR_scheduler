@@ -1,12 +1,13 @@
+import json
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 from .rabbitmq_client import RabbitMQClient
-from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +30,17 @@ class ActivityExclusionConsumer:
         self.is_consuming = False
         
         # Import dependencies - adjust imports based on your actual structure
-        from pear_schedule.crud.ref_activity_exclusion_crud import (
-            create_ref_activity_exclusion,
-            update_ref_activity_exclusion,
-            delete_ref_activity_exclusion,
-            is_event_already_processed
-        )
-        from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
             map_activity_exclusion_create,
-            map_activity_exclusion_update
+            map_activity_exclusion_update,
         )
+        from pear_schedule.crud.ref_activity_exclusion_crud import (
+            create_ref_activity_exclusion,
+            delete_ref_activity_exclusion,
+            is_event_already_processed,
+            update_ref_activity_exclusion,
+        )
+        from pear_schedule.database import get_db
         
         self.create_ref_activity_exclusion = create_ref_activity_exclusion
         self.update_ref_activity_exclusion = update_ref_activity_exclusion
@@ -217,16 +218,19 @@ class ActivityExclusionConsumer:
                 # Transaction will be committed automatically by context manager
                 logger.debug(f"Transaction completed for {correlation_id}")
             
-            # Verification step outside the transaction
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
-                
+            
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                # Verification step outside the transaction
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
+                    
             return result
             
         except Exception as e:
@@ -281,7 +285,9 @@ class ActivityExclusionConsumer:
             logger.debug(f"Mapped exclusion data: {mapped_exclusion_data}")
             
             # Convert to Pydantic schema for CRUD function
-            from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionCreate
+            from pear_schedule.schemas.ref_activity_exclusion import (
+                RefActivityExclusionCreate,
+            )
             try:
                 # Add debug logging to see mapped data structure
                 logger.debug(f"Creating RefActivityExclusionCreate with data: {mapped_exclusion_data}")
@@ -358,7 +364,9 @@ class ActivityExclusionConsumer:
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
             # Convert to Pydantic schema for CRUD function
-            from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionUpdate
+            from pear_schedule.schemas.ref_activity_exclusion import (
+                RefActivityExclusionUpdate,
+            )
             try:
                 ref_exclusion_update = RefActivityExclusionUpdate(**mapped_update_data)
             except Exception as e:
@@ -383,7 +391,9 @@ class ActivityExclusionConsumer:
                     # For sync events, try to create if doesn't exist
                     logger.warning(f"Exclusion {exclusion_id} not found during sync - attempting to create")
                     try:
-                        from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionCreate
+                        from pear_schedule.schemas.ref_activity_exclusion import (
+                            RefActivityExclusionCreate,
+                        )
                         mapped_exclusion_data = self.map_activity_exclusion_create(exclusion_data)
                         if mapped_exclusion_data:
                             ref_exclusion_data = RefActivityExclusionCreate(**mapped_exclusion_data)
@@ -426,7 +436,9 @@ class ActivityExclusionConsumer:
             
             deleted_datetime = message_data['timestamp']
             
-            from pear_schedule.schemas.ref_activity_exclusion import RefActivityExclusionDelete
+            from pear_schedule.schemas.ref_activity_exclusion import (
+                RefActivityExclusionDelete,
+            )
             
             try:
                 ref_exclusion_delete = RefActivityExclusionDelete(

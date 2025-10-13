@@ -3,12 +3,9 @@ Integration tests for Scheduler Service Activity Consumer
 Tests the flow: RabbitMQ Message → Activity Consumer → REF_ACTIVITY table update → PROCESSED_EVENTS tracking
 
 Run Pytest with command: python -m pytest tests/integration_tests/test_activity_consumer_integration.py -v -s
-Run Pytest at the class level with: python -m pytest tests/integration_tests/test_activity_consumer_integration.py::TestConsumerActivityCreate -v -s
-Run Pytest at the method level with: python -m pytest tests/integration_tests/test_activity_consumer_integration.py::TestConsumerActivityCreate::test_create_activity_processes_message_successfully -v -s
-
 SQL Commands to clear DB:
-DELETE FROM [PROCESSED_EVENTS];
-DELETE FROM [REF_ACTIVITY];
+DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY];
+DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
 """
 
 import json
@@ -68,6 +65,22 @@ def mock_activity_data():
         "id": 1001,
         "title": "Test Activity",
         "description": "Test Description",
+        "is_deleted": False,
+        "created_by_id": "test-user-1",
+        "modified_by_id": "test-user-1",
+        "created_date": datetime.now().isoformat(),
+        "modified_date": datetime.now().isoformat()
+    }
+    
+@pytest.fixture
+def mock_activity_data_for_indempotency_check():
+    """
+    Mock activity data matching the Activity Service schema
+    """
+    return {
+        "id": 1002,
+        "title": "Test Indempotent Activity",
+        "description": "Test Indempotent Description",
         "is_deleted": False,
         "created_by_id": "test-user-1",
         "modified_by_id": "test-user-1",
@@ -192,14 +205,16 @@ class TestConsumerActivityCreate:
             ProcessedEvent.correlation_id == correlation_id
         ).first()
         
+        processed_event_status = json.loads(processed_event.operation_result)["status"]
+        
         assert processed_event is not None
         assert processed_event.event_type == "ACTIVITY_CREATED"
         assert processed_event.aggregate_id == str(mock_activity_data["id"])
-        assert json.loads(processed_event.operation_result)["status"] == "success"
+        assert processed_event_status == "success"
         
         print(f"DONE: Created PROCESSED_EVENT ID: {processed_event.aggregate_id}")
         print(f"  Event Type: {processed_event.event_type}")
-        print(f"  Status: {json.loads(processed_event.operation_result)["status"]}")
+        print(f"  Status: {processed_event_status}")
     
     def test_duplicate_create_message_is_idempotent(self, integration_db, activity_consumer, mock_activity_data):
         """
@@ -207,8 +222,11 @@ class TestConsumerActivityCreate:
         WHEN: Consumer processes duplicate message
         THEN: Returns DUPLICATE result and no additional records created
         
-        Goal: Verify idempotency - duplicate messages don't create duplicate records (Checks for MessageProcessingResult.DUPLICATE)
+        Goal: Verify idempotency - duplicate messages don't create duplicate records
         """
+        mock_activity_data["id"] = 1002  # Ensure unique ID for this test"
+        mock_activity_data["title"] = "Test Indempotent Activity"
+        mock_activity_data["description"] = "Test Indempotent Description"
         correlation_id = str(uuid.uuid4()).upper()
         message = create_activity_created_message(mock_activity_data, correlation_id)
         
@@ -248,21 +266,13 @@ class TestConsumerActivityCreate:
         print(f"DONE: Duplicate message handled correctly - no new records created")
         print(f"Final counts - Activities: {final_activity_count}, Processed Events: {final_processed_count}")
     
-    
-    """
-    
-    TO DO: Need to make a indempotency function to check for MessageProcessingResult.FAILED_RETRYABLE
-    
-    """
-    
-    
     def test_create_with_invalid_data_fails_permanently(self, integration_db, activity_consumer):
         """
         GIVEN: ACTIVITY_CREATED message with invalid/missing data
         WHEN: Consumer processes the message
         THEN: Returns FAILED_PERMANENT and no records created
         
-        Goal: Verify that invalid messages are rejected permanently (Checks for MessageProcessingResult.FAILED_PERMANENT)
+        Goal: Verify that invalid messages are rejected permanently
         """
         correlation_id = str(uuid.uuid4()).upper()
         
@@ -293,6 +303,67 @@ class TestConsumerActivityCreate:
         assert processed_event is None
         
         print(f"DONE: Invalid message rejected permanently - no records created")
+    
+    def test_create_with_mapping_failure_fails_permanently(self, integration_db, activity_consumer, mock_activity_data, monkeypatch):
+        """
+        GIVEN: ACTIVITY_CREATED message where data mapping fails
+        WHEN: Consumer processes the message
+        THEN: Returns FAILED_PERMANENT (bad data shouldn't be retried)
+        
+        Goal: Verify that mapping errors are treated as permanent failures
+        """
+        correlation_id = str(uuid.uuid4()).upper()
+        message = create_activity_created_message(mock_activity_data, correlation_id)
+        
+        print(f"\nProcessing CREATE message with mapping error: {correlation_id}")
+        
+        # Mock mapper to return None (mapping failure)
+        monkeypatch.setattr(activity_consumer, "map_activity_create", lambda x: None)
+        
+        # Process the message
+        result = activity_consumer._process_activity_message(message)
+        
+        # Should return FAILED_PERMANENT for mapping errors
+        assert result == MessageProcessingResult.FAILED_PERMANENT
+        
+        print(f"DONE: Mapping error correctly returned FAILED_PERMANENT")
+    
+    def test_create_with_database_error_returns_retryable(self, integration_db, activity_consumer, mock_activity_data, monkeypatch):
+        """
+        GIVEN: ACTIVITY_CREATED message and database error during processing
+        WHEN: Consumer processes the message and database operation fails
+        THEN: Returns FAILED_RETRYABLE and message can be requeued
+        
+        Goal: Verify that temporary database errors trigger retry behavior
+        """
+        correlation_id = str(uuid.uuid4()).upper()
+        message = create_activity_created_message(mock_activity_data, correlation_id)
+        
+        print(f"\nSimulating database error for CREATE: {correlation_id}")
+        
+        # Mock the CRUD operation to raise a database error
+        from sqlalchemy.exc import OperationalError
+        
+        def mock_create_failure(*args, **kwargs):
+            raise OperationalError("Database connection lost", None, None)
+        
+        monkeypatch.setattr(activity_consumer, "create_ref_activity", mock_create_failure)
+        
+        # Process the message
+        result = activity_consumer._process_activity_message(message)
+        
+        # Should return FAILED_RETRYABLE for database errors
+        assert result == MessageProcessingResult.FAILED_RETRYABLE
+        
+        # Verify no PROCESSED_EVENTS record created (so it can be retried)
+        processed_event = integration_db.query(ProcessedEvent).filter(
+            ProcessedEvent.correlation_id == correlation_id
+        ).first()
+        
+        assert processed_event is None
+        
+        print(f"DONE: Database error correctly returned FAILED_RETRYABLE")
+        print(f"No PROCESSED_EVENT created - message can be requeued for retry")
 
 
 # ===== Update Activity Tests =====
@@ -470,6 +541,100 @@ class TestConsumerActivityUpdate:
         
         print(f"DONE: Duplicate update message handled correctly")
         print(f"Timestamp unchanged: {second_check.UpdatedDateTime}")
+    
+    def test_update_with_mapping_failure_fails_permanently(self, integration_db, activity_consumer, mock_activity_data, monkeypatch):
+        """
+        GIVEN: ACTIVITY_UPDATED message where data mapping fails
+        WHEN: Consumer processes the message
+        THEN: Returns FAILED_PERMANENT (bad data shouldn't be retried)
+        
+        Goal: Verify that mapping errors are treated as permanent failures
+        """
+        # Create initial activity
+        create_correlation_id = str(uuid.uuid4()).upper()
+        create_message = create_activity_created_message(mock_activity_data, create_correlation_id)
+        activity_consumer._process_activity_message(create_message)
+        
+        print(f"\nCreated initial activity ID: {mock_activity_data['id']}")
+        
+        # Update message
+        updated_data = mock_activity_data.copy()
+        updated_data["title"] = "Should Fail Mapping"
+        
+        update_correlation_id = str(uuid.uuid4()).upper()
+        update_message = create_activity_updated_message(
+            mock_activity_data["id"],
+            mock_activity_data,
+            updated_data,
+            update_correlation_id
+        )
+        
+        print(f"Processing UPDATE message with mapping error: {update_correlation_id}")
+        
+        # Mock mapper to return None (mapping failure)
+        monkeypatch.setattr(activity_consumer, "map_activity_update", lambda x: None)
+        
+        # Process the message
+        result = activity_consumer._process_activity_message(update_message)
+        
+        # Should return FAILED_PERMANENT for mapping errors
+        assert result == MessageProcessingResult.FAILED_PERMANENT
+        
+        print(f"DONE: Mapping error correctly returned FAILED_PERMANENT")
+    
+    def test_update_with_database_error_returns_retryable(self, integration_db, activity_consumer, mock_activity_data, monkeypatch):
+        """
+        GIVEN: ACTIVITY_UPDATED message and database error during processing
+        WHEN: Consumer processes the message and database operation fails
+        THEN: Returns FAILED_RETRYABLE and message can be requeued
+        
+        Goal: Verify that temporary database errors trigger retry behavior
+        """
+        # Create initial activity
+        create_correlation_id = str(uuid.uuid4()).upper()
+        create_message = create_activity_created_message(mock_activity_data, create_correlation_id)
+        activity_consumer._process_activity_message(create_message)
+        
+        print(f"\nCreated initial activity ID: {mock_activity_data['id']}")
+        
+        # Update message
+        updated_data = mock_activity_data.copy()
+        updated_data["title"] = "Should Trigger DB Error"
+        updated_data["modified_date"] = datetime.now().isoformat()
+        
+        update_correlation_id = str(uuid.uuid4()).upper()
+        update_message = create_activity_updated_message(
+            mock_activity_data["id"],
+            mock_activity_data,
+            updated_data,
+            update_correlation_id
+        )
+        
+        print(f"Simulating database error for UPDATE: {update_correlation_id}")
+        
+        # Mock the CRUD operation to raise a database error
+        from sqlalchemy.exc import OperationalError
+        
+        def mock_update_failure(*args, **kwargs):
+            raise OperationalError("Database connection lost", None, None)
+        
+        monkeypatch.setattr(activity_consumer, "update_ref_activity", mock_update_failure)
+        
+        # Process the message
+        result = activity_consumer._process_activity_message(update_message)
+        
+        # Should return FAILED_RETRYABLE for database errors
+        assert result == MessageProcessingResult.FAILED_RETRYABLE
+        
+        # Verify no PROCESSED_EVENTS record created (so it can be retried)
+        processed_event = integration_db.query(ProcessedEvent).filter(
+            ProcessedEvent.correlation_id == update_correlation_id
+        ).first()
+        
+        assert processed_event is None
+        
+        print(f"DONE: Database error correctly returned FAILED_RETRYABLE")
+        print(f"No PROCESSED_EVENT created - message can be requeued for retry")
 
 
 # ===== Delete Activity Tests =====
@@ -487,6 +652,10 @@ class TestConsumerActivityDelete:
         """
         # First create the activity
         create_correlation_id = str(uuid.uuid4()).upper()
+        mock_activity_data["id"] = 1003  # Ensure unique ID for this test"
+        mock_activity_data["is_deleted"] = False
+        mock_activity_data["title"] = "Activity to be Deleted"
+        mock_activity_data["description"] = "This activity will be deleted in the test"
         create_message = create_activity_created_message(mock_activity_data, create_correlation_id)
         activity_consumer._process_activity_message(create_message)
         
@@ -515,10 +684,13 @@ class TestConsumerActivityDelete:
         # Verify processing result
         assert result == MessageProcessingResult.SUCCESS
         
+        
         # Verify REF_ACTIVITY record soft-deleted
         ref_activity = integration_db.query(RefActivity).filter(
             RefActivity.ActivityID == mock_activity_data["id"]
         ).first()
+        
+        integration_db.refresh(ref_activity)
         
         assert ref_activity is not None
         assert ref_activity.IsDeleted == "1"
@@ -630,3 +802,63 @@ class TestConsumerActivityDelete:
         
         print(f"DONE: Duplicate delete message handled correctly")
         print(f"Activity remains deleted: IsDeleted = {still_deleted.IsDeleted}")
+    
+    def test_delete_with_database_error_returns_retryable(self, integration_db, activity_consumer, mock_activity_data, monkeypatch):
+        """
+        GIVEN: ACTIVITY_DELETED message and database error during processing
+        WHEN: Consumer processes the message and database operation fails
+        THEN: Returns FAILED_RETRYABLE and message can be requeued
+        
+        Goal: Verify that temporary database errors trigger retry behavior
+        """
+        # Create initial activity
+        mock_activity_data["id"] = 1005  # Ensure unique ID for this test"
+        mock_activity_data["is_deleted"] = False
+        mock_activity_data["title"] = "Activity to be Deleted"
+        mock_activity_data["description"] = "This activity will be deleted in the test"
+        create_correlation_id = str(uuid.uuid4()).upper()
+        create_message = create_activity_created_message(mock_activity_data, create_correlation_id)
+        activity_consumer._process_activity_message(create_message)
+        
+        print(f"\nCreated initial activity ID: {mock_activity_data['id']}")
+        
+        # Delete message
+        delete_correlation_id = str(uuid.uuid4()).upper()
+        delete_message = create_activity_deleted_message(
+            mock_activity_data["id"],
+            mock_activity_data,
+            delete_correlation_id
+        )
+        
+        print(f"Simulating database error for DELETE: {delete_correlation_id}")
+        
+        # Mock the CRUD operation to raise a database error
+        from sqlalchemy.exc import OperationalError
+        
+        def mock_delete_failure(*args, **kwargs):
+            raise OperationalError("Database connection lost", None, None)
+        
+        monkeypatch.setattr(activity_consumer, "delete_ref_activity", mock_delete_failure)
+        
+        # Process the message
+        result = activity_consumer._process_activity_message(delete_message)
+        
+        # Should return FAILED_RETRYABLE for database errors
+        assert result == MessageProcessingResult.FAILED_RETRYABLE
+        
+        # Verify no PROCESSED_EVENTS record created (so it can be retried)
+        processed_event = integration_db.query(ProcessedEvent).filter(
+            ProcessedEvent.correlation_id == delete_correlation_id
+        ).first()
+        
+        assert processed_event is None
+        
+        # Verify activity was NOT deleted (operation failed before completion)
+        activity_check = integration_db.query(RefActivity).filter(
+            RefActivity.ActivityID == mock_activity_data["id"]
+        ).first()
+        assert activity_check.IsDeleted == "0"
+        
+        print(f"DONE: Database error correctly returned FAILED_RETRYABLE")
+        print(f"No PROCESSED_EVENT created - message can be requeued for retry")
+        print(f"Activity remains active (IsDeleted=0) - will be deleted on retry")
