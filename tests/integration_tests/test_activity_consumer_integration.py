@@ -2,7 +2,7 @@
 Integration tests for Scheduler Service Activity Consumer
 Tests the flow: RabbitMQ Message → Activity Consumer → REF_ACTIVITY table update → PROCESSED_EVENTS tracking
 
-Run Pytest with command: python -m pytest tests/integration_tests/test_activity_consumer_integration.py -v -s
+Run Pytest with command: pytest tests/integration_tests/test_activity_consumer_integration.py -v -s
 SQL Commands to clear DB:
 DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY];
 DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
