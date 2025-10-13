@@ -204,59 +204,6 @@ class PatientConsumer:
             return result
             
         except Exception as e:
-            logger.error(f"Fatal error in message wrapper: {str(e)}")
-            import traceback
-            logger.error(f"Full traceback: {traceback.format_exc()}")
-            self._flush_logs()
-            return False
-    
-    def _process_patient_message(self, message: Dict[str, Any]) -> MessageProcessingResult:
-        """Process patient message with sync event support."""
-        try:
-            message_data = self._parse_message(message)
-            if not message_data:
-                return MessageProcessingResult.FAILED_PERMANENT
-            
-            correlation_id = message_data['correlation_id']
-            event_type = message_data['event_type']
-            patient_id = message_data['patient_id']
-            is_sync_event = message_data.get('is_sync_event', False)
-            sync_reason = message_data.get('sync_reason')
-            
-            logger.info(f"Processing {event_type} for patient {patient_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
-            
-            with self.get_db_transaction() as db:
-                # For sync events, bypass duplicate check in CRUD
-                if not is_sync_event and self.is_event_already_processed(db, correlation_id):
-                    logger.info(f"Event already processed: {correlation_id}")
-                    return MessageProcessingResult.DUPLICATE
-                elif is_sync_event:
-                    logger.info(f"Sync event detected - bypassing idempotency check for {correlation_id}")
-                
-                if event_type == 'PATIENT_CREATED':
-                    result = self._handle_patient_created(db, message_data)
-                elif event_type == 'PATIENT_UPDATED':
-                    result = self._handle_patient_updated(db, message_data)
-                elif event_type == 'PATIENT_DELETED':
-                    result = self._handle_patient_deleted(db, message_data)
-                else:
-                    logger.error(f"Unknown event type: {event_type}")
-                    return MessageProcessingResult.FAILED_PERMANENT
-                
-                logger.debug(f"Transaction completed for {correlation_id}")
-            
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
-                
-            return result
-            
-        except Exception as e:
             logger.error(f"Error processing patient message: {str(e)}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
