@@ -1,12 +1,13 @@
+import json
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 from .rabbitmq_client import RabbitMQClient
-from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,17 @@ class PatientMedicationConsumer:
         self.shutdown_event = None
         self.is_consuming = False
         
-        from pear_schedule.crud.ref_patient_medication_crud import (
-            create_ref_patient_medication,
-            update_ref_patient_medication,
-            delete_ref_patient_medication,
-            is_event_already_processed
-        )
-        from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
             map_patient_medication_create,
-            map_patient_medication_update
+            map_patient_medication_update,
         )
+        from pear_schedule.crud.ref_patient_medication_crud import (
+            create_ref_patient_medication,
+            delete_ref_patient_medication,
+            is_event_already_processed,
+            update_ref_patient_medication,
+        )
+        from pear_schedule.database import get_db
         
         self.create_ref_patient_medication = create_ref_patient_medication
         self.update_ref_patient_medication = update_ref_patient_medication
@@ -192,15 +193,16 @@ class PatientMedicationConsumer:
                     return MessageProcessingResult.FAILED_PERMANENT
                 
                 logger.debug(f"Transaction completed for {correlation_id}")
-            
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
                 
             return result
             
@@ -248,7 +250,9 @@ class PatientMedicationConsumer:
             
             logger.debug(f"Mapped medication data: {mapped_medication_data}")
             
-            from pear_schedule.schemas.ref_patient_medication import RefPatientMedicationCreate
+            from pear_schedule.schemas.ref_patient_medication import (
+                RefPatientMedicationCreate,
+            )
             try:
                 ref_medication_data = RefPatientMedicationCreate(**mapped_medication_data)
             except Exception as e:
@@ -303,7 +307,9 @@ class PatientMedicationConsumer:
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
-            from pear_schedule.schemas.ref_patient_medication import RefPatientMedicationUpdate
+            from pear_schedule.schemas.ref_patient_medication import (
+                RefPatientMedicationUpdate,
+            )
             try:
                 ref_medication_update = RefPatientMedicationUpdate(**mapped_update_data)
             except Exception as e:
@@ -329,7 +335,9 @@ class PatientMedicationConsumer:
                     # For sync events, try to create if doesn't exist
                     logger.warning(f"Medication {medication_id} not found during sync - attempting to create")
                     try:
-                        from pear_schedule.schemas.ref_patient_medication import RefPatientMedicationCreate
+                        from pear_schedule.schemas.ref_patient_medication import (
+                            RefPatientMedicationCreate,
+                        )
                         mapped_medication_data = self.map_patient_medication_create(medication_data)
                         if mapped_medication_data:
                             ref_medication_data = RefPatientMedicationCreate(**mapped_medication_data)
@@ -370,7 +378,9 @@ class PatientMedicationConsumer:
             
             logger.info(f"Handling patient medication deletion for medication {medication_id} (patient: {patient_id})")
                
-            from pear_schedule.schemas.ref_patient_medication import RefPatientMedicationDelete
+            from pear_schedule.schemas.ref_patient_medication import (
+                RefPatientMedicationDelete,
+            )
             
             try:
                 # Force update timestamp for sync events

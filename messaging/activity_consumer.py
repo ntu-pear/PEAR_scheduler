@@ -1,12 +1,13 @@
+import json
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 from .rabbitmq_client import RabbitMQClient
-from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -29,17 +30,17 @@ class ActivityConsumer:
         self.is_consuming = False
         
         # Import dependencies - adjust imports based on your actual structure
-        from pear_schedule.crud.ref_activity_crud import (
-            create_ref_activity,
-            update_ref_activity,
-            delete_ref_activity,
-            is_event_already_processed
-        )
-        from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
             map_activity_create,
-            map_activity_update
+            map_activity_update,
         )
+        from pear_schedule.crud.ref_activity_crud import (
+            create_ref_activity,
+            delete_ref_activity,
+            is_event_already_processed,
+            update_ref_activity,
+        )
+        from pear_schedule.database import get_db
         
         self.create_ref_activity = create_ref_activity
         self.update_ref_activity = update_ref_activity
@@ -222,14 +223,16 @@ class ActivityConsumer:
                 logger.debug(f"Transaction completed for {correlation_id}")
             
             # Verification step outside the transaction
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
                 
             return result
             

@@ -1,12 +1,13 @@
+import json
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 from .rabbitmq_client import RabbitMQClient
-from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,17 @@ class CentreActivityConsumer:
         self.shutdown_event = None
         self.is_consuming = False
         
-        from pear_schedule.crud.ref_centre_activity_crud import (
-            create_ref_centre_activity,
-            update_ref_centre_activity,
-            delete_ref_centre_activity,
-            is_event_already_processed
-        )
-        from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
             map_centre_activity_create,
-            map_centre_activity_update
+            map_centre_activity_update,
         )
+        from pear_schedule.crud.ref_centre_activity_crud import (
+            create_ref_centre_activity,
+            delete_ref_centre_activity,
+            is_event_already_processed,
+            update_ref_centre_activity,
+        )
+        from pear_schedule.database import get_db
         
         self.create_ref_centre_activity = create_ref_centre_activity
         self.update_ref_centre_activity = update_ref_centre_activity
@@ -192,15 +193,16 @@ class CentreActivityConsumer:
                     return MessageProcessingResult.FAILED_PERMANENT
                 
                 logger.debug(f"Transaction completed for {correlation_id}")
-            
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
                 
             return result
             
@@ -247,7 +249,9 @@ class CentreActivityConsumer:
             
             logger.debug(f"Mapped centre activity data: {mapped_centre_activity_data}")
             
-            from pear_schedule.schemas.ref_centre_activity import RefCentreActivityCreate
+            from pear_schedule.schemas.ref_centre_activity import (
+                RefCentreActivityCreate,
+            )
             try:
                 ref_centre_activity_data = RefCentreActivityCreate(**mapped_centre_activity_data)
             except Exception as e:
@@ -301,7 +305,9 @@ class CentreActivityConsumer:
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
-            from pear_schedule.schemas.ref_centre_activity import RefCentreActivityUpdate
+            from pear_schedule.schemas.ref_centre_activity import (
+                RefCentreActivityUpdate,
+            )
             try:
                 ref_centre_activity_update = RefCentreActivityUpdate(**mapped_update_data)
             except Exception as e:
@@ -327,7 +333,9 @@ class CentreActivityConsumer:
                     # For sync events, try to create if doesn't exist
                     logger.warning(f"Centre activity {centre_activity_id} not found during sync - attempting to create")
                     try:
-                        from pear_schedule.schemas.ref_centre_activity import RefCentreActivityCreate
+                        from pear_schedule.schemas.ref_centre_activity import (
+                            RefCentreActivityCreate,
+                        )
                         mapped_centre_activity_data = self.map_centre_activity_create(centre_activity_data)
                         if mapped_centre_activity_data:
                             ref_centre_activity_data = RefCentreActivityCreate(**mapped_centre_activity_data)
@@ -372,7 +380,9 @@ class CentreActivityConsumer:
             
             logger.debug(f"Using deletion timestamp: {deleted_datetime}")
             
-            from pear_schedule.schemas.ref_centre_activity import RefCentreActivityDelete
+            from pear_schedule.schemas.ref_centre_activity import (
+                RefCentreActivityDelete,
+            )
             
             try:
                 ref_centre_activity_delete = RefCentreActivityDelete(

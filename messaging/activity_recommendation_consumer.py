@@ -1,12 +1,13 @@
+import json
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 from .rabbitmq_client import RabbitMQClient
-from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,17 @@ class ActivityRecommendationConsumer:
         self.shutdown_event = None
         self.is_consuming = False
         
-        from pear_schedule.crud.ref_activity_recommendation_crud import (
-            create_ref_activity_recommendation,
-            update_ref_activity_recommendation,
-            delete_ref_activity_recommendation,
-            is_event_already_processed
-        )
-        from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
             map_activity_recommendation_create,
-            map_activity_recommendation_update
+            map_activity_recommendation_update,
         )
+        from pear_schedule.crud.ref_activity_recommendation_crud import (
+            create_ref_activity_recommendation,
+            delete_ref_activity_recommendation,
+            is_event_already_processed,
+            update_ref_activity_recommendation,
+        )
+        from pear_schedule.database import get_db
         
         self.create_ref_activity_recommendation = create_ref_activity_recommendation
         self.update_ref_activity_recommendation = update_ref_activity_recommendation
@@ -192,15 +193,16 @@ class ActivityRecommendationConsumer:
                     return MessageProcessingResult.FAILED_PERMANENT
                 
                 logger.debug(f"Transaction completed for {correlation_id}")
-            
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
                 
             return result
             
@@ -247,7 +249,9 @@ class ActivityRecommendationConsumer:
             
             logger.debug(f"Mapped recommendation data: {mapped_recommendation_data}")
             
-            from pear_schedule.schemas.ref_activity_recommendation import RefActivityRecommendationCreate
+            from pear_schedule.schemas.ref_activity_recommendation import (
+                RefActivityRecommendationCreate,
+            )
             try:
                 ref_recommendation_data = RefActivityRecommendationCreate(**mapped_recommendation_data)
             except Exception as e:
@@ -301,7 +305,9 @@ class ActivityRecommendationConsumer:
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
-            from pear_schedule.schemas.ref_activity_recommendation import RefActivityRecommendationUpdate
+            from pear_schedule.schemas.ref_activity_recommendation import (
+                RefActivityRecommendationUpdate,
+            )
             try:
                 ref_recommendation_update = RefActivityRecommendationUpdate(**mapped_update_data)
             except Exception as e:
@@ -327,7 +333,9 @@ class ActivityRecommendationConsumer:
                     # For sync events, try to create if doesn't exist
                     logger.warning(f"Recommendation {recommendation_id} not found during sync - attempting to create")
                     try:
-                        from pear_schedule.schemas.ref_activity_recommendation import RefActivityRecommendationCreate
+                        from pear_schedule.schemas.ref_activity_recommendation import (
+                            RefActivityRecommendationCreate,
+                        )
                         mapped_recommendation_data = self.map_activity_recommendation_create(recommendation_data)
                         if mapped_recommendation_data:
                             ref_recommendation_data = RefActivityRecommendationCreate(**mapped_recommendation_data)
@@ -369,7 +377,9 @@ class ActivityRecommendationConsumer:
             
             deleted_datetime = message_data['timestamp']
             
-            from pear_schedule.schemas.ref_activity_recommendation import RefActivityRecommendationDelete
+            from pear_schedule.schemas.ref_activity_recommendation import (
+                RefActivityRecommendationDelete,
+            )
             
             try:
                 ref_recommendation_delete = RefActivityRecommendationDelete(

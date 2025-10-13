@@ -1,12 +1,13 @@
+import json
 import logging
 import threading
-import json
-from typing import Dict, Any, Optional
-from datetime import datetime
 from contextlib import contextmanager
+from datetime import datetime
+from typing import Any, Dict, Optional
+
+from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 from .rabbitmq_client import RabbitMQClient
-from pear_schedule.models.processed_events_model import MessageProcessingResult
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,17 @@ class ActivityPreferenceConsumer:
         self.shutdown_event = None
         self.is_consuming = False
         
-        from pear_schedule.crud.ref_activity_preference_crud import (
-            create_ref_activity_preference,
-            update_ref_activity_preference,
-            delete_ref_activity_preference,
-            is_event_already_processed
-        )
-        from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import (
             map_activity_preference_create,
-            map_activity_preference_update
+            map_activity_preference_update,
         )
+        from pear_schedule.crud.ref_activity_preference_crud import (
+            create_ref_activity_preference,
+            delete_ref_activity_preference,
+            is_event_already_processed,
+            update_ref_activity_preference,
+        )
+        from pear_schedule.database import get_db
         
         self.create_ref_activity_preference = create_ref_activity_preference
         self.update_ref_activity_preference = update_ref_activity_preference
@@ -192,15 +193,16 @@ class ActivityPreferenceConsumer:
                     return MessageProcessingResult.FAILED_PERMANENT
                 
                 logger.debug(f"Transaction completed for {correlation_id}")
-            
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
                 
             return result
             
@@ -247,7 +249,9 @@ class ActivityPreferenceConsumer:
             
             logger.debug(f"Mapped preference data: {mapped_preference_data}")
             
-            from pear_schedule.schemas.ref_activity_preference import RefActivityPreferenceCreate
+            from pear_schedule.schemas.ref_activity_preference import (
+                RefActivityPreferenceCreate,
+            )
             try:
                 ref_preference_data = RefActivityPreferenceCreate(**mapped_preference_data)
             except Exception as e:
@@ -301,7 +305,9 @@ class ActivityPreferenceConsumer:
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
             
-            from pear_schedule.schemas.ref_activity_preference import RefActivityPreferenceUpdate
+            from pear_schedule.schemas.ref_activity_preference import (
+                RefActivityPreferenceUpdate,
+            )
             try:
                 ref_preference_update = RefActivityPreferenceUpdate(**mapped_update_data)
             except Exception as e:
@@ -327,7 +333,9 @@ class ActivityPreferenceConsumer:
                     # For sync events, try to create if doesn't exist
                     logger.warning(f"Preference {preference_id} not found during sync - attempting to create")
                     try:
-                        from pear_schedule.schemas.ref_activity_preference import RefActivityPreferenceCreate
+                        from pear_schedule.schemas.ref_activity_preference import (
+                            RefActivityPreferenceCreate,
+                        )
                         mapped_preference_data = self.map_activity_preference_create(preference_data)
                         if mapped_preference_data:
                             ref_preference_data = RefActivityPreferenceCreate(**mapped_preference_data)
@@ -369,7 +377,9 @@ class ActivityPreferenceConsumer:
             
             deleted_datetime = message_data['timestamp']
             
-            from pear_schedule.schemas.ref_activity_preference import RefActivityPreferenceDelete
+            from pear_schedule.schemas.ref_activity_preference import (
+                RefActivityPreferenceDelete,
+            )
             
             try:
                 ref_preference_delete = RefActivityPreferenceDelete(
