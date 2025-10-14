@@ -233,7 +233,7 @@ class ActivityPreferenceConsumer:
         try:
             correlation_id = message_data['correlation_id']
             preference_id = message_data['preference_id']
-            preference_data = message_data.get('data', {})
+            preference_data = message_data.get('preference_data', {})
             created_by = message_data.get('created_by', 'activity_service')
             
             logger.info(f"Handling activity preference creation for preference {preference_id}")
