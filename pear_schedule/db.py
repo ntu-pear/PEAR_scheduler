@@ -32,6 +32,8 @@ class DB:
         
         # Create sessionmaker for ORM operations
         cls.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=cls.engine)
+
+        Base.metadata.create_all(bind=cls.engine, checkfirst=True)
         
         # Initialize schema metadata for backward compatibility
         cls.schema = MetaData()
