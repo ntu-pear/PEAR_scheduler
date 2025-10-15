@@ -5,7 +5,7 @@ import pandas as pd
 
 from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
-from pear_schedule.db_utils.utils import compile_query, get_next_sunday
+from pear_schedule.db_utils.utils import compile_query, get_next_sunday, get_monday
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from sqlalchemy import literal_column
 import logging
@@ -207,7 +207,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
         ).where(centre_activity.c["IsCompulsory"] == False
         ).where(or_(
         centre_activity.c["EndDate"] > get_next_sunday(),
-        centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
+        )) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -314,9 +314,10 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsCompulsory"] == True
         ).where(centre_activity.c["IsDeleted"] == False
-        ).where(or_(
+        ).where(
         centre_activity.c["EndDate"] > get_next_sunday(),
-        centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
+        centre_activity.c["StartDate"] < get_monday(),
+        ) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
