@@ -193,15 +193,19 @@ class ActivityExclusionConsumer:
             correlation_id = message_data['correlation_id']
             event_type = message_data['event_type']
             exclusion_id = message_data['exclusion_id']
+            is_sync_event = message_data.get('is_sync_event', False)
+            sync_reason = message_data.get('sync_reason')
             
-            logger.info(f"Processing {event_type} for activity exclusion {exclusion_id} (correlation: {correlation_id})")
+            logger.info(f"Processing {event_type} for activity exclusion {exclusion_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
             
             # Use context manager for guaranteed transaction handling
             with self.get_db_transaction() as db:
                 # Quick check for duplicates
-                if self.is_event_already_processed(db, correlation_id):
+                if not is_sync_event and self.is_event_already_processed(db, correlation_id):
                     logger.info(f"Event already processed: {correlation_id}")
                     return MessageProcessingResult.DUPLICATE
+                elif is_sync_event:
+                    logger.info(f"Sync event detected - bypassing idempotency check for {correlation_id}")
                 
                 # Route to appropriate handler
                 if event_type == 'ACTIVITY_EXCLUSION_CREATED':
@@ -344,6 +348,7 @@ class ActivityExclusionConsumer:
             exclusion_data = message_data.get('new_data', {})
             changes = message_data.get('changes', {})
             modified_by = message_data.get('modified_by', 'activity_service')
+            is_sync_event = message_data.get('is_sync_event', False)
             
             logger.info(f"Handling activity exclusion update for exclusion {exclusion_id}")
             logger.debug(f"Changes: {changes}")
@@ -371,10 +376,11 @@ class ActivityExclusionConsumer:
                 db=db,
                 exclusion_id=exclusion_id,
                 exclusion_update=ref_exclusion_update,
-                correlation_id=correlation_id
+                correlation_id=correlation_id,
+                skip_duplicate_check=is_sync_event
             )
             
-            if was_duplicate:
+            if was_duplicate and not is_sync_event:
                 logger.info(f"Duplicate update event for activity exclusion {exclusion_id}")
                 return MessageProcessingResult.DUPLICATE
             
