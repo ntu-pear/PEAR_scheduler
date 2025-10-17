@@ -2,7 +2,7 @@ name: CD
 
 on:
   push:
-    branches: ['chore/migrate-db-integration']
+    branches: ['scheduler_prod']
 
 permissions:
   contents: read
