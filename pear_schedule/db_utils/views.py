@@ -60,6 +60,9 @@ class AllActivitiesView(BaseView):
             centre_activity.c["EndDate"]
         ).join(
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
+        ).where(
+            centre_activity.c["IsDeleted"] == False,
+            centre_activity.c["StartDate"] < get_monday(),
         )
 
         return query
@@ -87,7 +90,8 @@ class ActivitiesView(BaseView):
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             centre_activity.c["IsGroup"] == False,
-            centre_activity.c["IsDeleted"] == False
+            centre_activity.c["IsDeleted"] == False,
+            centre_activity.c["StartDate"] < get_monday(),
         )
 
         return query
@@ -115,6 +119,7 @@ class PatientsView(BaseView):
         ).where(
             centre_activity_preference.c["IsLike"] > 0,
             centre_activity_preference.c["IsDeleted"] == False,
+            centre_activity.c["StartDate"] < get_monday(),
         ).cte()
 
         query: Select = select(
@@ -155,6 +160,7 @@ class PatientsUnpreferredView(BaseView):
             centre_activity_preference.c["IsLike"] == 0,
             centre_activity_preference.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
+            centre_activity.c["StartDate"] < get_monday(),
         ).cte()
 
         query: Select = select(
@@ -205,9 +211,10 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity.c["IsCompulsory"] == False
-        ).where(or_(
+        ).where(
         centre_activity.c["EndDate"] > get_next_sunday(),
-        )) #EndDate has been moved from ActivityTable to CentreActivity Table
+        ).where(centre_activity.c["StartDate"] < get_monday(),
+        ) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -231,6 +238,7 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity_preference.c["IsDeleted"] == False
+        ).where(centre_activity.c["StartDate"] < get_monday(),
         )
 
 
@@ -256,6 +264,7 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity_recommendation.c["IsDeleted"] == False
+        ).where(centre_activity.c["StartDate"] < get_monday(),
         )
 
 
@@ -347,6 +356,7 @@ class RecommendedActivitiesView(BaseView):
             recommendations.c["IsDeleted"] == False,
             recommendations.c["DoctorRecommendation"] > 0,
             centre_activity.c["IsGroup"] == False,
+            centre_activity.c["StartDate"] < get_monday(),
         )
 
         return query
