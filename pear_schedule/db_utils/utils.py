@@ -5,6 +5,10 @@ def compile_query(query: Select) -> str:
     # literal binds might cause errors if datetime is ever used
     return query.compile(compile_kwargs={"literal_binds": True})
 
+def get_monday():
+    today=datetime.now()
+    monday = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
+    return monday
 
 def get_next_sunday():
     today = datetime.now()
