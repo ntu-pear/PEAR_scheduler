@@ -208,7 +208,7 @@ def create_patient_deleted_message(patient_id: int, patient_data: Dict[str, Any]
             "correlation_id": correlation_id,
             "event_type": "PATIENT_DELETED",
             "patient_id": patient_id,
-            "patient_date": patient_data,
+            "patient_data": patient_data,
             "deleted_by": "test-user",
             "deleted_by_name": "Test User",
             "timestamp": datetime.now().isoformat()
