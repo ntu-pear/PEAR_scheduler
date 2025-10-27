@@ -27,7 +27,7 @@ class DB:
     @classmethod
     def init_app(cls, conn_str: str, config: Dict):
         logger.info("Connecting to DB")
-        cls.engine = create_engine(conn_str, echo=True)
+        cls.engine = create_engine(conn_str, echo=False)
         logger.info("Connected to DB")
         
         # Create sessionmaker for ORM operations
