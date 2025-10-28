@@ -61,8 +61,8 @@ class AllActivitiesView(BaseView):
         ).join(
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
-            centre_activity.c["IsDeleted"] == False,
-            centre_activity.c["StartDate"] < get_monday(),
+            #centre_activity.c["IsDeleted"] == False,
+            #centre_activity.c["StartDate"] < get_monday(),
         )
 
         return query
@@ -211,6 +211,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity.c["IsCompulsory"] == False
+        ).where(centre_activity.c["IsDeleted"] == False
         ).where(
         centre_activity.c["EndDate"] > get_next_sunday(),
         ).where(centre_activity.c["StartDate"] < get_monday(),
