@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class RefActivityPreferenceBase(BaseModel):
     PatientID: int
@@ -18,8 +20,10 @@ class RefActivityPreferenceCreate(RefActivityPreferenceBase):
 
 
 class RefActivityPreferenceUpdate(BaseModel):
-    PatientId: Optional[int] = None
-    ActivityId: Optional[int] = None
+    # PatientId: Optional[int] = None
+    # ActivityId: Optional[int] = None
+    PatientID: Optional[int] = None
+    ActivityID: Optional[int] = None
     IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
     IsLike: Optional[str] = Field(None, pattern=r"^(0|1|-1)$", json_schema_extra={"example": "0"})
     UpdatedDateTime: datetime
