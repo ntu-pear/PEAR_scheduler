@@ -11,7 +11,7 @@ DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY] WHERE ActivityID 
 
 import json
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import datetime, date, timedelta
 from typing import Any, Dict
 
 import pytest
@@ -23,8 +23,8 @@ from pear_schedule.models.processed_events_model import (
     MessageProcessingResult,
     ProcessedEvent,
 )
-from pear_schedule.models.ref_activity_model import RefActivity
 from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
+from pear_schedule.models.ref_activity_model import RefActivity
 from pear_schedule.schemas.ref_centre_activity import (
     RefCentreActivityCreate,
     RefCentreActivityDelete,
@@ -129,7 +129,7 @@ def mock_centre_activity_data():
     """
     return {
         "id": 5001,
-        "activity_id": 1,
+        "activity_id": 1,  # ✅ activity_id references REF_ACTIVITY
         "is_compulsory": True,
         "is_fixed": False,
         "is_group": True,
@@ -154,7 +154,7 @@ def mock_centre_activity_data_for_idempotency_check():
     """
     return {
         "id": 5002,
-        "activity_id": 2,
+        "activity_id": 2,  # ✅ activity_id references REF_ACTIVITY
         "is_compulsory": False,
         "is_fixed": True,
         "is_group": False,
@@ -174,29 +174,29 @@ def mock_centre_activity_data_for_idempotency_check():
 
 # Uncomment this when you are testing to ensure clean state.
 # NOTE (IMPORTANT): This will delete ALL records in the tables after each test function, so make sure you point to the testing DB, and not PROD!
-@pytest.fixture(autouse=True)
-def cleanup_test_data(integration_db):
-    """
-    Cleanup fixture that runs after each test.
-    Deletes all test data created during the test.
-    """
-    # This runs BEFORE the test
-    yield
+# @pytest.fixture(autouse=True)
+# def cleanup_test_data(integration_db):
+#     """
+#     Cleanup fixture that runs after each test.
+#     Deletes all test data created during the test.
+#     """
+#     # This runs BEFORE the test
+#     yield
     
-    # This runs AFTER the test - cleanup
-    try:
-        # Delete all processed events first
-        integration_db.query(ProcessedEvent).delete()
-        integration_db.commit()
+#     # This runs AFTER the test - cleanup
+#     try:
+#         # Delete all processed events first
+#         integration_db.query(ProcessedEvent).delete()
+#         integration_db.commit()
         
-        # Delete all ref centre activities
-        integration_db.query(RefCentreActivity).delete()
-        integration_db.commit()
+#         # Delete all ref centre activities
+#         integration_db.query(RefCentreActivity).delete()
+#         integration_db.commit()
         
-        print("\n[CLEANUP] Test data cleared successfully")
-    except Exception as e:
-        integration_db.rollback()
-        print(f"\n[CLEANUP] Warning: Failed to cleanup test data: {str(e)}")
+#         print("\n[CLEANUP] Test data cleared successfully")
+#     except Exception as e:
+#         integration_db.rollback()
+#         print(f"\n[CLEANUP] Warning: Failed to cleanup test data: {str(e)}")
 
 
 # ===== Helper Functions =====
@@ -302,7 +302,7 @@ class TestConsumerCentreActivityCreate:
         ).first()
         
         assert ref_centre_activity is not None
-        assert ref_centre_activity.ActivityID == mock_centre_activity_data["activity_id"]
+        assert ref_centre_activity.ActivityID == mock_centre_activity_data["activity_id"]  # ✅ ActivityID in DB
         assert ref_centre_activity.IsCompulsory == "1"  # True -> "1"
         assert ref_centre_activity.IsFixed == "0"  # False -> "0"
         assert ref_centre_activity.IsGroup == "1"  # True -> "1"
@@ -508,7 +508,7 @@ class TestConsumerCentreActivityUpdate:
         
         # Update the centre activity
         updated_data = mock_centre_activity_data.copy()
-        updated_data["activity_id"] = 3
+        updated_data["activity_id"] = 3  # ✅ Change to ActivityID 3
         updated_data["min_duration"] = 45
         updated_data["max_duration"] = 90
         updated_data["is_compulsory"] = False
@@ -536,7 +536,7 @@ class TestConsumerCentreActivityUpdate:
         ).first()
         
         assert ref_centre_activity is not None
-        assert ref_centre_activity.ActivityID == 3
+        assert ref_centre_activity.ActivityID == 3  # ✅ ActivityID in DB
         assert ref_centre_activity.MinDuration == 45
         assert ref_centre_activity.MaxDuration == 90
         assert ref_centre_activity.IsCompulsory == "0"  # False -> "0"
@@ -570,7 +570,7 @@ class TestConsumerCentreActivityUpdate:
         
         non_existent_data = {
             "id": 99999,
-            "activity_id": 1,
+            "activity_id": 1,  # ✅ activity_id
             "is_compulsory": False,
             "is_fixed": False,
             "is_group": False,
@@ -627,7 +627,7 @@ class TestConsumerCentreActivityUpdate:
         
         # Update the centre activity
         updated_data = mock_centre_activity_data.copy()
-        updated_data["activity_id"] = 3
+        updated_data["activity_id"] = 3  # ✅ activity_id
         updated_data["min_duration"] = 50
         updated_data["modified_date"] = datetime.now().isoformat()
         
@@ -687,7 +687,7 @@ class TestConsumerCentreActivityUpdate:
         
         # Update message
         updated_data = mock_centre_activity_data.copy()
-        updated_data["activity_id"] = 3
+        updated_data["activity_id"] = 3  # ✅ activity_id
         updated_data["min_duration"] = 40
         updated_data["modified_date"] = datetime.now().isoformat()
         
@@ -807,7 +807,7 @@ class TestConsumerCentreActivityDelete:
         
         non_existent_data = {
             "id": 99999,
-            "activity_id": 1,
+            "activity_id": 1,  # ✅ activity_id
             "is_compulsory": False,
             "is_fixed": False,
             "is_group": False,
