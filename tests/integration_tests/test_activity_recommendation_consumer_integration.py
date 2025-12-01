@@ -13,7 +13,7 @@ DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_PATIENT] WHERE PatientID IN
 
 import json
 import uuid
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Any, Dict
 
 import pytest
@@ -25,8 +25,10 @@ from pear_schedule.models.processed_events_model import (
     MessageProcessingResult,
     ProcessedEvent,
 )
-from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
 from pear_schedule.models.ref_activity_model import RefActivity
+from pear_schedule.models.ref_activity_recommendation_model import (
+    RefActivityRecommendation,
+)
 from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_patient_model import RefPatient
 from pear_schedule.schemas.ref_activity_recommendation import (
@@ -241,8 +243,8 @@ def mock_recommendation_data():
     """
     return {
         "id": 4001,
-        "patient_id": 1,  # ✅ Integer
-        "centre_activity_id": 101,  # ✅ centre_activity_id (snake_case from Activity Service)
+        "patient_id": 1,
+        "centre_activity_id": 101,
         "doctor_id": "DOC-001",
         "doctor_recommendation": "1",
         "doctor_remarks": "Highly recommended for patient recovery",
@@ -261,8 +263,8 @@ def mock_recommendation_data_for_idempotency_check():
     """
     return {
         "id": 4002,
-        "patient_id": 2,  # ✅ Integer
-        "centre_activity_id": 102,  # ✅ centre_activity_id (snake_case from Activity Service)
+        "patient_id": 2, 
+        "centre_activity_id": 102,
         "doctor_id": "DOC-002",
         "doctor_recommendation": "1",
         "doctor_remarks": "Good for physical therapy",
@@ -276,29 +278,29 @@ def mock_recommendation_data_for_idempotency_check():
 
 # Uncomment this when you are testing to ensure clean state.
 # NOTE (IMPORTANT): This will delete ALL records in the tables after each test function, so make sure you point to the testing DB, and not PROD!
-# @pytest.fixture(autouse=True)
-# def cleanup_test_data(integration_db):
-#     """
-#     Cleanup fixture that runs after each test.
-#     Deletes all test data created during the test.
-#     """
-#     # This runs BEFORE the test
-#     yield
+@pytest.fixture(autouse=True)
+def cleanup_test_data(integration_db):
+    """
+    Cleanup fixture that runs after each test.
+    Deletes all test data created during the test.
+    """
+    # This runs BEFORE the test
+    yield
     
-#     # This runs AFTER the test - cleanup
-#     try:
-#         # Delete all processed events first
-#         integration_db.query(ProcessedEvent).delete()
-#         integration_db.commit()
+    # This runs AFTER the test - cleanup
+    try:
+        # Delete all processed events first
+        integration_db.query(ProcessedEvent).delete()
+        integration_db.commit()
         
-#         # Delete all ref activity recommendations
-#         integration_db.query(RefActivityRecommendation).delete()
-#         integration_db.commit()
+        # Delete all ref activity recommendations
+        integration_db.query(RefActivityRecommendation).delete()
+        integration_db.commit()
         
-#         print("\n[CLEANUP] Test data cleared successfully")
-#     except Exception as e:
-#         integration_db.rollback()
-#         print(f"\n[CLEANUP] Warning: Failed to cleanup test data: {str(e)}")
+        print("\n[CLEANUP] Test data cleared successfully")
+    except Exception as e:
+        integration_db.rollback()
+        print(f"\n[CLEANUP] Warning: Failed to cleanup test data: {str(e)}")
 
 
 # ===== Helper Functions =====
@@ -405,7 +407,7 @@ class TestConsumerActivityRecommendationCreate:
         
         assert ref_recommendation is not None
         assert ref_recommendation.PatientID == mock_recommendation_data["patient_id"]
-        assert ref_recommendation.CentreActivityID == mock_recommendation_data["centre_activity_id"]  # ✅ CentreActivityID in DB
+        assert ref_recommendation.CentreActivityID == mock_recommendation_data["centre_activity_id"]
         assert ref_recommendation.DoctorID == mock_recommendation_data["doctor_id"]
         assert ref_recommendation.IsDeleted == "0"
         
@@ -606,7 +608,7 @@ class TestConsumerActivityRecommendationUpdate:
         
         # Update the recommendation
         updated_data = mock_recommendation_data.copy()
-        updated_data["centre_activity_id"] = 999  # ✅ Change to CentreActivityID 999
+        updated_data["centre_activity_id"] = 999
         updated_data["doctor_remarks"] = "Updated recommendation remarks"
         updated_data["modified_date"] = datetime.now().isoformat()
         
@@ -632,7 +634,7 @@ class TestConsumerActivityRecommendationUpdate:
         ).first()
         
         assert ref_recommendation is not None
-        assert ref_recommendation.CentreActivityID == 999  # ✅ CentreActivityID in DB
+        assert ref_recommendation.CentreActivityID == 999
         assert ref_recommendation.DoctorRemarks == "Updated recommendation remarks"
         assert ref_recommendation.IsDeleted == "0"
         
@@ -663,8 +665,8 @@ class TestConsumerActivityRecommendationUpdate:
         
         non_existent_data = {
             "id": 99999,
-            "patient_id": 99999,  # ✅ Integer
-            "centre_activity_id": 999,  # ✅ centre_activity_id
+            "patient_id": 99999,
+            "centre_activity_id": 999,
             "doctor_id": "DOC-999",
             "doctor_recommendation": "1",
             "doctor_remarks": "Test",
@@ -715,7 +717,7 @@ class TestConsumerActivityRecommendationUpdate:
         
         # Update the recommendation
         updated_data = mock_recommendation_data.copy()
-        updated_data["centre_activity_id"] = 999  # ✅ centre_activity_id
+        updated_data["centre_activity_id"] = 999
         updated_data["doctor_remarks"] = "Updated remarks for idempotency test"
         updated_data["modified_date"] = datetime.now().isoformat()
         
@@ -775,7 +777,7 @@ class TestConsumerActivityRecommendationUpdate:
         
         # Update message
         updated_data = mock_recommendation_data.copy()
-        updated_data["centre_activity_id"] = 999  # ✅ centre_activity_id
+        updated_data["centre_activity_id"] = 999
         updated_data["doctor_remarks"] = "Test database error"
         updated_data["modified_date"] = datetime.now().isoformat()
         
@@ -895,8 +897,8 @@ class TestConsumerActivityRecommendationDelete:
         
         non_existent_data = {
             "id": 99999,
-            "patient_id": 99999,  # ✅ Integer
-            "centre_activity_id": 999,  # ✅ centre_activity_id
+            "patient_id": 99999,
+            "centre_activity_id": 999,
             "doctor_id": "DOC-999",
             "doctor_recommendation": "1",
             "doctor_remarks": "Test",
