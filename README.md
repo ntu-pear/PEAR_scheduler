@@ -1,6 +1,6 @@
 # Installation
 
-## For any unix or other non-joke OS use the makefile
+## For any unix OS use the makefile
 
 `make build`
 
