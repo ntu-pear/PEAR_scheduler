@@ -83,42 +83,6 @@ def mock_patient_data():
         'ModifiedById': 'test-user-1',
         'isDeleted': '0'
     }
-@pytest.fixture
-def mock_patient_data_for_idempotency_check():
-    """
-    Mock patient data matching the Patient Service schema
-    """
-    return {
-        "id": 1002,
-        'name': 'Test Idempotent Name',
-        'nric': 'S1234567A',
-        'address': "Test Address",
-        'tempAddress': "Test Temp Address",
-        'homeNo': 'Test Home No',
-        'handphoneNo': 'Test Hand Phone No',
-        'gender': 'M',
-        'dateOfBirth': datetime(1920, 1, 1),
-        'isApproved': '1',
-        'preferredName': 'Test Preferred Name',
-        'preferredLanguageId': 2,
-        'updateBit': '1',
-        'autoGame': '0',
-        'startDate': '2024-01-01T00:00:00',
-        'endDate': '2024-12-31T00:00:00',
-        'isActive': '1',
-        'isRespiteCare': '0',
-        'privacyLevel': '0',
-        'terminationReason': 'Test Termination Reason',
-        'inActiveReason': 'Test Inactive Reason',
-        'inActiveDate': datetime(2020, 1, 1),
-        'profilePicture': 'Test Profile Picture',
-        'createdDate': datetime(2020, 1, 1),
-        'modifiedDate': datetime(2020, 1, 1),
-        'CreatedById': 'test-user-1',
-        'ModifiedById': 'test-user-1',
-        'isDeleted': '0'
-    }
-
 
 @pytest.fixture(autouse=True)
 def cleanup_test_data(integration_db):
