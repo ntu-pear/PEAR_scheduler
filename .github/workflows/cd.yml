@@ -90,3 +90,7 @@ jobs:
       - name: Deploy to Kubernetes
         run: |
           kubectl apply -f ./k8s/scheduler_deployment_dev.yaml
+          
+      - name: Deploy CronJob (scheduler_cronjob.yaml)
+        run: |
+          kubectl apply -f ./k8s/scheduler_cronjob.yaml
