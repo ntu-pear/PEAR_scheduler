@@ -1,0 +1,22 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scheduler-service-getschedule
+spec:
+  # Everyday at 00:00
+  schedule: "0 0 * * *"
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          containers:
+          - name: curl-job
+            image: curlimages/curl:8.9.0
+            args:
+              - /bin/sh
+              - -c
+              - |
+                echo "Triggering scheduler-service-dev /schedule/regenerate/..."
+                curl -X GET http://scheduler-service-dev.default.svc.cluster.local:8080/schedule/generate/ || exit 1
+          restartPolicy: OnFailure
