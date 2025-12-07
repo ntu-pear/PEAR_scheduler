@@ -88,6 +88,7 @@ class ActivitiesView(BaseView):
         ).where(
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["IsDeleted"] == False
+            centre_activity.c["IsDeleted"] == False
         )
 
         return query
@@ -155,6 +156,7 @@ class PatientsUnpreferredView(BaseView):
             centre_activity_preference.c["IsLike"] == 0,
             centre_activity_preference.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
         ).cte()
 
         query: Select = select(
@@ -205,6 +207,9 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
         ).where(centre_activity.c["IsCompulsory"] == False
+        ).where(or_(
+        centre_activity.c["EndDate"] > get_next_sunday(),
+        centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
         ).where(or_(
         centre_activity.c["EndDate"] > get_next_sunday(),
         centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
@@ -319,6 +324,11 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
                 centre_activity.c["EndDate"] == None
             )
         ) #EndDate has been moved from ActivityTable to CentreActivity Table
+        ).where(centre_activity.c["IsCompulsory"] == True
+        ).where(centre_activity.c["IsDeleted"] == False
+        ).where(or_(
+        centre_activity.c["EndDate"] > get_next_sunday(),
+        centre_activity.c["EndDate"].is_(None))) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
     
@@ -507,11 +517,14 @@ class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
         
         schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
+        patient = schema.tables[cls.db_tables.PATIENT_TABLE]
         curDateTime = datetime.now()
+        subquery = select(patient.c.Name).where(patient.c.PatientID == schedule.c.PatientID).scalar_subquery()
         subquery = select(patient.c.Name).where(patient.c.PatientID == schedule.c.PatientID).scalar_subquery()
         query: Select = select(
             schedule.c["ScheduleID"],
             schedule.c["PatientID"],
+            subquery.label("Name"),
             subquery.label("Name"),
             schedule.c["Monday"],
             schedule.c["Tuesday"],
