@@ -136,8 +136,7 @@ def update_ref_patient(
     def update_operation():
         # Find the patient to update
         db_patient = db.query(RefPatient).filter(
-            RefPatient.PatientID == patient_id,
-            RefPatient.IsDeleted == "0"
+            RefPatient.PatientID == patient_id
         ).first()
         
         if not db_patient:

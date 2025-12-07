@@ -162,8 +162,7 @@ def update_ref_centre_activity(
     
     def update_operation():
         db_centre_activity = db.query(RefCentreActivity).filter(
-            RefCentreActivity.CentreActivityID == centre_activity_id,
-            RefCentreActivity.IsDeleted == "0"
+            RefCentreActivity.CentreActivityID == centre_activity_id
         ).first()
         
         if not db_centre_activity:
