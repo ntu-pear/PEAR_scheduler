@@ -146,8 +146,7 @@ def update_ref_activity_recommendation(
     
     def update_operation():
         db_recommendation = db.query(RefActivityRecommendation).filter(
-            RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id,
-            RefActivityRecommendation.IsDeleted == "0"
+            RefActivityRecommendation.CentreActivityRecommendationID == recommendation_id
         ).first()
         
         if not db_recommendation:

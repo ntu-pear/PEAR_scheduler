@@ -140,8 +140,7 @@ def update_ref_patient_medication(
     def update_operation():
         # Find the medication to update
         db_medication = db.query(RefPatientMedication).filter(
-            RefPatientMedication.MedicationID == medication_id,
-            RefPatientMedication.IsDeleted == "0"
+            RefPatientMedication.MedicationID == medication_id
         ).first()
         
         if not db_medication:

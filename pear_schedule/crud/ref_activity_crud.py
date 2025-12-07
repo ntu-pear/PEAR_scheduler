@@ -132,8 +132,7 @@ def update_ref_activity(
     def update_operation():
         # Find the activity to update
         db_activity = db.query(RefActivity).filter(
-            RefActivity.ActivityID == activity_id,
-            RefActivity.IsDeleted == "0"
+            RefActivity.ActivityID == activity_id
         ).first()
         
         if not db_activity:

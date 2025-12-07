@@ -142,8 +142,7 @@ def update_ref_activity_preference(
     
     def update_operation():
         db_preference = db.query(RefActivityPreference).filter(
-            RefActivityPreference.CentreActivityPreferenceID == preference_id,
-            RefActivityPreference.IsDeleted == "0"
+            RefActivityPreference.CentreActivityPreferenceID == preference_id
         ).first()
         
         if not db_preference:
