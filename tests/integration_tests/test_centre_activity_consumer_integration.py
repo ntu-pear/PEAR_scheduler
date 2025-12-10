@@ -15,6 +15,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from messaging.centre_activity_consumer import CentreActivityConsumer
@@ -32,7 +33,6 @@ from pear_schedule.schemas.ref_centre_activity import (
 )
 
 # ===== Database Fixture =====
-
 @pytest.fixture(scope="function")
 def integration_db():
     """
@@ -177,26 +177,46 @@ def mock_centre_activity_data_for_idempotency_check():
 @pytest.fixture(autouse=True)
 def cleanup_test_data(integration_db):
     """
-    Cleanup fixture that runs after each test.
-    Deletes all test data created during the test.
+    Cleanup fixture that runs before and after after each test.
+    This ensures a clean start
     """
-    # This runs BEFORE the test
+    def cleanup():
+        """Helper to perform cleanup"""
+        try:
+            # Delete processed events
+            integration_db.query(ProcessedEvent).delete()
+            integration_db.commit()
+            
+            # Delete child records first (FK constraint)
+            integration_db.execute(text("""
+                DELETE FROM [REF_CENTRE_ACTIVITY] WHERE CentreActivityID IN (5001, 5002, 5003, 5005);
+            """))
+            integration_db.commit()
+            
+            # Delete parent records
+            integration_db.execute(text("""
+                DELETE FROM [REF_ACTIVITY] WHERE ActivityID IN (1, 2, 3);
+            """))
+            integration_db.commit()
+            return True
+        except Exception as e:
+            integration_db.rollback()
+            print(f"\n[CLEANUP] Warning: {str(e)}")
+            return False
+    
+    # Cleaning up before the test
+    print("\n[CLEANUP] Running pre-test cleanup...")
+    cleanup()
+    
+    # Triggered during test
     yield
     
-    # This runs AFTER the test - cleanup
-    try:
-        # Delete all processed events first
-        integration_db.query(ProcessedEvent).delete()
-        integration_db.commit()
-        
-        # Delete all ref centre activities
-        integration_db.query(RefCentreActivity).delete()
-        integration_db.commit()
-        
-        print("\n[CLEANUP] Test data cleared successfully")
-    except Exception as e:
-        integration_db.rollback()
-        print(f"\n[CLEANUP] Warning: Failed to cleanup test data: {str(e)}")
+    # Cleaning up after the test
+    print("\n[CLEANUP] Running post-test cleanup...")
+    if cleanup():
+        print("[CLEANUP] Test data cleared successfully")
+    else:
+        print("[CLEANUP] Test data cleanup had warnings")
 
 
 # ===== Helper Functions =====

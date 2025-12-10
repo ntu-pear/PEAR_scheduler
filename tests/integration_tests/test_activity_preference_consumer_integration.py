@@ -2,7 +2,6 @@
 Integration tests for Scheduler Service Activity Preference Consumer
 Tests the flow: RabbitMQ Message → Activity Preference Consumer → REF_ACTIVITY_PREFERENCE table update → PROCESSED_EVENTS tracking
 
-Run Pytest with command: pytest tests/integration_tests/test_activity_preference_consumer_integration.py -v -s
 SQL Commands to clear DB:
 DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY_PREFERENCE];
 DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
@@ -29,14 +28,8 @@ from pear_schedule.models.ref_activity_model import RefActivity
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
 from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_patient_model import RefPatient
-from pear_schedule.schemas.ref_activity_preference import (
-    RefActivityPreferenceCreate,
-    RefActivityPreferenceDelete,
-    RefActivityPreferenceUpdate,
-)
 
 # ===== Database Fixture =====
-
 @pytest.fixture(scope="function")
 def integration_db():
     """
@@ -64,9 +57,12 @@ def setup_test_data(integration_db):
     if not existing_patient_1:
         patient_1 = RefPatient(
             PatientID=1,
-            FirstName="Test",
-            LastName="Patient 1",
             IsDeleted="0",
+            Name="Test",
+            PreferredName="Patient 2",
+            UpdateBit="1",
+            StartDate=datetime.now(),
+            EndDate=datetime.now(),
             CreatedDateTime=datetime.now(),
             UpdatedDateTime=datetime.now(),
             CreatedById="test-user",
@@ -78,9 +74,12 @@ def setup_test_data(integration_db):
     if not existing_patient_2:
         patient_2 = RefPatient(
             PatientID=2,
-            FirstName="Test",
-            LastName="Patient 2",
             IsDeleted="0",
+            Name="Test",
+            PreferredName="Patient 2",
+            UpdateBit="1",
+            StartDate=datetime.now(),
+            EndDate=datetime.now(),
             CreatedDateTime=datetime.now(),
             UpdatedDateTime=datetime.now(),
             CreatedById="test-user",

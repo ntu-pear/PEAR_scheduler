@@ -1,11 +1,6 @@
 """
 Integration tests for Scheduler Service Activity Consumer
 Tests the flow: RabbitMQ Message → Activity Consumer → REF_ACTIVITY table update → PROCESSED_EVENTS tracking
-
-Run Pytest with command: pytest tests/integration_tests/test_activity_consumer_integration.py -v -s
-SQL Commands to clear DB:
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
 """
 
 import json
@@ -14,6 +9,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from messaging.activity_consumer import ActivityConsumer
@@ -23,14 +19,8 @@ from pear_schedule.models.processed_events_model import (
     ProcessedEvent,
 )
 from pear_schedule.models.ref_activity_model import RefActivity
-from pear_schedule.schemas.ref_activity import (
-    RefActivityCreate,
-    RefActivityDelete,
-    RefActivityUpdate,
-)
 
 # ===== Database Fixture =====
-
 @pytest.fixture(scope="function")
 def integration_db():
     """
@@ -93,27 +83,48 @@ def mock_activity_data_for_indempotency_check():
 @pytest.fixture(autouse=True)
 def cleanup_test_data(integration_db):
     """
-    Cleanup fixture that runs after each test.
-    Deletes all test data created during the test.
+    Cleanup fixture that runs before and after after each test.
+    This ensures a clean start
     """
-    # This runs BEFORE the test
+    def cleanup():
+        """Helper to perform cleanup"""
+        try:
+            # Delete processed events
+            integration_db.query(ProcessedEvent).delete()
+            integration_db.commit()
+            
+            # Delete child records first (FK constraint)
+            integration_db.execute(text("""
+                DELETE FROM [REF_CENTRE_ACTIVITY] 
+                WHERE ActivityID IN (1001, 1002, 1003, 1004, 1005)
+            """))
+            integration_db.commit()
+            
+            # Delete parent records
+            integration_db.execute(text("""
+                DELETE FROM [REF_ACTIVITY] 
+                WHERE ActivityID IN (1001, 1002, 1003, 1004, 1005)
+            """))
+            integration_db.commit()
+            return True
+        except Exception as e:
+            integration_db.rollback()
+            print(f"\n[CLEANUP] Warning: {str(e)}")
+            return False
+    
+    # Cleaning up before the test
+    print("\n[CLEANUP] Running pre-test cleanup...")
+    cleanup()
+    
+    # Triggered during test
     yield
     
-    # This runs AFTER the test - cleanup
-    try:
-        # Delete all processed events first
-        integration_db.query(ProcessedEvent).delete()
-        integration_db.commit()
-        
-        # Delete all ref activities
-        integration_db.query(RefActivity).delete()
-        integration_db.commit()
-        
-        print("\n[CLEANUP] Test data cleared successfully")
-    except Exception as e:
-        integration_db.rollback()
-        print(f"\n[CLEANUP] Warning: Failed to cleanup test data: {str(e)}")
-
+    # Cleaning up after the test
+    print("\n[CLEANUP] Running post-test cleanup...")
+    if cleanup():
+        print("[CLEANUP] Test data cleared successfully")
+    else:
+        print("[CLEANUP] Test data cleanup had warnings")
 
 # ===== Helper Functions =====
 

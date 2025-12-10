@@ -31,14 +31,8 @@ from pear_schedule.models.ref_activity_recommendation_model import (
 )
 from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_patient_model import RefPatient
-from pear_schedule.schemas.ref_activity_recommendation import (
-    RefActivityRecommendationCreate,
-    RefActivityRecommendationDelete,
-    RefActivityRecommendationUpdate,
-)
 
 # ===== Database Fixture =====
-
 @pytest.fixture(scope="function")
 def integration_db():
     """
