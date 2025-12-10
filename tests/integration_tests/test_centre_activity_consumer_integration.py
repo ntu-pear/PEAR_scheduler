@@ -1,12 +1,6 @@
 """
 Integration tests for Scheduler Service Centre Activity Consumer
 Tests the flow: RabbitMQ Message → Centre Activity Consumer → REF_CENTRE_ACTIVITY table update → PROCESSED_EVENTS tracking
-
-Run Pytest with command: pytest tests/integration_tests/test_centre_activity_consumer_integration.py -v -s
-SQL Commands to clear DB:
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_CENTRE_ACTIVITY] WHERE CentreActivityID IN (5001, 5002, 5003, 5005);
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY] WHERE ActivityID IN (1, 2, 3);
 """
 
 import json

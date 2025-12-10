@@ -1,13 +1,6 @@
 """
 Integration tests for Scheduler Service Activity Exclusion Consumer
 Tests the flow: RabbitMQ Message → Activity Exclusion Consumer → REF_ACTIVITY_EXCLUSION table update → PROCESSED_EVENTS tracking
-
-Run Pytest with command: pytest tests/integration_tests/test_activity_exclusion_consumer_integration.py -v -s
-SQL Commands to clear DB:
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY_EXCLUSION];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY] WHERE ActivityID IN (101, 102, 999);
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_PATIENT] WHERE PatientID IN (1, 2);
 """
 
 import json

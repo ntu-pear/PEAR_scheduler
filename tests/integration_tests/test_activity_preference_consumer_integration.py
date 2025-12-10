@@ -1,14 +1,6 @@
 """
 Integration tests for Scheduler Service Activity Preference Consumer
 Tests the flow: RabbitMQ Message → Activity Preference Consumer → REF_ACTIVITY_PREFERENCE table update → PROCESSED_EVENTS tracking
-
-Run Pytest with command: pytest tests/integration_tests/test_activity_preference_consumer_integration.py -v -s
-SQL Commands to clear DB:
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY_PREFERENCE];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_CENTRE_ACTIVITY] WHERE CentreActivityID IN (101, 102, 999);
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY] WHERE ActivityID IN (1, 2, 3);
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_PATIENT] WHERE PatientID IN (1, 2);
 """
 
 import json
@@ -64,9 +56,12 @@ def setup_test_data(integration_db):
     if not existing_patient_1:
         patient_1 = RefPatient(
             PatientID=1,
-            FirstName="Test",
-            LastName="Patient 1",
             IsDeleted="0",
+            Name="Test",
+            PreferredName="Patient 1",
+            UpdateBit="1",
+            StartDate=datetime.now(),
+            EndDate=datetime.now(),
             CreatedDateTime=datetime.now(),
             UpdatedDateTime=datetime.now(),
             CreatedById="test-user",
@@ -78,14 +73,27 @@ def setup_test_data(integration_db):
     if not existing_patient_2:
         patient_2 = RefPatient(
             PatientID=2,
-            FirstName="Test",
-            LastName="Patient 2",
             IsDeleted="0",
+            Name="Test",
+            PreferredName="Patient 2",
+            UpdateBit="1",
+            StartDate=datetime.now(),
+            EndDate=datetime.now(),
             CreatedDateTime=datetime.now(),
             UpdatedDateTime=datetime.now(),
             CreatedById="test-user",
             ModifiedById="test-user"
         )
+        
+    #         PatientID = Column(Integer, primary_key=True, index=True)
+    # IsDeleted = Column(String(1), default='0', nullable=False)
+    # Name = Column(String(255), nullable=False)
+    # PreferredName = Column(String(255))
+    # UpdateBit = Column(String(1), default="1", nullable=False)
+    # StartDate = Column(DateTime, nullable=False)
+    # EndDate = Column(DateTime)
+    # IsActive = Column(String(1), default="1", nullable=False)
+        
         integration_db.add(patient_2)
         patients_created.append(2)
     

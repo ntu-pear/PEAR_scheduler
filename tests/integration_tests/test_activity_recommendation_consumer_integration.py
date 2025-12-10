@@ -1,14 +1,6 @@
 """
 Integration tests for Scheduler Service Activity Recommendation Consumer
 Tests the flow: RabbitMQ Message → Activity Recommendation Consumer → REF_ACTIVITY_RECOMMENDATION table update → PROCESSED_EVENTS tracking
-
-Run Pytest with command: pytest tests/integration_tests/test_activity_recommendation_consumer_integration.py -v -s
-SQL Commands to clear DB:
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY_RECOMMENDATION];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[PROCESSED_EVENTS];
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_CENTRE_ACTIVITY] WHERE CentreActivityID IN (101, 102, 999);
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_ACTIVITY] WHERE ActivityID IN (1, 2, 3);
-DELETE FROM [fyp_dev_bryan_activity_test].[dbo].[REF_PATIENT] WHERE PatientID IN (1, 2);
 """
 
 import json
