@@ -71,8 +71,8 @@ class MapperUtil:
                     'AdministerTime': 'AdministerTime',
                     'Dosage': 'Dosage',
                     'Instruction': 'Instruction',
-                    'StartDate': 'StartDateTime',
-                    'EndDate': 'EndDateTime',
+                    'StartDate': 'StartDate',
+                    'EndDate': 'EndDate',
                     'PrescriptionRemarks': 'PrescriptionRemarks',
                     'IsDeleted': 'IsDeleted',
                     'CreatedDateTime': 'CreatedDateTime',
@@ -83,8 +83,8 @@ class MapperUtil:
                 'field_transforms': {
                     # Special transformations (target_field: transform_function)
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
-                    'StartDateTime': lambda x: self._parse_datetime(x),
-                    'EndDateTime': lambda x: self._parse_datetime(x),
+                    'StartDate': lambda x: self._parse_datetime(x),
+                    'EndDate': lambda x: self._parse_datetime(x),
                     'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                     'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
                     'Dosage': lambda x: str(x) if x is not None else "",
