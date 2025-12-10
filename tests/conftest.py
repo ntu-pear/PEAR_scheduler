@@ -23,7 +23,7 @@ def db_session_mock():
 def sample_ref_patient():
     """Create a sample RefPatient instance"""
     return RefPatient(
-        PatientID=1,
+        Id=1,
         Name="John Doe",
         PreferredName="John",
         UpdateBit="1",
@@ -172,14 +172,17 @@ def sample_centre_activity():
 def sample_patient_medication():
     """Create a sample RefPatientMedication instance"""
     return RefPatientMedication(
-        MedicationID=1,
-        PatientID=1,
+        Id=1,
+        PatientId=1,
         PrescriptionName="Aspirin",
         Dosage="1 tablet",
+        FrequencyPerDay=1,
         Instruction="Take with food",
-        StartDateTime=datetime(2024, 1, 1),
-        EndDateTime=datetime(2024, 12, 31),
+        StartDate=datetime(2024, 1, 1),
+        EndDate=datetime(2024, 12, 31),
+        IsAfterMeal="1",
         PrescriptionRemarks="For blood thinning",
+        Status="Active",
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
         UpdatedDateTime=datetime.now(),
