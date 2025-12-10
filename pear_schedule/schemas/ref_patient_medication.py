@@ -8,8 +8,8 @@ class RefPatientMedicationBase(BaseModel):
     Dosage: str
     AdministerTime: str
     Instruction: str
-    StartDateTime: datetime
-    EndDateTime: Optional[datetime] = None
+    StartDate: datetime
+    EndDate: Optional[datetime] = None
     PrescriptionRemarks: str
     IsDeleted: Optional[str] = Field(default="0", json_schema_extra={"example": "0"})
 
@@ -42,7 +42,7 @@ class RefPatientMedicationDelete(BaseModel):
 
 
 class RefPatientMedication(RefPatientMedicationBase):
-    MedicationID: int
+    Id: int
     CreatedDateTime: datetime
     UpdatedDateTime: datetime 
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
