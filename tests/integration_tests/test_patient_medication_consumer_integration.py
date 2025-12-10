@@ -155,11 +155,15 @@ def cleanup_test_data(integration_db):
         integration_db.commit()
 
         # Delete all ref patient medication
-        integration_db.query(RefPatientMedication).delete()
+        integration_db.query(RefPatientMedication).filter(
+            RefPatientMedication.CreatedById == 'test-user-1'
+        ).delete()
         integration_db.commit()
 
         # Delete all ref patients
-        integration_db.query(RefPatient).delete()
+        integration_db.query(RefPatient).filter(
+            RefPatient.CreatedById == 'test-user-1'
+        ).delete()
         integration_db.commit()
 
         print("\n[CLEANUP] Test data cleared successfully")
