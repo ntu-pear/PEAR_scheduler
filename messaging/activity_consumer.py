@@ -220,16 +220,17 @@ class ActivityConsumer:
                 
                 # Transaction will be committed automatically by context manager
                 logger.debug(f"Transaction completed for {correlation_id}")
-            
-            # Verification step outside the transaction
-            verification_db = next(self.get_db())
-            try:
-                verified = self.is_event_already_processed(verification_db, correlation_id)
-                if not verified:
-                    logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
-                    return MessageProcessingResult.FAILED_RETRYABLE
-            finally:
-                verification_db.close()
+            # Only verify if the result was SUCCESS
+            if result == MessageProcessingResult.SUCCESS:
+                # Verification step outside the transaction
+                verification_db = next(self.get_db())
+                try:
+                    verified = self.is_event_already_processed(verification_db, correlation_id)
+                    if not verified:
+                        logger.error(f"CRITICAL: processed_events record missing for {correlation_id}")
+                        return MessageProcessingResult.FAILED_RETRYABLE
+                finally:
+                    verification_db.close()
                 
             return result
             
