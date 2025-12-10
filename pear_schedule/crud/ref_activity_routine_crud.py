@@ -61,8 +61,7 @@ def update_ref_activity_routine_idempotent(db: Session, routine_id: int, routine
     Idempotent update - won't fail if routine doesn't exist
     """
     db_routine = db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.Id == routine_id, 
-        RefActivityRoutine.IsDeleted == "0"
+        RefActivityRoutine.Id == routine_id
     ).first()
     
     if not db_routine:

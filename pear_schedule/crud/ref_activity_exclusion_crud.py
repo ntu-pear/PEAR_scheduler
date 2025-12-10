@@ -182,8 +182,7 @@ def update_ref_activity_exclusion(
     
     def update_operation():
         db_exclusion = db.query(RefActivityExclusion).filter(
-            RefActivityExclusion.ActivityExclusionID == exclusion_id,
-            RefActivityExclusion.IsDeleted == "0"
+            RefActivityExclusion.ActivityExclusionID == exclusion_id
         ).first()
         
         if not db_exclusion:

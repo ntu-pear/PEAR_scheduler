@@ -78,10 +78,10 @@ def generate_schedule(request: Request):
 
 
 @router.api_route("/regenerate/", methods=["GET"])
-def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_current_user)):
-    if current_user and not is_supervisor(current_user):
-        responseData = {"Status": "403", "Message": "You do not have permission to regenerate schedules"} 
-        return JSONResponse(jsonable_encoder(responseData))
+def generate_schedule(request: Request):
+    # if current_user and not is_supervisor(current_user):
+    #     responseData = {"Status": "403", "Message": "You do not have permission to regenerate schedules"} 
+    #     return JSONResponse(jsonable_encoder(responseData))
     
     config = request.app.state.config
     
@@ -110,6 +110,45 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
         logger.exception(e)
         responseData = {"Status": "400", "Message": str(e), "Data": ""}
         return JSONResponse(jsonable_encoder(responseData))
+
+
+@router.api_route("/regenerate/supervisor/", methods=["GET"])
+def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_current_user)):
+    if current_user and not is_supervisor(current_user):
+        responseData = {"Status": "403", "Message": "You do not have permission to regenerate schedules"} 
+        return JSONResponse(jsonable_encoder(responseData))
+    
+    config = request.app.state.config
+    
+    # Set up patient schedule structure
+    patientSchedules = {} # patient id: [[],[],[],[],[]]
+
+    try:
+        build_schedules(config, patientSchedules)
+        with DB.get_engine().begin() as conn:
+            latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
+        
+        scheduleMeta = {}
+        for _, row in latestSchedules.iterrows():
+            scheduleMeta[row["PatientID"]] = {
+                "ScheduleID": row["ScheduleID"],
+            }
+
+        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
+            weeklyScheduleViewDF = WeeklyScheduleView.get_data()
+            weeklyScheduleViewDF.pop("ScheduleID")
+            schedules_json = weeklyScheduleViewDF.to_dict(orient="records")
+            responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": schedules_json} 
+            return JSONResponse(jsonable_encoder(responseData))
+        else:
+            responseData = {"Status": "500", "Message": "Error in writing schedule to DB. Check scheduler logs", "Data": ""} 
+            return JSONResponse(jsonable_encoder(responseData))
+            
+    except Exception as e:
+        logger.exception(e)
+        responseData = {"Status": "400", "Message": str(e), "Data": ""}
+        return JSONResponse(jsonable_encoder(responseData))
+
 
 
 @router.api_route("/patientTest/", methods=["GET"])

@@ -18,6 +18,9 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
+        env:
+        - name: TZ
+          value: "Asia/Singapore"  # GMT+8 timezone
         envFrom:
         - configMapRef:
             name: scheduler-service-dev-env
