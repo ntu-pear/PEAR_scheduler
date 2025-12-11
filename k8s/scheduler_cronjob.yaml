@@ -47,4 +47,4 @@ spec:
               - |
                 echo "Triggering scheduler-service-dev /schedule/regenerate/..."
                 curl -X GET http://scheduler-service-dev.default.svc.cluster.local:8080/schedule/regenerate/ || exit 1
-            restartPolicy: OnFailure
+          restartPolicy: OnFailure
