@@ -29,7 +29,7 @@ def sample_created_ref_activity_preference_data():
     )
 
 @pytest.fixture
-def sample_updated_ref_activity_preference_data():
+def sample_updated_ref_activitiy_preference_data():
     return RefActivityPreferenceUpdate(
         PatientId=1,
         ActivityId=1,
