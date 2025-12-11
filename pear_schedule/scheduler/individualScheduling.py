@@ -154,7 +154,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         week_start = week_start or \
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
 
-        scheduled_idx = pd.Series(False, index=activities.index)
+        scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
         for day, day_schedule in enumerate(patient_schedule):
 
             if scheduled_idx.all():
@@ -163,7 +163,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             for slot, curr_activity in enumerate(day_schedule):
                 if curr_activity:
                     continue
-                # scan remaining allowed activities to find most constrained
+                # scan remaining allowed activities to find most constrained (fewer available time slots)
                 # not ideal but no. of activities is expected to be small so O(n2) is acceptable
 
                 least_available = -1
@@ -175,8 +175,10 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     ):
                         continue
 
-                    curr_availability = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
+                    # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
+                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["FixedTimeSlots"])
 
+                    # if there are no such slots, we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
                     if not curr_availability:
                         scheduled_idx.loc[row] = True
 
@@ -187,6 +189,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 if least_available < 0:
                     break
 
+                # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
                 scheduled_idx.loc[least_available] = True
 
                 day_schedule[slot] = activities.loc[least_available, "ActivityTitle"]
