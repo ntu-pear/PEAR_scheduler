@@ -230,7 +230,7 @@ class TestConsumerPatientCreate:
         assert processed_event is not None
         assert processed_event.event_type == "PATIENT_CREATED"
         assert processed_event.aggregate_id == str(mock_patient_data["id"])
-        assert json.loads(processed_event.operation_result)["status"] == "success"
+        assert json.loads(processed_event.operation_result)['status'] == "success"
 
         print(f"DONE: Created PROCESSED_EVENT ID: {processed_event.aggregate_id}")
         print(f"  Event Type: {processed_event.event_type}")
