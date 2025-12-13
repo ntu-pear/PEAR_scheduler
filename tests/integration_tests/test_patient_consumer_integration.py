@@ -234,7 +234,7 @@ class TestConsumerPatientCreate:
 
         print(f"DONE: Created PROCESSED_EVENT ID: {processed_event.aggregate_id}")
         print(f"  Event Type: {processed_event.event_type}")
-        print(f"  Status: {json.loads(processed_event.operation_result)["status"]}")
+        print(f"  Status: {json.loads(processed_event.operation_result)['status']}")
 
     def test_duplicate_create_message_is_idempotent(self, integration_db, patient_consumer, mock_patient_data):
         """
