@@ -296,8 +296,6 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         for pid, sched in schedules.items():
             if pid not in patients:
                 logger.error(f"unknown patientID {pid} found in schedules")
-                with open("fill_pref_log.txt", "a", encoding="utf-8") as f:
-                    f.write(f"unknown patientID {pid} found in schedules\n")
                 continue
             patient = patients[pid]
 
@@ -312,8 +310,6 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             non_preference_idx = (~avail_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
             preferred_activities = avail_activities[preference_idx]
             non_preferred_activites = avail_activities[non_preference_idx]
-            with open("fill_pref_log.txt", "a", encoding="utf-8") as f:
-                f.write(f"Current schedule for patient {pid}:{sched}\n")
 
             for day, day_sched in enumerate(sched):
                 curr_day_activities = set()
@@ -335,8 +331,6 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
                         if not new_activity:
                             new_activity = "Free and Easy"
-                        with open("fill_pref_log.txt", "a", encoding="utf-8") as f:
-                            f.write(f"PatientID:{pid},Day:{day},Slot:{i},Activity:{new_activity}\n")
                         curr_day_activities.add(new_activity)
                         day_sched[i] = new_activity
                     i += 1
