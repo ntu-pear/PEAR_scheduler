@@ -53,7 +53,7 @@ class IndividualActivityScheduler(BaseScheduler):
 
             patients[pid]["preferences"][p["PreferredActivityID"]] = True
 
-        # add unpreferred activities
+        # add unpreferred/neutral activities
         for _, p in PatientsUnpreferredView.get_data(conn=conn).iterrows():
             pid = p["PatientID"]
             if pid not in patients:
@@ -145,7 +145,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def __fillByFixedTimeSlots(
         cls, 
-        patient_schedule: List[str], 
+        patient_schedule: List[List[str]], 
         activities: pd.DataFrame, 
         patient_info: Mapping[str, Dict[str, str]],
         week_start: datetime.datetime = None
@@ -190,6 +190,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     break
 
                 # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
+                # availability should apply to activities that can be scheduled at this slot or later
                 scheduled_idx.loc[least_available] = True
 
                 day_schedule[slot] = activities.loc[least_available, "ActivityTitle"]
@@ -197,7 +198,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def __fillRoutines(
         cls, 
-        patient_schedule: List[str], 
+        patient_schedule: List[List[str]], 
         activities: pd.DataFrame, 
         patient_routine: pd.DataFrame, 
         patient_info: Mapping[str, Dict[str, str]],
@@ -242,11 +243,14 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def __fillFlexibleActivities(
         cls, 
-        patient_schedule: List[str], 
+        patient_schedule: List[List[str]], 
         activities: pd.DataFrame, 
         patient_info: Mapping[str, Dict[str, str]],
         week_start: datetime.datetime = None
     ):
+        """
+        Fill in recommended activities that do not have fixedTimeSlots, i.e. fixedTimeSlots is empty
+        """
         # set week_start to current week monday if not given
         week_start = week_start or \
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
@@ -274,6 +278,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
 
 
 class PreferredActivityScheduler(IndividualActivityScheduler):
+    MIN_ACTIVITY_DURATION: int = 60 # in minutes
+
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
         cls.fillPreferences(schedules)
@@ -314,6 +320,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                         j = i + 1
                         while (j < len(day_sched) and not day_sched[j]):
                             j += 1
+                        j -= 1 # j is incremented by 1 before the last check fails
                         if i >= len(day_sched):
                             break
 
@@ -337,9 +344,14 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         slot: int,
         slot_size: int,
     ) -> Optional[str]:
+        """ 
+        Find the activity that can be scheduled closest to the given slot and day
+        Used_activities: activities that have already been scheduled for each patient that day 
+        """
         if activities.empty:
             return
         
+        # generate a random sample, having frac=1 shuffles rows, reset_index re-indexes rows and drop=True stops old index from being added as new column
         activities = activities.sample(frac=1)\
             .reset_index(drop=True)
         
@@ -349,20 +361,24 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             if a["ActivityTitle"] in used_activities:
                 continue
 
-            minDuration = max(1, a["MinDuration"])
+            # may change, but technically min duration is 30 mins; for now, 60 minutes.
+            minDuration = max(1, a["MinDuration"] // cls.MIN_ACTIVITY_DURATION) 
+            minSlots = minDuration - 1 # slots are 1 hour each
 
             if a["FixedTimeSlots"]:
-                timeSlots = map(lambda x: x.split("-"), a["FixedTimeSlots"].split(","))
-                timeSlots = [t for t in timeSlots if t[0] == day and t[1] == slot and t[1] + minDuration < slot + slot_size]
+                # e.g. takes in ["1-2","1-3"], map output: [["1","2"],["1","3"]]
+                timeSlots = [[int(x),int(y)] for x,y in map(lambda x: x.split("-"), a["FixedTimeSlots"].split(","))]
+                timeSlots = [t for t in timeSlots if t[0] == day and t[1] == slot and t[1] + minSlots <= slot + slot_size]
 
                 if not timeSlots:
                     continue
                 else:
-                    earliest_end = min(t[1] + minDuration for t in timeSlots)
+                    earliest_end = min(t[1] + minSlots for t in timeSlots)
             else:
+                # prioritise activities that have slots. Activities with no slots specified can be scheduled anytime
                 if out[2]:
                     continue
-                earliest_end = slot + minDuration
+                earliest_end = slot + minSlots
 
             if earliest_end < out[1] and bool(a["FixedTimeSlots"]) >= out[2]:
                 out[0] = i
@@ -488,6 +504,11 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
 
 def calculate_activity_availabillity(day: int, slot: int, fixedTimeSlots: str):
+    # first check whether activity can be scheduled at all at this slot
+    if f"{day}-{slot}" not in fixedTimeSlots:
+        return float("inf")
+
+    # give priority to activities that have fixed time slots
     if not fixedTimeSlots:
         return 1000
 
