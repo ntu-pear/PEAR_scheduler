@@ -68,6 +68,7 @@ class AllActivitiesView(BaseView):
         return query
 
 class ActivitiesView(BaseView):
+    """ Data view used to schedule activities based on individual patient preferences """
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building activities query")
@@ -92,6 +93,7 @@ class ActivitiesView(BaseView):
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["IsCompulsory"] == False
         )
 
         return query
@@ -358,6 +360,7 @@ class RecommendedActivitiesView(BaseView):
             recommendations.c["DoctorRecommendation"] > 0,
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["IsCompulsory"] == False
         )
 
         return query
