@@ -121,6 +121,7 @@ class PatientsView(BaseView):
         ).where(
             centre_activity_preference.c["IsLike"] > 0,
             centre_activity_preference.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] < get_monday(),
         ).cte()
 
