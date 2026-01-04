@@ -4,7 +4,7 @@ from typing import Optional
 
 class RefActivityExclusionBase(BaseModel):
     PatientID: int
-    ActivityID: int
+    CentreActivityID: int
     StartDateTime: datetime 
     EndDateTime: datetime
     ExclusionRemarks: Optional[str] = None
@@ -21,7 +21,7 @@ class RefActivityExclusionCreate(RefActivityExclusionBase):
 
 class RefActivityExclusionUpdate(BaseModel):
     PatientID: Optional[int] = None
-    ActivityID: Optional[int] = None
+    CentreActivityID: Optional[int] = None
     IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
     StartDateTime: Optional[datetime] = None
     EndDateTime: Optional[datetime] = None

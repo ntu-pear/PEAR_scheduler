@@ -16,6 +16,5 @@ class RefActivity(Base):
     CreatedById = Column(String, nullable=False)
     ModifiedById = Column(String, nullable=False) 
 
-    exclusions = relationship("RefActivityExclusion", back_populates="activity")
     routines = relationship("RefActivityRoutine", back_populates="activity")
     centre_activities = relationship("RefCentreActivity", back_populates="activity")

@@ -47,7 +47,7 @@ def create_ref_activity_exclusion(
                     logger.info(f"Reactivating soft-deleted exclusion {exclusion.ActivityExclusionID}")
                     existing.IsDeleted = "0"
                     existing.PatientID = exclusion.PatientID
-                    existing.ActivityID = exclusion.ActivityID
+                    existing.CentreActivityID = exclusion.CentreActivityID
                     existing.StartDateTime = exclusion.StartDateTime
                     existing.EndDateTime = exclusion.EndDateTime
                     existing.ExclusionRemarks = exclusion.ExclusionRemarks
@@ -60,12 +60,12 @@ def create_ref_activity_exclusion(
         else:
             existing = db.query(RefActivityExclusion).filter(
                 RefActivityExclusion.PatientID == exclusion.PatientID,
-                RefActivityExclusion.ActivityID == exclusion.ActivityID,
+                RefActivityExclusion.CentreActivityID == exclusion.CentreActivityID,
                 RefActivityExclusion.IsDeleted == "0"
             ).first()
             
             if existing:
-                logger.info(f"Found existing exclusion for Patient {exclusion.PatientID}, Activity {exclusion.ActivityID}")
+                logger.info(f"Found existing exclusion for Patient {exclusion.PatientID}, Activity {exclusion.CentreActivityID}")
                 existing.StartDateTime = exclusion.StartDateTime
                 existing.EndDateTime = exclusion.EndDateTime
                 existing.ExclusionRemarks = exclusion.ExclusionRemarks
@@ -74,11 +74,11 @@ def create_ref_activity_exclusion(
                 db.flush()
                 return existing
         
-        logger.info(f"Creating new activity exclusion for Patient {exclusion.PatientID}, Activity {exclusion.ActivityID}")
+        logger.info(f"Creating new activity exclusion for Patient {exclusion.PatientID}, Activity {exclusion.CentreActivityID}")
         
         new_exclusion = RefActivityExclusion(
             PatientID=exclusion.PatientID,
-            ActivityID=exclusion.ActivityID,
+            CentreActivityID=exclusion.CentreActivityID,
             StartDateTime=exclusion.StartDateTime,
             EndDateTime=exclusion.EndDateTime,
             ExclusionRemarks=exclusion.ExclusionRemarks,
@@ -96,7 +96,7 @@ def create_ref_activity_exclusion(
         db.flush()
         return new_exclusion
     
-    aggregate_key = str(exclusion.ActivityExclusionID) if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID else f"{exclusion.PatientID}_{exclusion.ActivityID}"
+    aggregate_key = str(exclusion.ActivityExclusionID) if hasattr(exclusion, 'ActivityExclusionID') and exclusion.ActivityExclusionID else f"{exclusion.PatientID}_{exclusion.CentreActivityID}"
     
     try:
         if skip_duplicate_check:
@@ -132,7 +132,7 @@ def create_ref_activity_exclusion(
             else:
                 existing_exclusion = db.query(RefActivityExclusion).filter(
                     RefActivityExclusion.PatientID == exclusion.PatientID,
-                    RefActivityExclusion.ActivityID == exclusion.ActivityID,
+                    RefActivityExclusion.CentreActivityID == exclusion.CentreActivityID,
                     RefActivityExclusion.IsDeleted == "0"
                 ).first()
             logger.info(f"Duplicate create event for activity exclusion {aggregate_key}, returning existing")

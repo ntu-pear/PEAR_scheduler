@@ -82,7 +82,7 @@ def sample_activity_exclusion():
     return RefActivityExclusion(
         ActivityExclusionID=1,
         PatientID=1,
-        ActivityID=1,
+        CentreActivityID=1,
         StartDateTime=datetime(2024, 1, 1),
         EndDateTime=datetime(2024, 1, 7),
         ExclusionRemarks="Patient has mobility issues",

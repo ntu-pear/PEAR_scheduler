@@ -18,7 +18,7 @@ def sample_created_ref_activity_exclusion_data():
     return RefActivityExclusionCreate(
         ActivityExclusionID=1,
         PatientID=10,
-        ActivityID=5,
+        CentreActivityID=5,
         StartDateTime=datetime.now(),
         EndDateTime=datetime.now(),
         ExclusionRemarks="Initial Remarks",
@@ -32,7 +32,7 @@ def sample_created_ref_activity_exclusion_data():
 def sample_updated_ref_activitiy_exclusion_data():
     return RefActivityExclusionUpdate(
         PatientID=20,
-        ActivityID=10,
+        CentreActivityID=10,
         IsDeleted="0",
         StartDateTime=datetime.now(),
         EndDateTime=datetime.now(),

@@ -299,7 +299,7 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
             centre_activity.c["CentreActivityID"],
             activity_exclusion.c["PatientID"],
         ).join(
-            activity_exclusion, centre_activity.c["ActivityID"] == activity_exclusion.c["ActivityID"] 
+            activity_exclusion, centre_activity.c["CentreActivityID"] == activity_exclusion.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
         ).where(activity_exclusion.c["IsDeleted"] == False
         ).where(or_(and_( activity_exclusion.c["EndDateTime"] >= start_of_week, activity_exclusion.c["StartDateTime"] <= end_of_week) ,activity_exclusion.c["EndDateTime"] == None)
@@ -626,24 +626,28 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
         start_of_week = curDateTime - timedelta(days=curDateTime.weekday(), hours=0, minutes=0, seconds=0)  # Monday -> 00:00:00
         
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         activities_excluded = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
         
         query: Select = select(
             activities_excluded.c["ActivityExclusionID"], 
-            activities_excluded.c["ActivityID"],
+            activities_excluded.c["CentreActivityID"],
             activities_excluded.c["PatientID"],
             activities_excluded.c["ExclusionRemarks"],
             activities_excluded.c["EndDateTime"],
             activity.c["ActivityTitle"]
         ).join(
-            activity, activity.c["ActivityID"] == activities_excluded.c["ActivityID"]
+            centre_activity, centre_activity.c["CentreActivityID"] == activities_excluded.c["CentreActivityID"]
+        ).join(
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             or_(
                 activities_excluded.c["EndDateTime"] >= start_of_week, 
                 activities_excluded.c["EndDateTime"] == None
             )
         ).where(
-            activities_excluded.c['IsDeleted'] == False
+            activities_excluded.c['IsDeleted'] == False,
+            activity.c['IsDeleted'] == False
         )
         
         return query

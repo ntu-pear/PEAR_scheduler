@@ -277,7 +277,7 @@ async def get_ref_centre_activity_exclusion_integrity(
         for exclusion in ref_exclusions:
             records.append({
                 "ActivityExclusionID": exclusion.ActivityExclusionID,
-                "ActivityID": exclusion.ActivityID,
+                "CentreActivityID": exclusion.CentreActivityID,
                 "PatientID": exclusion.PatientID,
                 "modified_date": exclusion.UpdatedDateTime.isoformat(),
                 "version_timestamp": int(exclusion.UpdatedDateTime.timestamp() * 1000),

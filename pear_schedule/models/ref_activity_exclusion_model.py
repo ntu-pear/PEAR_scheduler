@@ -9,7 +9,7 @@ class RefActivityExclusion(Base):
     ActivityExclusionID = Column(Integer, primary_key=True, index=True) 
     IsDeleted = Column(String(1), default='0', nullable=False)
     PatientID = Column(Integer, ForeignKey('REF_PATIENT.PatientID')) 
-    ActivityID = Column(Integer, ForeignKey('REF_ACTIVITY.ActivityID')) 
+    CentreActivityID = Column(Integer, ForeignKey('REF_CENTRE_ACTIVITY.CentreActivityID')) 
     StartDateTime = Column(DateTime, nullable=False)
     EndDateTime = Column(DateTime, nullable=False)
     ExclusionRemarks = Column(String(255))
@@ -20,4 +20,4 @@ class RefActivityExclusion(Base):
     ModifiedById = Column(String, nullable=False)
 
     patient = relationship("RefPatient", back_populates="exclusions")
-    activity = relationship("RefActivity", back_populates="exclusions")
+    centre_activity = relationship("RefCentreActivity", back_populates="exclusions")

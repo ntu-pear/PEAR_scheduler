@@ -287,7 +287,7 @@ class MapperUtil:
                     # Direct mappings (source_field: target_field)
                     'id': 'ActivityExclusionID',
                     'patient_id': 'PatientID',
-                    'centre_activity_id': 'ActivityID',
+                    'centre_activity_id': 'CentreActivityID',
                     'start_date': 'StartDateTime',
                     'end_date': 'EndDateTime', 
                     'exclusion_remarks': 'ExclusionRemarks',
