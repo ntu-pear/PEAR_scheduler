@@ -1,7 +1,10 @@
+import logging
 import datetime
 from typing import List, Mapping
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.db_utils.views import MedicationView
+
+logger = logging.getLogger(__name__)
 
 class medicationScheduler(BaseScheduler):
     @classmethod
@@ -29,7 +32,7 @@ class medicationScheduler(BaseScheduler):
             if startDateTime <= start_of_week: # Medication starts either before or start of this week
                 pass
             elif startDateTime > start_of_week and startDateTime <= end_of_week: # Medication starts sometime this week
-                start_day_counter = (start_of_week - startDateTime).days * -1
+                start_day_counter = (startDateTime - start_of_week).days
             else: # Medication does not start this week
                 continue
             # print(f"Medication starts on {start_day_counter}")
@@ -43,40 +46,58 @@ class medicationScheduler(BaseScheduler):
             slots = administerTime.split(",")
             
             for slot in slots:
-                hour = getTimeSlot(int(slot))
+                hour = getTimeSlot(cls, int(slot))
+                full_hour = cls.config["DAY_TIMESLOTS"][hour]
                 if hour == -1: # Invalid time-slot
                     continue
                 
                 for day in range(start_day_counter, end_day_counter+1):
+                    full_day = cls.config["DAY_OF_WEEK_ORDER"][day]
+                    s = "{begin}@{slot}: {prescription}({dosage}){end}"
+                    s = s.format(
+                        begin = " | Give Medication" if "Give Medication" not in patientSchedules[pid][day][hour] else ", Give Medication",
+                        slot = slot,
+                        prescription = row['PrescriptionName'],
+                        dosage = row['Dosage'],
+                        end = "" if instruction is None or not instruction.strip() or instruction.lower() in ["nil", "-"] else f"**{instruction}"
+                    )
                     
-                    if "Give Medication" not in patientSchedules[pid][day][hour]:
-                        if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]: 
-                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
-                        else:
-                            patientSchedules[pid][day][hour] += f" | Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})**{instruction}"
-                    else:
-                        if instruction is None or instruction.strip() == "" or instruction in ["Nil", "nil" "-"]:
-                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})"
-                        else:
-                            patientSchedules[pid][day][hour] += f", Give Medication@{slot}: {row['PrescriptionName']}({row['Dosage']})**{instruction}"
+                    patientSchedules[pid][day][hour] += s
 
-def getTimeSlot(time):
-    if (900 <= time < 1000):
-        return 0
-    elif (1000 <= time < 1100):
-        return 1
-    elif (1100 <= time < 1200):
-        return 2
-    elif (1200 <= time < 1300):
-        return 3
-    elif (1300 <= time < 1400):
-        return 4
-    elif (1400 <= time < 1500):
-        return 5
-    elif (1500 <= time < 1600):
-        return 6
-    elif (1600 <= time < 1700):
-        return 7
-    else:
-        print("Invalid time-slot")
-        return -1
+
+def getTimeSlot(cls, time):
+    """
+    getTimeSlot() returns the index of the time slot based on the given time.
+    
+    Args:
+        cls: class in order to access config variables
+        time: administration time of medicine
+    
+    Returns:
+        Index of time slot, -1 if invalid time-slot, >len(cls.config["DAY_TIMESLOTS"]) if beyond closing hours, both would be out of bounds on access
+        E.g. 1730 administration time returns 8, 0830 returns -1
+    """
+    parsed_time = datetime.datetime.strptime(str(time), "%H%M")
+    timeDiff_fromOpening: datetime.timedelta = parsed_time-datetime.datetime.strptime(cls.config["OPENING_HOUR"], "%I%p")
+    numSlotsFromOpening: int = (timeDiff_fromOpening // -datetime.timedelta(minutes=cls.config["MIN_ACTIVITY_DURATION"])) * -1
+    return numSlotsFromOpening - 1
+
+    # if (900 <= time < 1000):
+    #     return 0
+    # elif (1000 <= time < 1100):
+    #     return 1
+    # elif (1100 <= time < 1200):
+    #     return 2
+    # elif (1200 <= time < 1300):
+    #     return 3
+    # elif (1300 <= time < 1400):
+    #     return 4
+    # elif (1400 <= time < 1500):
+    #     return 5
+    # elif (1500 <= time < 1600):
+    #     return 6
+    # elif (1600 <= time < 1700):
+    #     return 7
+    # else:
+    #     print("Invalid time-slot")
+    #     return -1

@@ -73,7 +73,7 @@ class IndividualActivityScheduler(BaseScheduler):
                     "preferences":set(), "exclusions": dict(), "dispreferences": set()  # recommendations handled in compulsory scheduling
                 }
             activity_id = e["ActivityID"]
-            if e["ActivityID"] not in patients[pid]["exclusions"]:
+            if activity_id not in patients[pid]["exclusions"]:
                 patients[pid]["exclusions"][activity_id] = e["EndDateTime"]
             else:
                 patients[pid]["exclusions"][activity_id] = _get_max_enddate(
@@ -104,7 +104,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         with DB.get_engine().begin() as conn:
             # pull recommendations
             recommendations: pd.DataFrame = RecommendedActivitiesView.get_data(conn=conn)
-            recommendations.sort_values(by=["PatientID"])
+            recommendations = recommendations.sort_values(by=["PatientID"])
             recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
 
             # break down fixedTimeSlots into a list (day,slot) pairs
@@ -114,8 +114,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             #convert to pd.timestamp to handle as activityenddate is beyond 2999, and it needs to be datetime
             recommendations["ActivityEndDate"] = recommendations["ActivityEndDate"].apply(pd.Timestamp)
  
-            # filter out activities that are not available this week
-            recommendations = recommendations[(recommendations["ActivityEndDate"] > week_end)] #| (recommendations["ActivityEndDate"].isna())]
+            # filter out activities that are not available this week, i.e. only consider activities that run past week_end
+            # recommendations = recommendations[(recommendations["ActivityEndDate"] > week_end)] #| (recommendations["ActivityEndDate"].isna())]
 
             # add an extra row at end for easier handling of final patient
             dummy_row = recommendations.iloc[0:1].copy(deep=True)
@@ -162,6 +162,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
 
         scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
+        
         for day, day_schedule in enumerate(patient_schedule):
 
             if scheduled_idx.all():
@@ -176,7 +177,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 least_available = -1
                 lowest_availability = float("inf")
 
-                for row, activity in activities[~scheduled_idx].iterrows():
+                available_activities: pd.DataFrame = activities[~scheduled_idx]
+                for row, activity in available_activities.iterrows():
                     if checkActivityExcluded(
                         activity["ActivityID"], patient_info["exclusions"], day, week_start
                     ):
@@ -192,8 +194,10 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     if curr_availability < lowest_availability:
                         least_available = row
                         lowest_availability = curr_availability
-
-                if least_available < 0:
+                    
+                if least_available < 0 and not available_activities.empty:
+                    continue
+                elif least_available < 0 and available_activities.empty:
                     break
 
                 # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
@@ -285,8 +289,6 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
 
 
 class PreferredActivityScheduler(IndividualActivityScheduler):
-    MIN_ACTIVITY_DURATION: int = 60 # in minutes
-
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]]) -> None:
         cls.fillPreferences(schedules)
@@ -373,7 +375,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 continue
 
             # may change, but technically min duration is 30 mins; for now, 60 minutes.
-            minDuration = max(1, a["MinDuration"] // cls.MIN_ACTIVITY_DURATION) 
+            minDuration = max(1, a["MinDuration"] // cls.config["MIN_ACTIVITY_DURATION"]) 
             minSlots = minDuration - 1 # slots are 1 hour each
 
             if a["FixedTimeSlots"]:

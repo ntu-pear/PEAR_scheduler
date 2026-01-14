@@ -319,17 +319,19 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
 
         query: Select = select(
-            centre_activity.c["ActivityID"],
+            # centre_activity.c["ActivityID"],
             activity.c["ActivityTitle"],
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
+            centre_activity.c["MinDuration"],
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
-        ).where(centre_activity.c["IsCompulsory"] == True
-        ).where(centre_activity.c["IsDeleted"] == False
         ).where(
-        centre_activity.c["EndDate"] > get_next_sunday(),
-        centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["IsCompulsory"] == True,
+            centre_activity.c["IsDeleted"] == False,
+            centre_activity.c["IsFixed"] == True,
+            centre_activity.c["EndDate"] > get_next_sunday(),
+            centre_activity.c["StartDate"] < get_monday(),
         ) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
@@ -361,6 +363,7 @@ class RecommendedActivitiesView(BaseView):
             recommendations.c["DoctorRecommendation"] > 0,
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
             centre_activity.c["IsCompulsory"] == False
         )
 
@@ -388,8 +391,9 @@ class DisrecommendedActivitiesView(BaseView):
             recommendations, recommendations.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
         ).where(
             recommendations.c["IsDeleted"] == False,
-            recommendations.c["DoctorRecommendation"] == 0,
+            recommendations.c["DoctorRecommendation"] == -1,
             centre_activity.c["IsGroup"] == False,
+            centre_activity.c["IsDeleted"] == False,
         )
 
         return query
@@ -406,7 +410,7 @@ class MedicationView(BaseView): # Just medication table view
         query: Select = select(
             medication,
         ).where(
-            medication.c["EndDateTime"] >= curDateTime 
+            # medication.c["EndDateTime"] >= curDateTime 
         )
         return query
 #ROUTINETable Not Ready, add in once ready.
@@ -631,7 +635,7 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
         
         query: Select = select(
             activities_excluded.c["ActivityExclusionID"], 
-            activities_excluded.c["CentreActivityID"],
+            centre_activity.c["ActivityID"],
             activities_excluded.c["PatientID"],
             activities_excluded.c["ExclusionRemarks"],
             activities_excluded.c["EndDateTime"],
@@ -646,8 +650,8 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
                 activities_excluded.c["EndDateTime"] == None
             )
         ).where(
-            activities_excluded.c['IsDeleted'] == False,
-            activity.c['IsDeleted'] == False
+            activities_excluded.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False
         )
         
         return query
