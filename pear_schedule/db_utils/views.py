@@ -121,6 +121,7 @@ class PatientsView(BaseView):
         ).where(
             centre_activity_preference.c["IsLike"] > 0,
             centre_activity_preference.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] < get_monday(),
         ).cte()
 
@@ -205,6 +206,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
 
         query: Select = select(
             centre_activity.c["ActivityID"],
+            centre_activity.c["CentreActivityID"],
             activity.c["ActivityTitle"],
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
@@ -240,8 +242,12 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
         ).join(
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity_preference.c["IsDeleted"] == False
-        ).where(centre_activity.c["StartDate"] < get_monday(),
+        ).where(
+            centre_activity_preference.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
+        ).where(
+            centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
         )
 
 
@@ -266,8 +272,12 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
         ).join(
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity_recommendation.c["IsDeleted"] == False
-        ).where(centre_activity.c["StartDate"] < get_monday(),
+        ).where(
+            centre_activity_recommendation.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
+        ).where(
+            centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
         )
 
 
@@ -298,9 +308,11 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
             centre_activity.c["CentreActivityID"],
             activity_exclusion.c["PatientID"],
         ).join(
-            activity_exclusion, centre_activity.c["ActivityID"] == activity_exclusion.c["ActivityID"] 
+            activity_exclusion, centre_activity.c["CentreActivityID"] == activity_exclusion.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(activity_exclusion.c["IsDeleted"] == False
+        ).where(
+            activity_exclusion.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
         ).where(or_(and_( activity_exclusion.c["EndDateTime"] >= start_of_week, activity_exclusion.c["StartDateTime"] <= end_of_week) ,activity_exclusion.c["EndDateTime"] == None)
         )
 
@@ -318,17 +330,19 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
 
         query: Select = select(
-            centre_activity.c["ActivityID"],
+            # centre_activity.c["ActivityID"],
             activity.c["ActivityTitle"],
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
+            centre_activity.c["MinDuration"],
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
-        ).where(centre_activity.c["IsCompulsory"] == True
-        ).where(centre_activity.c["IsDeleted"] == False
         ).where(
-        centre_activity.c["EndDate"] > get_next_sunday(),
-        centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["IsCompulsory"] == True,
+            centre_activity.c["IsDeleted"] == False,
+            centre_activity.c["IsFixed"] == True,
+            centre_activity.c["EndDate"] > get_next_sunday(),
+            centre_activity.c["StartDate"] < get_monday(),
         ) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
@@ -360,6 +374,7 @@ class RecommendedActivitiesView(BaseView):
             recommendations.c["DoctorRecommendation"] > 0,
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
             centre_activity.c["IsCompulsory"] == False
         )
 
@@ -387,8 +402,9 @@ class DisrecommendedActivitiesView(BaseView):
             recommendations, recommendations.c["CentreActivityID"] == centre_activity.c["CentreActivityID"]
         ).where(
             recommendations.c["IsDeleted"] == False,
-            recommendations.c["DoctorRecommendation"] == 0,
+            recommendations.c["DoctorRecommendation"] == -1,
             centre_activity.c["IsGroup"] == False,
+            centre_activity.c["IsDeleted"] == False,
         )
 
         return query
@@ -405,7 +421,7 @@ class MedicationView(BaseView): # Just medication table view
         query: Select = select(
             medication,
         ).where(
-            medication.c["EndDateTime"] >= curDateTime 
+            # medication.c["EndDateTime"] >= curDateTime 
         )
         return query
 #ROUTINETable Not Ready, add in once ready.
@@ -625,24 +641,28 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
         start_of_week = curDateTime - timedelta(days=curDateTime.weekday(), hours=0, minutes=0, seconds=0)  # Monday -> 00:00:00
         
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         activities_excluded = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
         
         query: Select = select(
             activities_excluded.c["ActivityExclusionID"], 
-            activities_excluded.c["ActivityID"],
+            centre_activity.c["ActivityID"],
             activities_excluded.c["PatientID"],
             activities_excluded.c["ExclusionRemarks"],
             activities_excluded.c["EndDateTime"],
             activity.c["ActivityTitle"]
         ).join(
-            activity, activity.c["ActivityID"] == activities_excluded.c["ActivityID"]
+            centre_activity, centre_activity.c["CentreActivityID"] == activities_excluded.c["CentreActivityID"]
+        ).join(
+            activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             or_(
                 activities_excluded.c["EndDateTime"] >= start_of_week, 
                 activities_excluded.c["EndDateTime"] == None
             )
         ).where(
-            activities_excluded.c['IsDeleted'] == False
+            activities_excluded.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False
         )
         
         return query

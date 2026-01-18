@@ -328,12 +328,12 @@ class TestConsumerActivityExclusionCreate:
         
         assert ref_exclusion is not None
         assert ref_exclusion.PatientID == mock_exclusion_data["patient_id"]
-        assert ref_exclusion.ActivityID == mock_exclusion_data["centre_activity_id"]
+        assert ref_exclusion.CentreActivityID == mock_exclusion_data["centre_activity_id"]
         assert ref_exclusion.IsDeleted == "0"
         
         print(f"DONE: Created REF_ACTIVITY_EXCLUSION ID: {ref_exclusion.ActivityExclusionID}")
         print(f"  PatientID: {ref_exclusion.PatientID}")
-        print(f"  ActivityID: {ref_exclusion.ActivityID}")
+        print(f"  CentreActivityID: {ref_exclusion.CentreActivityID}")
         print(f"  IsDeleted: {ref_exclusion.IsDeleted}")
         
         # Verify PROCESSED_EVENTS record created
