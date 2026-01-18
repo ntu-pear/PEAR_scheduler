@@ -38,29 +38,37 @@ class GroupActivityScheduler(BaseScheduler):
         for _, record in groupActivityDF.iterrows():
             patients = totalPatientSet.copy()
             
-            activityID = record["ActivityID"]
+            centreActivityID = record["CentreActivityID"]
             activityTitle = record["ActivityTitle"]
             minSizeRequired = record["MinPeopleReq"]
 
             activityMinSizeMap[activityTitle] = minSizeRequired
 
             # Find excluded patients from activity
-            excludedDF = groupExcludedDF.query(f"CentreActivityID == {activityID}")
+            excludedDF = groupExcludedDF[groupExcludedDF["CentreActivityID"] == centreActivityID]
             for id in excludedDF["PatientID"]:
                 activityExclusionMap[activityTitle].add(id)
                 if id in patients:
                     patients.remove(id)
 
             # Find not recommended patients
-            notRecommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID} and DoctorRecommendation == False")
+            notRecommendedDF = groupRecommendationDF[
+                (groupRecommendationDF["CentreActivityID"] == centreActivityID) &
+                (groupRecommendationDF["DoctorRecommendation"].astype(int) == -1)
+            ]
             for id in notRecommendedDF["PatientID"]:
                 activityExclusionMap[activityTitle].add(id)
                 if id in patients:
                     patients.remove(id)
+            with open("medication_schedule_debug.txt", "a") as f:
+                f.write(notRecommendedDF.to_string()+"\n")
 
 
             # Find recommended patients of activity
-            recommendedDF = groupRecommendationDF.query(f"CentreActivityID == {activityID} and DoctorRecommendation == True")
+            recommendedDF = groupRecommendationDF[
+                (groupRecommendationDF["CentreActivityID"] == centreActivityID) &
+                (groupRecommendationDF["DoctorRecommendation"].astype(int) == 1)
+            ]
             for id in recommendedDF["PatientID"]:
                 if id in patients:
                     activityMap[activityTitle].add(id)
@@ -69,7 +77,7 @@ class GroupActivityScheduler(BaseScheduler):
             
         
             # Find preferred patients of activity
-            preferredDF = groupPreferenceDF.query(f"CentreActivityID == {activityID} and IsLike == 1")
+            preferredDF = groupPreferenceDF.query(f"CentreActivityID == {centreActivityID} and IsLike == 1")
             for id in preferredDF["PatientID"]:
                 if id in patients and id not in activityExclusionMap[activityTitle]:
                     activityMap[activityTitle].add(id)

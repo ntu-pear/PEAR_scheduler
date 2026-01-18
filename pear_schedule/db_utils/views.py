@@ -206,6 +206,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
 
         query: Select = select(
             centre_activity.c["ActivityID"],
+            centre_activity.c["CentreActivityID"],
             activity.c["ActivityTitle"],
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
@@ -241,8 +242,12 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
         ).join(
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity_preference.c["IsDeleted"] == False
-        ).where(centre_activity.c["StartDate"] < get_monday(),
+        ).where(
+            centre_activity_preference.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
+        ).where(
+            centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
         )
 
 
@@ -267,8 +272,12 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
         ).join(
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(centre_activity_recommendation.c["IsDeleted"] == False
-        ).where(centre_activity.c["StartDate"] < get_monday(),
+        ).where(
+            centre_activity_recommendation.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
+        ).where(
+            centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
         )
 
 
@@ -301,7 +310,9 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
         ).join(
             activity_exclusion, centre_activity.c["CentreActivityID"] == activity_exclusion.c["CentreActivityID"] 
         ).where(centre_activity.c["IsGroup"] == True
-        ).where(activity_exclusion.c["IsDeleted"] == False
+        ).where(
+            activity_exclusion.c["IsDeleted"] == False,
+            centre_activity.c["IsDeleted"] == False,
         ).where(or_(and_( activity_exclusion.c["EndDateTime"] >= start_of_week, activity_exclusion.c["StartDateTime"] <= end_of_week) ,activity_exclusion.c["EndDateTime"] == None)
         )
 
