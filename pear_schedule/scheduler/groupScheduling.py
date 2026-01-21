@@ -60,8 +60,6 @@ class GroupActivityScheduler(BaseScheduler):
                 activityExclusionMap[activityTitle].add(id)
                 if id in patients:
                     patients.remove(id)
-            with open("medication_schedule_debug.txt", "a") as f:
-                f.write(notRecommendedDF.to_string()+"\n")
 
 
             # Find recommended patients of activity
