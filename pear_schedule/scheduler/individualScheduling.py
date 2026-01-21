@@ -108,7 +108,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
 
             # break down fixedTimeSlots into a list (day,slot) pairs
-            proc_fixedTimeSlots:pd.Series = recommendations["FixedTimeSlots"].apply(lambda x: {(int(a),int(b)) for a,b in map(lambda y: y.split('-'), x.split(','))})
+            proc_fixedTimeSlots:pd.Series = recommendations["FixedTimeSlots"].apply(lambda x: {(int(a),int(b)) for a,b in map(lambda y: y.split('-'), x.split(','))} if pd.notna(x) and x.strip() != "" else set())
             recommendations = recommendations.assign(ProcessedTimeSlots=proc_fixedTimeSlots)
 
             #convert to pd.timestamp to handle as activityenddate is beyond 2999, and it needs to be datetime
@@ -302,7 +302,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         avail_activities = activities[["ActivityID", "ActivityTitle", "FixedTimeSlots", "MinDuration", "MaxDuration"]]
 
         # to be used in _findActivityBySlot, do preprocessing here instead of for every patient slot
-        proc_fixedTimeSlots:pd.Series = avail_activities['FixedTimeSlots'].apply(lambda x: [(int(a),int(b)) for a,b in map(lambda y: y.split('-'), x.split(','))])
+        proc_fixedTimeSlots:pd.Series = avail_activities['FixedTimeSlots'].apply(lambda x: {(int(a),int(b)) for a,b in map(lambda y: y.split('-'), x.split(','))} if pd.notna(x) and x.strip() != "" else set())
         avail_activities = avail_activities.assign(ProcessedTimeSlots=proc_fixedTimeSlots)
         # activities = activities.sample(frac=1)\
         #     .reset_index(drop=True)

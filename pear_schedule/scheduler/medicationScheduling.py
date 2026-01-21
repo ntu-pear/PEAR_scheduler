@@ -46,10 +46,11 @@ class medicationScheduler(BaseScheduler):
             slots = administerTime.split(",")
             
             for slot in slots:
-                hour = getTimeSlot(cls, int(slot))
-                full_hour = cls.config["DAY_TIMESLOTS"][hour]
-                if hour == -1: # Invalid time-slot
+                hour = getTimeSlot(cls, administerTime)
+                
+                if hour == -1 or hour >= cls.config["HOURS"]: # Invalid time-slot
                     continue
+                full_hour = cls.config["DAY_TIMESLOTS"][hour]
                 
                 for day in range(start_day_counter, end_day_counter+1):
                     full_day = cls.config["DAY_OF_WEEK_ORDER"][day]
