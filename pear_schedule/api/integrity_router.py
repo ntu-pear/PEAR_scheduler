@@ -1,16 +1,21 @@
-from fastapi import APIRouter, Query, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import func
 from datetime import datetime, timedelta
 from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from pear_schedule.database import get_db
-from pear_schedule.models.ref_activity_model import RefActivity
-from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
+from pear_schedule.models.ref_activity_model import RefActivity
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
-from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
-from pear_schedule.models.ref_patient_model import RefPatient
+from pear_schedule.models.ref_activity_recommendation_model import (
+    RefActivityRecommendation,
+)
+from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
+from pear_schedule.models.ref_patient_allocation_model import RefPatientAllocation
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
+from pear_schedule.models.ref_patient_model import RefPatient
 
 router = APIRouter(tags=["Integrity"])
 
@@ -422,6 +427,68 @@ async def get_ref_patient_medication_integrity(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ref medication integrity check failed: {str(e)}")
 
+@router.get("/ref-patient-allocation")
+async def get_ref_patient_allocation_integrity(
+    hours_back: int = Query(1, ge=1, le=168),
+    patient_id: Optional[int] = Query(None, description="Filter by specific patient"),
+    limit: int = Query(1000, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns reference patient allocation IDs and timestamps.
+    This data should match the authoritative Patient Service.
+    """
+    try:
+        
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+        
+        query = db.query(RefPatientAllocation).filter(
+            RefPatientAllocation.modified_date >= cutoff_time
+        )
+        
+        if patient_id:
+            query = query.filter(RefPatientAllocation.patientId == patient_id)
+        
+        ref_allocations = query.order_by(
+            RefPatientAllocation.id
+        ).limit(limit).offset(offset).all()
+        
+        records = []
+        for allocation in ref_allocations:
+            records.append({
+                "PatientAllocationID": allocation.id,
+                "PatientID": allocation.patientId,
+                "modified_date": allocation.modified_date.isoformat(),
+                "version_timestamp": int(allocation.modified_date.timestamp() * 1000),
+                "record_type": "ref_patient_allocation"
+            })
+        
+        count_query = db.query(RefPatientAllocation).filter(
+            RefPatientAllocation.modified_date >= cutoff_time
+        )
+        if patient_id:
+            count_query = count_query.filter(RefPatientAllocation.patientId == patient_id)
+        total_count = count_query.count()
+        
+        return {
+            "service": "scheduler",
+            "endpoint": "/integrity/ref-patient-allocation",
+            "window_hours": hours_back,
+            "cutoff_time": cutoff_time.isoformat(),
+            "patient_filter": patient_id,
+            "total_count": total_count,
+            "returned_count": len(records),
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + len(records)) < total_count,
+            "records": records,
+            "generated_at": datetime.now().isoformat(),
+            "note": "eventual_consistent_copy"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ref patient allocation integrity check failed: {str(e)}")
 
 @router.get("/summary")
 async def get_ref_integrity_summary(
@@ -464,8 +531,12 @@ async def get_ref_integrity_summary(
             RefPatientMedication.UpdatedDateTime >= cutoff_time
         ).count()
         
+        allocation_count = db.query(RefPatientAllocation).filter(
+            RefPatientAllocation.modified_date >= cutoff_time
+        ).count()
+        
         total = (activity_count + centre_activity_count + preference_count + 
-                recommendation_count + exclusion_count + patient_count + medication_count)
+                recommendation_count + exclusion_count + patient_count + medication_count + allocation_count)
         
         return {
             "service": "scheduler",
@@ -480,6 +551,7 @@ async def get_ref_integrity_summary(
                 "ref_centre_activity_exclusion": exclusion_count,
                 "ref_patient": patient_count,
                 "ref_patient_medication": medication_count,
+                "ref_patient_allocation": allocation_count,
                 "total": total
             },
             "generated_at": datetime.now().isoformat(),
