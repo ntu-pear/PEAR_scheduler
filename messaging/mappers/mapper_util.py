@@ -1,6 +1,6 @@
-from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime, date
 import logging
+from datetime import date, datetime
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,48 @@ class MapperUtil:
                     'patient', 'prescription_list'  # SQLAlchemy relationship fields
                 ]
             },
-            
+            # Patient Allocation mapping (Patient Service -> Scheduler Service)
+            'patient_allocation_service_to_scheduler': {
+                'source_service': 'patient-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'patient_allocation',
+                'required_fields': ['id', 'patientId', 'doctorId', 'gameTherapistId', 
+                                   'supervisorId', 'caregiverId'],
+                'field_mappings': {
+                    'id': 'id',
+                    'active': 'active',
+                    'isDeleted': 'is_deleted',
+                    'patientId': 'patient_id',
+                    'doctorId': 'doctor_id',
+                    'gameTherapistId': 'game_therapist_id',
+                    'supervisorId': 'supervisor_id',
+                    'caregiverId': 'caregiver_id',
+                    'tempDoctorId': 'temp_doctor_id',
+                    'tempCaregiverId': 'temp_caregiver_id',
+                    'createdDate': 'created_date',
+                    'modifiedDate': 'modified_date',
+                    'CreatedById': 'created_by_id',
+                    'ModifiedById': 'modified_by_id',
+                },
+                'field_transforms': {
+                    'is_deleted': lambda x: self._convert_boolean(x, "0"),
+                    'created_date': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'modified_date': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'temp_doctor_id': lambda x: str(x) if x is not None else None,
+                    'temp_caregiver_id': lambda x: str(x) if x is not None else None,
+                },
+                'defaults': {
+                    'active': 'Y',
+                    'is_deleted': '0',
+                    'created_by_id': 'patient_service',
+                    'modified_by_id': 'patient_service'
+                },
+                'ignored_fields': [
+                    # Ignore guardian relationships for now
+                    'guardianId', 'guardian2Id'
+                ]
+            },
+                    
             # Activity Service → Scheduler Service
             'activity_service_to_scheduler': {
                 'source_service': 'activity-service',
@@ -667,6 +708,20 @@ def update_patient_medication_field_mapping(source_field: str, target_field: str
 def add_patient_medication_ignored_field(field_name: str):
     """Add field to patient medication ignore list"""
     mapper.add_ignored_field('patient_medication_service_to_scheduler', field_name)
+    
+def map_patient_allocation_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient allocation data for create operation"""
+    return mapper.map_data(source_data, 'patient_allocation_service_to_scheduler', 'create')
+
+
+def map_patient_allocation_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient allocation data for update operation"""
+    return mapper.map_data(source_data, 'patient_allocation_service_to_scheduler', 'update')
+
+
+def get_patient_allocation_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get patient allocation mapping information"""
+    return mapper.get_mapping_info('patient_allocation_service_to_scheduler')
 
 # Convenience functions for activity preference mapper
 def map_activity_preference_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
