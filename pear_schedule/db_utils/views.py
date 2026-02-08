@@ -526,7 +526,20 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
         ).where(schedule.c["IsDeleted"] == False)
         
         return query
-    
+
+class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building allocation query")
+        schema = DB.schema
+        allocation = schema.tables[cls.db_tables.ALLOCATION_TABLE]
+        query: Select = select(
+            allocation.c["patientId"],
+            allocation.c["caregiverId"],
+            allocation.c["tempCaregiverId"]
+        ).where(allocation.c["isDeleted"] == False
+        ).where(allocation.c["active"] == "Y")
+        return query
     
 class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
     @classmethod
