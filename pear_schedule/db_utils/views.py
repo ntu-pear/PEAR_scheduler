@@ -421,7 +421,8 @@ class MedicationView(BaseView): # Just medication table view
         query: Select = select(
             medication,
         ).where(
-            # medication.c["EndDateTime"] >= curDateTime 
+            # medication.c["EndDateTime"] >= curDateTime
+            medication.c["IsDeleted"] == False
         )
         return query
 #ROUTINETable Not Ready, add in once ready.
@@ -539,6 +540,16 @@ class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
             allocation.c["tempCaregiverId"]
         ).where(allocation.c["isDeleted"] == False
         ).where(allocation.c["active"] == "Y")
+        return query
+    
+class ExistingMedicationScheduleView(BaseView): # check if have existing medication schedule
+    @classmethod
+    def build_query(cls, patient_id) -> Select:
+        logger.info("Building existing medication schedule query")
+        medication_schedule = DB.schema.tables[cls.db_tables.MEDICATION_SCHEDULE_TABLE]
+        query: Select = select(
+            medication_schedule,
+        )
         return query
     
 class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients

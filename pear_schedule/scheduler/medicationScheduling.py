@@ -1,7 +1,7 @@
 import logging
 import datetime
 import pandas as pd
-from typing import List, Mapping
+from typing import List, Mapping, Dict
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView
 
@@ -9,13 +9,13 @@ logger = logging.getLogger(__name__)
 
 class medicationScheduleData:
     def __init__(self, cls):
-        self.medicationSchedules: Mapping[int, list] = self.__getMedicationSchedulingData(cls)
+        self.medicationSchedules: Mapping[int, List[Dict]] = self.__getMedicationSchedulingData(cls)
     
     def __getMedicationSchedulingData(self, cls):
         medicationDF = MedicationView.get_data()
         allocationDF = CaregiverAllocatedView.get_data()
 
-        medicationSchedules: Mapping[int, list] = {}
+        medicationSchedules: Mapping[int, List[Dict]] = {}
         
         for index, row, in medicationDF.iterrows():
             
@@ -50,7 +50,7 @@ class medicationScheduleData:
             
             # ======== Inserting medication into the scheduler ========
             slots = administerTime.split(",")
-            allocation_row: pd.DataFrame = allocationDF[allocationDF['PatientID'] == pid]
+            allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
             assigned_caregiver: str = allocation_row.at[0, 'caregiverId'].strip() | allocation_row.at[0, 'tempCaregiverId']
             
             for slot in slots:
@@ -82,6 +82,21 @@ class medicationScheduleData:
                     )
         
         return medicationSchedules
+    
+    def reformatMedicationScheduleData(self) -> Mapping[int, Dict[datetime.date, List[Dict]]]:
+        # reformat into pid -> Day -> ...
+        reformatted_data = {}
+        for pid, meds in self.medicationSchedules.items():
+          reformatted_data[pid] = {}
+          for med in meds:
+             # schema: MedicationID, ScheduleID, AdministerTime (separate), AdministerDate, AssignedTo, Status
+            reformatted_data[pid].setdefault(med["date"], []).append({
+                "MedicationID": med["MedicationID"],
+                "AdministerTime": med["administerTime"],
+                "AssignedTo": med["assignedTo"],
+                "Status": med["status"],
+            })
+        return reformatted_data
 
 class medicationScheduler(BaseScheduler):
     """
@@ -92,7 +107,7 @@ class medicationScheduler(BaseScheduler):
     def fillSchedule(cls, patientSchedules: Mapping[str, List[str]]) -> medicationScheduleData:
         # create medication schedule instance
         medicationSchedule_ref = medicationScheduleData(cls)
-        medicationSchedules: Mapping[int, list[dict]] = medicationSchedule_ref.medicationSchedules
+        medicationSchedules: Mapping[int, List[Dict]] = medicationSchedule_ref.medicationSchedules
         for pid, med in medicationSchedules.items():
             for med_info in med:
               # unpack

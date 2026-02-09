@@ -38,7 +38,6 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     
     # Insert the medication schedule into scheduler
     medicationSchedule_ref: medicationScheduleData = medicationScheduler.fillSchedule(patientSchedules)
-    medicationSchedules: Mapping[int, list] = medicationSchedule_ref.medicationSchedules
     
     # To print the schedule
     for p, slots in patientSchedules.items():
@@ -61,7 +60,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
             
             logger.info("==============================================")
 
-    return medicationSchedules
+    return medicationSchedule_ref
 
 
 def parseFixedTimeArr(fixedTimeSlots: str) -> List[Tuple[int, int]]:

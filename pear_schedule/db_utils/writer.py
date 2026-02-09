@@ -1,11 +1,14 @@
 import datetime
 import logging
 import traceback
-from typing import Mapping, List
+import pandas as pd
+import json
+from typing import Mapping, List, Dict
 
 from sqlalchemy import Connection
 from pear_schedule.db import DB
-from pear_schedule.db_utils.views import ExistingScheduleView
+from pear_schedule.db_utils.views import ExistingScheduleView, ExistingMedicationScheduleView
+from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from sqlalchemy.orm import Session
 
@@ -19,21 +22,23 @@ class ScheduleWriter(ConfigDependant):
     @classmethod
     def write(
         cls, 
-        patientSchedules: Mapping[str, List[str]], 
+        patientSchedules: Mapping[str, List[str]],
+        medicationScheduleRef: medicationScheduleData, 
         conn: Connection = None,
         overwriteExisting: bool = False,
         schedule_meta: Mapping[str, int] = None  # to be able to override specific entries
     ) -> bool:
         if not conn:
             with DB.get_engine().begin() as conn:
-                return cls.__writeToDB(patientSchedules, conn, overwriteExisting, schedule_meta)
+                return cls.__writeToDB(patientSchedules, medicationScheduleRef, conn, overwriteExisting, schedule_meta)
         else:
-            return cls.__writeToDB(patientSchedules, conn, overwriteExisting, schedule_meta)
+            return cls.__writeToDB(patientSchedules, medicationScheduleRef, conn, overwriteExisting, schedule_meta)
 
     @classmethod
     def __writeToDB(
         cls, 
         patientSchedules: Mapping[str, List[str]], 
+        medicationScheduleRef: medicationScheduleData,
         conn: Connection, 
         overwriteExisting: bool,
         schedule_meta: Mapping[str, int] = None  # to be able to override specific entries
@@ -46,6 +51,7 @@ class ScheduleWriter(ConfigDependant):
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
+        medication_schedule: Mapping[int, Dict[datetime.date, List[Dict]]] = medicationScheduleRef.reformatMedicationScheduleData()
 
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
@@ -70,6 +76,8 @@ class ScheduleWriter(ConfigDependant):
                     "Friday": converted_schedule["Friday"],
                     "Saturday": "",
                     "Sunday": "",
+                    # "MedicationSchedule": json.dumps(medication_schedule.get(int(p), {})),
+                    # "MedicationLog": "",
                     "IsDeleted": 0, ## Mandatory Field 
                     "UpdatedDateTime": today, ## Mandatory Field 
                     "CreatedById": SYSTEM_USER_ID,
@@ -147,5 +155,32 @@ class ScheduleWriter(ConfigDependant):
                 logger.exception(f"Error occurred when inserting \n{e}\nData attempted: \n{schedule_data}")
                 responseData = {"Status": "500", "Message": "Schedule Update Error. Check Logs", "Data": ""}   
 
-        return responseData    
+        return responseData
+    
+class MedicationScheduleWrite(ConfigDependant):
+    @classmethod
+    def write(cls, medicationSchedules: Mapping[int, List[Dict]]) -> bool:
+        with DB.get_engine().begin() as conn:
+            return cls._writeToDB(medicationSchedules, conn)
+    
+    @classmethod
+    def _writeToDB(cls, medicationSchedules: Mapping[int, List[Dict]], conn: Connection) -> bool:
+        dbtables: DBTABLES = cls.config["DB_TABLES"]
+        medication_schedule_table = DB.schema.tables[dbtables.MEDICATION_SCHEDULE_TABLE]
+
+        # TODO: schema: MedicationID, ScheduleID, AdministerTime (separate), AdministerDate, AssignedTo, Status
+        try:
+          # if medication schedule is empty, insert everything
+          existingMedicationSchedules: pd.DataFrame = ExistingMedicationScheduleView.get_data(conn=conn)
+          if (existingMedicationSchedules.empty):
+            for pid, med_list in medicationSchedules.items():
+              for med in med_list:
+                # check for existing schedule to get id
+                pass
+          pass
+        except Exception as e:
+          logger.exception(e)
+          logger.error(traceback.format_exc())
+          return False
         
+        return True
