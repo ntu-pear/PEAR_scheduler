@@ -47,11 +47,11 @@ class ScheduleWriter(ConfigDependant):
         schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
 
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
-        medication_schedule: Mapping[int, Dict[datetime.date, List[Dict]]] = medicationScheduleRef.reformatMedicationScheduleData()
+        medication_schedule: Mapping[int, Dict[datetime.date, List[Dict]]] = medicationScheduleRef.reformatMedicationScheduleData(cls)
 
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
@@ -76,7 +76,7 @@ class ScheduleWriter(ConfigDependant):
                     "Friday": converted_schedule["Friday"],
                     "Saturday": "",
                     "Sunday": "",
-                    # "MedicationSchedule": json.dumps(medication_schedule.get(int(p), {})),
+                    "MedicationSchedule": json.dumps(medication_schedule.get(int(p), {})),
                     # "MedicationLog": "",
                     "IsDeleted": 0, ## Mandatory Field 
                     "UpdatedDateTime": today, ## Mandatory Field 
@@ -86,7 +86,7 @@ class ScheduleWriter(ConfigDependant):
 
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
-                    existingScheduleDF = ExistingScheduleView.get_data(conn=conn, arg1=start_of_week, arg2=p)
+                    existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
                     if len(existingScheduleDF) > 0:
                         continue
                     
@@ -159,28 +159,79 @@ class ScheduleWriter(ConfigDependant):
     
 class MedicationScheduleWrite(ConfigDependant):
     @classmethod
-    def write(cls, medicationSchedules: Mapping[int, List[Dict]]) -> bool:
+    def write(cls) -> bool:
         with DB.get_engine().begin() as conn:
-            return cls._writeToDB(medicationSchedules, conn)
+            cls.__checkAndFlush(conn) # remove any outstanding records first
+            return True
+            return cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
+
+    @classmethod
+    def __writeRecords(cls, conn: Connection) -> bool:
+        db_tables: DBTABLES = cls.config["DB_TABLES"]
+        medication_schedule_table = DB.schema.tables[db_tables.MEDICATION_SCHEDULE_TABLE]
+
+        # Need to get the ScheduleID, retrieve existing schedule
+        today = datetime.datetime.now()
+        start_of_week = datetime.datetime.combine(today.date() - datetime.timedelta(days=today.weekday()), datetime.datetime.min.time()) # Monday 00:00:00
+        # get existing schedules for the week for all patients, pid should be unique in this df
+        existingSchedules: pd.DataFrame = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week)
+
+        # for each patient schedule, retrieve the MedicationSchedule field, parse json, then generate medication schedule records
+        # iterrows used to iterate over rows as (index, Series) pairs, itertuples iterates over rows as named tuples (faster)
+        today_str = today.date().strftime(cls.config["STD_DATE_FORMAT"])
+        for row in existingSchedules.itertuples():
+            # try parsing MedicationSchedule, at least {}. Then, try checking list of meds for the day
+            medicationSchedule = json.loads(row.MedicationSchedule)
+            medications = medicationSchedule.get(today_str, [])
+            if not medications: continue
+            for med in medications:
+                # schema: MedicationID, ScheduleID, AdministerTime (separate), AdministerDate, AssignedTo, Status
+                medication_schedule_data = {
+                    "MedicationID": med["MedicationID"],
+                    "ScheduleID": row.ScheduleID,
+                    "AdministerTime": med["AdministerTime"],
+                    "AdministerDate": today.date(),
+                    "AssignedTo": med["AssignedTo"],
+                    "Status": med["Status"]
+                }
+
+                conn.execute(medication_schedule_table.insert().values(medication_schedule_data)) #TODO: need to handle exception
     
     @classmethod
-    def _writeToDB(cls, medicationSchedules: Mapping[int, List[Dict]], conn: Connection) -> bool:
-        dbtables: DBTABLES = cls.config["DB_TABLES"]
-        medication_schedule_table = DB.schema.tables[dbtables.MEDICATION_SCHEDULE_TABLE]
+    def __checkAndFlush(cls, conn: Connection):
+        DB_TABLES: DBTABLES = cls.config["DB_TABLES"]
+        medication_schedule_table = DB.schema.tables[DB_TABLES.MEDICATION_SCHEDULE_TABLE]
+        schedule_table = DB.schema.tables[DB_TABLES.SCHEDULE_TABLE]
 
-        # TODO: schema: MedicationID, ScheduleID, AdministerTime (separate), AdministerDate, AssignedTo, Status
-        try:
-          # if medication schedule is empty, insert everything
-          existingMedicationSchedules: pd.DataFrame = ExistingMedicationScheduleView.get_data(conn=conn)
-          if (existingMedicationSchedules.empty):
-            for pid, med_list in medicationSchedules.items():
-              for med in med_list:
-                # check for existing schedule to get id
-                pass
-          pass
-        except Exception as e:
-          logger.exception(e)
-          logger.error(traceback.format_exc())
-          return False
+        existingMedicationSchedule: pd.DataFrame = ExistingMedicationScheduleView.get_data(conn)
+        # based on schema: MedicationID: int64, ScheduleID: int64, AdministerTime: object, AdministerDate: datetime64[ns], AssignedTo: object, Status: object
+        # print(existingMedicationSchedule.dtypes)
+        if len(existingMedicationSchedule) == 0:
+            return
         
-        return True
+        # if there are existing records. First filter out any records that have expired
+        today = (datetime.datetime.now().date() + datetime.timedelta(days=1)).strftime(cls.config["STD_DATE_FORMAT"])
+        # if generate/regenerate was submitted midday, the schedules would not have expired yet
+        expiredSchedules = existingMedicationSchedule[existingMedicationSchedule["AdministerDate"] < today]
+        expiredSchedules["AdministerDate"] = expiredSchedules["AdministerDate"].dt.strftime(cls.config["STD_DATE_FORMAT"])
+        medicationLog = expiredSchedules.set_index("ScheduleID").groupby(level=0).apply(lambda x: x.to_dict(orient="records")).to_dict()
+        logger.info(medicationLog)
+
+        for row in expiredSchedules.itertuples():
+            query = medication_schedule_table.delete().where(
+                medication_schedule_table.c.MedicationID == row.MedicationID,
+                medication_schedule_table.c.ScheduleID == row.ScheduleID,
+                medication_schedule_table.c.AdministerTime == row.AdministerTime,
+                medication_schedule_table.c.AdministerDate == row.AdministerDate
+            )
+            conn.execute(query)
+        
+        # flush to MedicationLog
+        for scheduleID, log in medicationLog.items():
+            # TODO: retrieve existing medication log, append to it, then update back
+            query = schedule_table.update() \
+                                  .values(MedicationLog=json.dumps(log)) \
+                                  .where(schedule_table.c.ScheduleID == scheduleID)
+            conn.execute(query)
+
+        # then check whether medication for patient has been deleted

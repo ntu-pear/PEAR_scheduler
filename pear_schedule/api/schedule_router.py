@@ -65,7 +65,8 @@ def generate_schedule(request: Request):
     try:
         medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
 
-        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, overwriteExisting=False):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, overwriteExisting=False) \
+            and MedicationScheduleWrite.write():
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -100,7 +101,8 @@ def generate_schedule(request: Request):
                 "ScheduleID": row["ScheduleID"],
             }
 
-        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
+            MedicationScheduleWrite.write():
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:

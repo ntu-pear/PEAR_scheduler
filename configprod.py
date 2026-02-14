@@ -53,3 +53,4 @@ DAY_OF_WEEK_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Sa
 DAY_TIMESLOTS = ["9am-10am", "10am-11am", "11am-12pm", "12pm-1pm", "1pm-2pm","2pm-3pm","3pm-4pm", "4pm-5pm"]
 MIN_ACTIVITY_DURATION: int = 60 # in minutes
 OPENING_HOUR = "9am"
+STD_DATE_FORMAT = "%Y-%m-%d"

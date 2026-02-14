@@ -51,7 +51,7 @@ class medicationScheduleData:
             # ======== Inserting medication into the scheduler ========
             slots = administerTime.split(",")
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
-            assigned_caregiver: str = allocation_row.at[0, 'caregiverId'].strip() | allocation_row.at[0, 'tempCaregiverId']
+            assigned_caregiver: str = (allocation_row.at[0, 'caregiverId'].strip() or allocation_row.at[0, 'tempCaregiverId']) if not allocation_row.empty else "UNASSIGNED"
             
             for slot in slots:
                 hour = getTimeSlot(cls, slot)
@@ -83,14 +83,15 @@ class medicationScheduleData:
         
         return medicationSchedules
     
-    def reformatMedicationScheduleData(self) -> Mapping[int, Dict[datetime.date, List[Dict]]]:
+    def reformatMedicationScheduleData(self, cls) -> Mapping[int, Dict[datetime.date, List[Dict]]]:
         # reformat into pid -> Day -> ...
         reformatted_data = {}
         for pid, meds in self.medicationSchedules.items():
           reformatted_data[pid] = {}
           for med in meds:
-             # schema: MedicationID, ScheduleID, AdministerTime (separate), AdministerDate, AssignedTo, Status
-            reformatted_data[pid].setdefault(med["date"], []).append({
+            # schema: MedicationID, ScheduleID, AdministerTime (separate), AdministerDate, AssignedTo, Status
+            # datetime cannot be used as a key in JSON, have to convert to string. Standardise format to YYYY-MM-DD
+            reformatted_data[pid].setdefault(med["date"].strftime(cls.config["STD_DATE_FORMAT"]), []).append({
                 "MedicationID": med["MedicationID"],
                 "AdministerTime": med["administerTime"],
                 "AssignedTo": med["assignedTo"],
