@@ -93,7 +93,8 @@ class ActivitiesView(BaseView):
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] < get_monday(),
-            centre_activity.c["IsCompulsory"] == False
+            centre_activity.c["IsCompulsory"] == False,
+            centre_activity.c["EndDate"] > get_next_sunday()
         )
 
         return query
