@@ -555,12 +555,14 @@ class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
     
 class ExistingMedicationScheduleView(BaseView): # check if have existing medication schedule
     @classmethod
-    def build_query(cls) -> Select:
+    def build_query(cls, filter_by_date=False) -> Select:
         logger.info("Building existing medication schedule query")
         medication_schedule = DB.schema.tables[cls.db_tables.MEDICATION_SCHEDULE_TABLE]
         query: Select = select(
             medication_schedule,
         )
+        if filter_by_date:
+            query = query.where(medication_schedule.c["AdminsterDate"] == datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
         return query
 
 class DeletedMedicationView(BaseView): # Get all deleted medication records
@@ -575,6 +577,7 @@ class DeletedMedicationView(BaseView): # Get all deleted medication records
         ).join(
             medication_schedule, medication.c["MedicationID"] == medication_schedule.c["MedicationID"]
         ).where(medication.c["IsDeleted"] == True)
+        return query
 
 class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
     @classmethod

@@ -5,12 +5,16 @@ import pandas as pd
 import json
 from typing import Mapping, List, Dict
 
-from sqlalchemy import Connection
+from sqlalchemy import Connection, column, delete, select, func, literal_column, column
 from pear_schedule.db import DB
-from pear_schedule.db_utils.views import ExistingScheduleView, ExistingMedicationScheduleView
+from pear_schedule.db_utils.views import ExistingScheduleView, ExistingMedicationScheduleView, DeletedMedicationView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
+from pear_schedule.models.schedule_model import Schedule
+from pear_schedule.models.medication_schedule_model import MedicationSchedule
+from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 
 logger = logging.getLogger(__name__)
@@ -161,9 +165,28 @@ class MedicationScheduleWrite(ConfigDependant):
     @classmethod
     def write(cls) -> bool:
         with DB.get_engine().begin() as conn:
-            cls.__checkAndFlush(conn) # remove any outstanding records first
-            return True
-            return cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
+            with Session(bind=conn) as session:
+                try:
+                  cls.__checkAndFlush(conn, session) # remove any outstanding records first
+                  session.commit()
+                except Exception as e:
+                  logger.exception(e)
+                  logger.error(traceback.format_exc())
+                  logger.info("An error has occurred when flushing medication schedules, rolling back transaction")
+                  session.rollback()
+                  return False # do not proceed if unable to delete
+            try:
+              cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
+            except Exception as e:
+              logger.exception(e)
+              logger.error(traceback.format_exc())
+              logger.info("An error has occurred when writing medication schedules, rolling back transaction")
+              conn.rollback()
+              return False
+    
+    @classmethod
+    def update(cls) -> bool:
+        pass
 
     @classmethod
     def __writeRecords(cls, conn: Connection) -> bool:
@@ -190,48 +213,77 @@ class MedicationScheduleWrite(ConfigDependant):
                     "MedicationID": med["MedicationID"],
                     "ScheduleID": row.ScheduleID,
                     "AdministerTime": med["AdministerTime"],
-                    "AdministerDate": today.date(),
+                    "AdministerDate": today_str,
                     "AssignedTo": med["AssignedTo"],
-                    "Status": med["Status"]
                 }
-
-                conn.execute(medication_schedule_table.insert().values(medication_schedule_data)) #TODO: need to handle exception
-    
+                
+                statement = select(medication_schedule_table).where(
+                    medication_schedule_table.c.MedicationID == medication_schedule_data["MedicationID"],
+                    medication_schedule_table.c.ScheduleID == medication_schedule_data["ScheduleID"],
+                    medication_schedule_table.c.AdministerDate == medication_schedule_data["AdministerDate"],
+                    medication_schedule_table.c.AdministerTime == medication_schedule_data["AdministerTime"],
+                )
+                if not conn.execute(statement).first(): # .first() returns none if no results
+                  conn.execute(medication_schedule_table.insert().values(medication_schedule_data))
+        return True
+        
     @classmethod
-    def __checkAndFlush(cls, conn: Connection):
-        DB_TABLES: DBTABLES = cls.config["DB_TABLES"]
-        medication_schedule_table = DB.schema.tables[DB_TABLES.MEDICATION_SCHEDULE_TABLE]
-        schedule_table = DB.schema.tables[DB_TABLES.SCHEDULE_TABLE]
-
+    def __checkAndFlush(cls, conn: Connection, session: Session):
         existingMedicationSchedule: pd.DataFrame = ExistingMedicationScheduleView.get_data(conn)
         # based on schema: MedicationID: int64, ScheduleID: int64, AdministerTime: object, AdministerDate: datetime64[ns], AssignedTo: object, Status: object
         # print(existingMedicationSchedule.dtypes)
-        if len(existingMedicationSchedule) == 0:
+        if existingMedicationSchedule.empty:
             return
         
         # if there are existing records. First filter out any records that have expired
-        today = (datetime.datetime.now().date() + datetime.timedelta(days=1)).strftime(cls.config["STD_DATE_FORMAT"])
+        today = datetime.datetime.now().date()
         # if generate/regenerate was submitted midday, the schedules would not have expired yet
-        expiredSchedules = existingMedicationSchedule[existingMedicationSchedule["AdministerDate"] < today]
-        expiredSchedules["AdministerDate"] = expiredSchedules["AdministerDate"].dt.strftime(cls.config["STD_DATE_FORMAT"])
-        medicationLog = expiredSchedules.set_index("ScheduleID").groupby(level=0).apply(lambda x: x.to_dict(orient="records")).to_dict()
-        logger.info(medicationLog)
+        expiredSchedules = existingMedicationSchedule[existingMedicationSchedule["AdministerDate"] < today.strftime(cls.config["STD_DATE_FORMAT"])]
+        expiredSchedules["LoggedReason"] = "Expired"
 
-        for row in expiredSchedules.itertuples():
-            query = medication_schedule_table.delete().where(
-                medication_schedule_table.c.MedicationID == row.MedicationID,
-                medication_schedule_table.c.ScheduleID == row.ScheduleID,
-                medication_schedule_table.c.AdministerTime == row.AdministerTime,
-                medication_schedule_table.c.AdministerDate == row.AdministerDate
-            )
-            conn.execute(query)
+        session.execute(delete(MedicationSchedule).where(MedicationSchedule.AdministerDate < today).execution_options(synchronize_session=False))
+        session.flush() # pending deletion
+
+        # then check whether medication for patient has been deleted, flush any outstanding records (for current day)
+        # this only checks for medication that was already scheduled before being later deleted
+        deletedMedications: pd.DataFrame = DeletedMedicationView.get_data(conn) # returns existing schema + MedicationCourseDeleted
+        # simply adds on that the medication course has been deleted.
+        deletedMedications.rename(columns={"MedicationCourseDeleted": "LoggedReason"}, inplace=True)
+        deletedMedications["LoggedReason"] = deletedMedications["LoggedReason"].apply(lambda x: "Medication course deleted")
+        session.execute(delete(MedicationSchedule).where(MedicationSchedule.MedicationID.in_(deletedMedications["MedicationID"].unique().tolist())))
+        session.flush()
+
+        # check for administerTime changes for the day, delete any records with changes
+        # inserting medication schedules for only one day. Records with duplicate medID, different administer times
+        subquery = select(column("value")) \
+            .select_from(func.string_split(RefPatientMedication.AdministerTime, ",")) \
+            .scalar_subquery()
+        # subquery = select(func.string_split(RefPatientMedication.AdministerTime, ",")).scalar_subquery()
         
-        # flush to MedicationLog
-        for scheduleID, log in medicationLog.items():
-            # TODO: retrieve existing medication log, append to it, then update back
-            query = schedule_table.update() \
-                                  .values(MedicationLog=json.dumps(log)) \
-                                  .where(schedule_table.c.ScheduleID == scheduleID)
-            conn.execute(query)
+        statement = (
+          select(MedicationSchedule, RefPatientMedication.AdministerTime.label("CurrentAdministerTimes"))
+          .join(RefPatientMedication, MedicationSchedule.MedicationID == RefPatientMedication.MedicationID)
+          .where(MedicationSchedule.AdministerTime.not_in(subquery))
+        )
 
-        # then check whether medication for patient has been deleted
+        medication_records = session.execute(statement).all()
+        alteredMedications: pd.DataFrame = pd.read_sql(statement, session.bind)
+        for obj in medication_records: session.delete(obj.MedicationSchedule)
+        session.flush()
+        alteredMedications.rename(columns={"CurrentAdministerTimes": "LoggedReason"}, inplace=True)
+        alteredMedications["LoggedReason"] = alteredMedications["LoggedReason"].apply(lambda x: f"AdministerTime no longer in {x}")
+        
+        medicationLog = pd.concat([expiredSchedules, deletedMedications, alteredMedications])
+        if medicationLog.empty: return # if there is nothing that was deleted, then no need to update logs, return
+        medicationLog["AdministerDate"] = medicationLog["AdministerDate"].dt.strftime(cls.config["STD_DATE_FORMAT"])
+        date_str = medicationLog["AdministerDate"].mode()[0]
+        medicationLog = medicationLog.drop("AdministerDate", axis=1).set_index("ScheduleID").groupby(level=0).apply(lambda x: x.to_dict(orient="records")).to_dict()
+
+        for scheduleID, log in medicationLog.items():
+          # retrieve existing medication log, append to it, then update back
+          schedule = session.get(Schedule, scheduleID)
+          # all records are created by the day, meaning about-to-be-flushed records all belong to the same day
+          existingLog = json.loads(schedule.MedicationLog) if schedule.MedicationLog else {} # {date: []}
+          existingLog.setdefault(date_str, []).extend(log)
+          schedule.MedicationLog = json.dumps(existingLog)
+          flag_modified(schedule, "MedicationLog") # sqlalchemy may not detect if internal contents of mutable have been modified
