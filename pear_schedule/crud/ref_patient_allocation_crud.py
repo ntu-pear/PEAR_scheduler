@@ -57,21 +57,17 @@ def create_ref_patient_allocation(
             f"for patient {allocation.patient_id}"
         )
         
-        # Use raw SQL for IDENTITY INSERT to handle specific ID
+        # Use raw SQL to insert with explicit ID (table does not use IDENTITY property)
         query = text("""
-            SET IDENTITY_INSERT [REF_PATIENT_ALLOCATION] ON;
-            
             INSERT INTO [REF_PATIENT_ALLOCATION] (
-                id, active, isDeleted, patientId, doctorId, gameTherapistId, supervisorId, 
+                id, active, isDeleted, patientId, doctorId, gameTherapistId, supervisorId,
                 caregiverId, tempDoctorId, tempCaregiverId,
                 created_date, modified_date, created_by_id, modified_by_id
             ) VALUES (
                 :id, :active, :isDeleted, :patientId, :doctorId, :gameTherapistId, :supervisorId,
                 :caregiverId, :tempDoctorId, :tempCaregiverId,
                 :created_date, :modified_date, :created_by_id, :modified_by_id
-            );
-            
-            SET IDENTITY_INSERT [REF_PATIENT_ALLOCATION] OFF;
+            )
         """)
         
         params = {
