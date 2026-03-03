@@ -40,13 +40,16 @@ class AdHocRequest(BaseModel):
         if parse(self.EndDate) < parse(self.StartDate):
             raise ValueError(f"EndDate cannot be before StartDate")
         return self
-
-class MedicationScheduleUpdate(BaseModel):
-    Status: int
-    AdministeredBy: str
+    
 
 def isWithinDateRange(curDateString, startScheduleDate, endScheduleDate):
     return startScheduleDate.date() <= parse(curDateString).date() <= endScheduleDate.date()
+
+class MedicationScheduleNotFoundException(Exception):
+    pass
+
+class MedicationAlreadyAdministeredException(Exception):
+    pass
 
 #----------------------------- FOR PATIENT TEST -----------------------------       
 def getTablesDF():

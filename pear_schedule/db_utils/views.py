@@ -93,7 +93,7 @@ class ActivitiesView(BaseView):
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] < get_monday(),
-            # centre_activity.c["EndDate"] > get_next_sunday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
             centre_activity.c["IsCompulsory"] == False
         )
 
@@ -562,7 +562,7 @@ class ExistingMedicationScheduleView(BaseView): # check if have existing medicat
             medication_schedule,
         )
         if filter_by_date:
-            query = query.where(medication_schedule.c["AdminsterDate"] == datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
+            query = query.where(medication_schedule.c["AdministerDate"] == datetime.now().date())
         return query
 
 class DeletedMedicationView(BaseView): # Get all deleted medication records

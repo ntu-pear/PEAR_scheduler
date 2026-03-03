@@ -13,6 +13,7 @@ from pear_schedule.utils import ConfigDependant, DBTABLES
 from pear_schedule.models.schedule_model import Schedule
 from pear_schedule.models.medication_schedule_model import MedicationSchedule
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
+from pear_schedule.api.utils import MedicationAlreadyAdministeredException, MedicationScheduleNotFoundException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -171,22 +172,44 @@ class MedicationScheduleWrite(ConfigDependant):
                   session.commit()
                 except Exception as e:
                   logger.exception(e)
-                  logger.error(traceback.format_exc())
-                  logger.info("An error has occurred when flushing medication schedules, rolling back transaction")
+                  logger.error(f"An error has occurred when flushing medication schedules, rolling back transaction: {traceback.format_exc()}")
                   session.rollback()
                   return False # do not proceed if unable to delete
             try:
-              cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
+              return cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
             except Exception as e:
               logger.exception(e)
-              logger.error(traceback.format_exc())
-              logger.info("An error has occurred when writing medication schedules, rolling back transaction")
+              logger.error(f"An error has occurred when writing medication schedules, rolling back transaction: {traceback.format_exc()}")
               conn.rollback()
               return False
     
     @classmethod
-    def update(cls) -> bool:
-        pass
+    def update(cls, medication_data) -> datetime:
+      with DB.get_engine().begin() as conn:
+        with Session(bind=conn) as session:
+          # returns None if no results
+          try: 
+            composite_key = {
+               "MedicationID": medication_data.MedicationID,
+               "ScheduleID": medication_data.ScheduleID,
+               "AdministerDate": medication_data.AdministerDate,
+               "AdministerTime": medication_data.AdministerTime
+            }
+            existingSchedule = session.get(MedicationSchedule, composite_key)
+            if not existingSchedule: raise MedicationScheduleNotFoundException()
+            if existingSchedule.Status == '1': raise MedicationAlreadyAdministeredException()
+            existingSchedule.Status = medication_data.Status
+            existingSchedule.AdministeredBy = medication_data.AdministeredBy
+
+            timestamp = datetime.datetime.now()
+            existingSchedule.ActualAdministerTime = timestamp
+            session.commit()
+            return timestamp
+          except Exception as e:
+            logger.exception(e)
+            logger.error(f"Error updating medication schedule: {traceback.format_exc()}")
+            session.rollback()
+            raise e
 
     @classmethod
     def __writeRecords(cls, conn: Connection) -> bool:
@@ -216,15 +239,21 @@ class MedicationScheduleWrite(ConfigDependant):
                     "AdministerDate": today_str,
                     "AssignedTo": med["AssignedTo"],
                 }
+
+                composite_key_filters = [
+                  medication_schedule_table.c.MedicationID == medication_schedule_data["MedicationID"],
+                  medication_schedule_table.c.ScheduleID == medication_schedule_data["ScheduleID"],
+                  medication_schedule_table.c.AdministerDate == medication_schedule_data["AdministerDate"],
+                  medication_schedule_table.c.AdministerTime == medication_schedule_data["AdministerTime"],
+                ]
                 
-                statement = select(medication_schedule_table).where(
-                    medication_schedule_table.c.MedicationID == medication_schedule_data["MedicationID"],
-                    medication_schedule_table.c.ScheduleID == medication_schedule_data["ScheduleID"],
-                    medication_schedule_table.c.AdministerDate == medication_schedule_data["AdministerDate"],
-                    medication_schedule_table.c.AdministerTime == medication_schedule_data["AdministerTime"],
-                )
+                statement = select(medication_schedule_table).where(*composite_key_filters)
                 if not conn.execute(statement).first(): # .first() returns none if no results
                   conn.execute(medication_schedule_table.insert().values(medication_schedule_data))
+                else:
+                  conn.execute(
+                     medication_schedule_table.update().where(*composite_key_filters).values({"AssignedTo": medication_schedule_data["AssignedTo"]})
+                  )
         return True
         
     @classmethod
@@ -238,7 +267,7 @@ class MedicationScheduleWrite(ConfigDependant):
         # if there are existing records. First filter out any records that have expired
         today = datetime.datetime.now().date()
         # if generate/regenerate was submitted midday, the schedules would not have expired yet
-        expiredSchedules = existingMedicationSchedule[existingMedicationSchedule["AdministerDate"] < today.strftime(cls.config["STD_DATE_FORMAT"])]
+        expiredSchedules = existingMedicationSchedule[existingMedicationSchedule["AdministerDate"] == today.strftime(cls.config["STD_DATE_FORMAT"])]
         expiredSchedules["LoggedReason"] = "Expired"
 
         session.execute(delete(MedicationSchedule).where(MedicationSchedule.AdministerDate < today).execution_options(synchronize_session=False))
@@ -258,7 +287,6 @@ class MedicationScheduleWrite(ConfigDependant):
         subquery = select(column("value")) \
             .select_from(func.string_split(RefPatientMedication.AdministerTime, ",")) \
             .scalar_subquery()
-        # subquery = select(func.string_split(RefPatientMedication.AdministerTime, ",")).scalar_subquery()
         
         statement = (
           select(MedicationSchedule, RefPatientMedication.AdministerTime.label("CurrentAdministerTimes"))
