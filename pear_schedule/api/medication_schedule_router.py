@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Medication Schedule"])
 
 @router.get("/get/")
-def getMedicationSchedule(request: Request):
+def get_medication_schedule(request: Request):
     try:
         medication_schedules: pd.DataFrame = ExistingMedicationScheduleView.get_data(filter_by_date=True)
         return JSONResponse(status_code=200, content=jsonable_encoder(medication_schedules.to_dict(orient="records")))
@@ -24,7 +24,7 @@ def getMedicationSchedule(request: Request):
         raise HTTPException(status_code=500, detail=f"An error occurred while fetching medication schedules: {str(e)}")
 
 @router.put("/update/")
-def updateMedicationSchedule(
+def update_medication_schedule(
     request: Request,
     medication_schedule: MedicationScheduleUpdate
 ):
