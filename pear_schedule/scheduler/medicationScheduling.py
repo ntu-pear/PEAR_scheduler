@@ -51,9 +51,7 @@ class medicationScheduleData:
             # ======== Inserting medication into the scheduler ========
             slots = administerTime.split(",")
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
-            logger.info(f"test: {allocation_row.at[0, 'caregiverId']} | {allocation_row.at[0, 'tempCaregiverId']}")
             assigned_caregiver: str = (allocation_row.at[0, 'caregiverId'].strip() or allocation_row.at[0, 'tempCaregiverId']) if not allocation_row.empty else "UNASSIGNED"
-            logger.info(f"assigned: {assigned_caregiver}")
             
             for slot in slots:
                 hour = getTimeSlot(cls, slot)
