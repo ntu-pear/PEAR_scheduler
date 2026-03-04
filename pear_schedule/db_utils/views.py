@@ -1,6 +1,6 @@
 from contextlib import nullcontext
 from operator import or_
-from typing import Mapping, Any
+from typing import Mapping, Any, Optional
 import pandas as pd
 
 from sqlalchemy import Connection, Select, and_, func, select
@@ -93,6 +93,7 @@ class ActivitiesView(BaseView):
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] < get_monday(),
+            centre_activity.c["EndDate"] > get_next_sunday(),
             centre_activity.c["IsCompulsory"] == False
         )
 
@@ -421,7 +422,8 @@ class MedicationView(BaseView): # Just medication table view
         query: Select = select(
             medication,
         ).where(
-            # medication.c["EndDateTime"] >= curDateTime 
+            # medication.c["EndDateTime"] >= curDateTime
+            medication.c["IsDeleted"] == False
         )
         return query
 #ROUTINETable Not Ready, add in once ready.
@@ -513,7 +515,11 @@ class AdHocScheduleView(BaseView): # get schedule for specific patients
     
 class ExistingScheduleView(BaseView): # check if have existing schedule
     @classmethod
-    def build_query(cls, **query_kwarg) -> Select:
+    def build_query(
+        cls, 
+        start_dateTime: Optional[datetime] = None, 
+        patient_id: Optional[str] = None,
+    ) -> Select:
         #start_of_week, patientID
 
         logger.info("Building existing schedule query")
@@ -521,13 +527,58 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
         schedule = schema.tables[cls.db_tables.SCHEDULE_TABLE]
         query: Select = select(
             schedule.c["ScheduleID"],
-        ).where(schedule.c["EndDate"] >= query_kwarg["arg1"]
-        ).where(schedule.c["PatientID"] == query_kwarg["arg2"]
+            schedule.c["PatientID"],
+            schedule.c["MedicationSchedule"],
         ).where(schedule.c["IsDeleted"] == False)
+
+        # TODO: May need to tighten the condition
+        if start_dateTime is not None:
+            query = query.where(schedule.c["EndDate"] >= start_dateTime)
+        if patient_id is not None:
+            query = query.where(schedule.c["PatientID"] == patient_id)
         
         return query
+
+class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building allocation query")
+        schema = DB.schema
+        allocation = schema.tables[cls.db_tables.ALLOCATION_TABLE]
+        query: Select = select(
+            allocation.c["patientId"],
+            allocation.c["caregiverId"],
+            allocation.c["tempCaregiverId"]
+        ).where(allocation.c["isDeleted"] == False
+        ).where(allocation.c["active"] == "Y")
+        return query
     
-    
+class ExistingMedicationScheduleView(BaseView): # check if have existing medication schedule
+    @classmethod
+    def build_query(cls, filter_by_date=False) -> Select:
+        logger.info("Building existing medication schedule query")
+        medication_schedule = DB.schema.tables[cls.db_tables.MEDICATION_SCHEDULE_TABLE]
+        query: Select = select(
+            medication_schedule,
+        )
+        if filter_by_date:
+            query = query.where(medication_schedule.c["AdministerDate"] == datetime.now().date())
+        return query
+
+class DeletedMedicationView(BaseView): # Get all deleted medication records
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building deleted medication query")
+        medication = DB.schema.tables[cls.db_tables.MEDICATION_TABLE]
+        medication_schedule = DB.schema.tables[cls.db_tables.MEDICATION_SCHEDULE_TABLE]
+        query: Select = select(
+            medication.c["IsDeleted"].label("MedicationCourseDeleted"),
+            medication_schedule
+        ).join(
+            medication_schedule, medication.c["MedicationID"] == medication_schedule.c["MedicationID"]
+        ).where(medication.c["IsDeleted"] == True)
+        return query
+
 class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
     @classmethod
     def build_query(cls) -> Select:

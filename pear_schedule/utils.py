@@ -21,7 +21,9 @@ class DBTABLES:
     # ROUTINE_TABLE: str
     # ROUTINE_ACTIVITY_TABLE: str
     SCHEDULE_TABLE: str
+    MEDICATION_SCHEDULE_TABLE: str
     MEDICATION_TABLE: str
+    ALLOCATION_TABLE: str
 
 # ACTIVITY_AVAILABILITY_TABLE: str
 
@@ -36,7 +38,9 @@ class MICROSERVICE_TABLES:
     REF_ACTIVITY_RECOMMENDATION: str = "REF_ACTIVITY_RECOMMENDATION"
     REF_ACTIVITY_ROUTINE: str = "REF_ACTIVITY_ROUTINE"
     REF_PATIENT_MEDICATION: str = "REF_PATIENT_MEDICATION"
+    REF_PATIENT_ALLOCATION: str = "REF_PATIENT_ALLOCATION"
     SCHEDULE: str = "SCHEDULE"
+    # MEDICATION_SCHEDULE: str = "MEDICATION_SCHEDULE"
 
 
 class ConfigDependant:
@@ -69,7 +73,9 @@ def get_ref_table_mapping():
         "Routine": "REF_ACTIVITY_ROUTINE",
         "RoutineActivity": "REF_ACTIVITY_ROUTINE",
         "Medication": "REF_PATIENT_MEDICATION",
-        "Schedule": "SCHEDULE"
+        "Allocation": "REF_PATIENT_ALLOCATION",
+        "Schedule": "SCHEDULE",
+        # "MedicationSchedule": "MEDICATION_SCHEDULE"
     }
 
 
@@ -88,7 +94,9 @@ def get_model_for_table(table_name: str):
     from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
     from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
     from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
+    from pear_schedule.models.ref_patient_allocation_model import RefPatientAllocation
     from pear_schedule.models.schedule_model import Schedule
+    # from pear_schedule.models.medication_schedule_model import MedicationSchedule
     
     model_mapping = {
         "REF_PATIENT": RefPatient,
@@ -99,7 +107,9 @@ def get_model_for_table(table_name: str):
         "REF_ACTIVITY_RECOMMENDATION": RefActivityRecommendation,
         "REF_ACTIVITY_ROUTINE": RefActivityRoutine,
         "REF_PATIENT_MEDICATION": RefPatientMedication,
-        "SCHEDULE": Schedule
+        "REF_PATIENT_ALLOCATION": RefPatientAllocation,
+        "SCHEDULE": Schedule,
+        # "MEDICATION_SCHEDULE": MedicationSchedule
     }
     
     return model_mapping.get(table_name)

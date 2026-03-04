@@ -45,6 +45,12 @@ class AdHocRequest(BaseModel):
 def isWithinDateRange(curDateString, startScheduleDate, endScheduleDate):
     return startScheduleDate.date() <= parse(curDateString).date() <= endScheduleDate.date()
 
+class MedicationScheduleNotFoundException(Exception):
+    pass
+
+class MedicationAlreadyAdministeredException(Exception):
+    pass
+
 #----------------------------- FOR PATIENT TEST -----------------------------       
 def getTablesDF():
     

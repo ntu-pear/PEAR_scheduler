@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey
-from sqlalchemy.dialects.mssql import VARCHAR
+from sqlalchemy.dialects.mssql import VARCHAR, NVARCHAR
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 from pear_schedule.database import Base
@@ -19,6 +19,8 @@ class Schedule(Base):
     Friday = Column(VARCHAR("max"))
     Saturday = Column(VARCHAR("max"))
     Sunday = Column(VARCHAR("max"))
+    MedicationSchedule = Column(NVARCHAR("max"))
+    MedicationLog = Column(NVARCHAR("max"))
     
 
     CreatedDateTime = Column(DateTime, nullable=False, default=datetime.now)

@@ -1,6 +1,6 @@
 import datetime
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Mapping
 from pear_schedule.db_utils.views import PatientsOnlyView
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
     from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
     from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler, RecommendedRoutineActivityScheduler
-    from pear_schedule.scheduler.medicationScheduling import medicationScheduler
+    from pear_schedule.scheduler.medicationScheduling import medicationScheduler, medicationScheduleData
     patientDF = PatientsOnlyView.get_data()
 
     for id in patientDF["PatientID"]:
@@ -37,7 +37,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     PreferredActivityScheduler.fillSchedule(patientSchedules)
     
     # Insert the medication schedule into scheduler
-    medicationScheduler.fillSchedule(patientSchedules)
+    medicationSchedule_ref: medicationScheduleData = medicationScheduler.fillSchedule(patientSchedules)
     
     # To print the schedule
     for p, slots in patientSchedules.items():
@@ -60,7 +60,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
             
             logger.info("==============================================")
 
-    return patientSchedules
+    return medicationSchedule_ref
 
 
 def parseFixedTimeArr(fixedTimeSlots: str) -> List[Tuple[int, int]]:
