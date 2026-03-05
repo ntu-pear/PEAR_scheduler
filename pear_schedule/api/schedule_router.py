@@ -127,7 +127,7 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -137,7 +137,8 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
                 "ScheduleID": row["ScheduleID"],
             }
 
-        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
+            MedicationScheduleWrite.write():
             weeklyScheduleViewDF = WeeklyScheduleView.get_data()
             weeklyScheduleViewDF.pop("ScheduleID")
             schedules_json = weeklyScheduleViewDF.to_dict(orient="records")
