@@ -131,6 +131,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             start = 0
 
             for curr, (_, row) in enumerate(recommendations.iterrows()):  # not using iterrows directly since need range indexing later
+                # grab multiple recommended activities for the same patient in one go
                 if row["PatientID"] == recommendations.loc[start, "PatientID"]:
                     continue
 
@@ -185,7 +186,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                         continue
 
                     # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
-                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["ProcessedTimeSlots"])
+                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["ProcessedTimeSlots"], activity["MinDuration"])
 
                     # if there are no such slots, we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
                     if not curr_availability:
@@ -515,7 +516,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
 
 
-def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
+def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Set[tuple], duration: int) -> int:
     # first check whether activity can be scheduled at all at this slot
     if (day,slot) not in processedTimeSlots:
         return float("inf")

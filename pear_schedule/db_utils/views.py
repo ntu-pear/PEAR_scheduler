@@ -362,6 +362,7 @@ class RecommendedActivitiesView(BaseView):
         query: Select = select(
             centre_activity.c["ActivityID"],
             centre_activity.c["IsFixed"],
+            centre_activity.c["MinDuration"], # assume that MinDuration is equal to MaxDuration
             activity.c["ActivityTitle"],
             centre_activity.c["FixedTimeSlots"],
             recommendations.c["PatientID"],
@@ -553,16 +554,23 @@ class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
         ).where(allocation.c["active"] == "Y")
         return query
     
-class ExistingMedicationScheduleView(BaseView): # check if have existing medication schedule
+class TodayMedicationScheduleView(BaseView): # retrieve medication schedule for the day
     @classmethod
-    def build_query(cls, filter_by_date=False) -> Select:
-        logger.info("Building existing medication schedule query")
+    def build_query(cls) -> Select:
+        logger.info("Building medication schedule for today query")
+        medication = DB.schema.tables[cls.db_tables.MEDICATION_TABLE]
         medication_schedule = DB.schema.tables[cls.db_tables.MEDICATION_SCHEDULE_TABLE]
         query: Select = select(
-            medication_schedule,
-        )
-        if filter_by_date:
-            query = query.where(medication_schedule.c["AdministerDate"] == datetime.now().date())
+            medication_schedule.c["AdministerDate"],
+            medication_schedule.c["AdministerTime"],
+            medication_schedule.c["AssignedTo"],
+            medication_schedule.c["Status"],
+            medication_schedule.c["ActualAdministerTime"],
+            medication_schedule.c["AdministeredBy"],
+            medication.c["PatientID"],
+            medication.c["PrescriptionName"]
+        ).join(medication, medication.c["MedicationID"] == medication_schedule.c["MedicationID"]
+        ).where(medication_schedule.c["AdministerDate"] == datetime.now().date())
         return query
 
 class DeletedMedicationView(BaseView): # Get all deleted medication records
