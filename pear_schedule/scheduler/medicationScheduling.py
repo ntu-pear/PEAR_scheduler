@@ -46,7 +46,7 @@ class medicationScheduleData:
             if endDateTime <= end_of_week: # Medication will end sometime during the week
                 end_day_counter = (cls.config["DAYS"]-1) - (end_of_week - endDateTime).days
             # print(f"Medication ends on {end_day_counter}")
-            
+
             
             # ======== Inserting medication into the scheduler ========
             slots = administerTime.split(",")
@@ -152,4 +152,4 @@ def getTimeSlot(cls, time):
     parsed_time = datetime.datetime.strptime(time, "%H%M")
     timeDiff_fromOpening: datetime.timedelta = parsed_time-datetime.datetime.strptime(cls.config["OPENING_HOUR"], "%I%p")
     numSlotsFromOpening: int = (timeDiff_fromOpening // -datetime.timedelta(minutes=cls.config["MIN_ACTIVITY_DURATION"])) * -1
-    return numSlotsFromOpening - 1
+    return 0 if timeDiff_fromOpening == datetime.timedelta() else numSlotsFromOpening - 1
