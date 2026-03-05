@@ -55,7 +55,6 @@ class medicationScheduleData:
             
             for slot in slots:
                 hour = getTimeSlot(cls, slot)
-                logger.info(f"pid {pid}: {hour}")
                 
                 if hour == -1 or hour >= cls.config["HOURS"]: # Invalid time-slot
                     continue
