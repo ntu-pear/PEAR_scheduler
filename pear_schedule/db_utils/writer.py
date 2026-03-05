@@ -7,7 +7,7 @@ from typing import Mapping, List, Dict
 
 from sqlalchemy import Connection, column, delete, select, func, literal_column, column
 from pear_schedule.db import DB
-from pear_schedule.db_utils.views import ExistingScheduleView, ExistingMedicationScheduleView, DeletedMedicationView
+from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from pear_schedule.models.schedule_model import Schedule
@@ -189,9 +189,21 @@ class MedicationScheduleWrite(ConfigDependant):
         with Session(bind=conn) as session:
           # returns None if no results
           try: 
+            # get MedicationID
+            medication_record = session.execute(select(RefPatientMedication).where(
+               RefPatientMedication.PatientID == medication_data.PatientID,
+               RefPatientMedication.PrescriptionName == medication_data.PrescriptionName
+            )).scalar_one()
+
+            # get ScheduleID
+            schedule_record = session.execute(select(Schedule).where(
+               Schedule.PatientID == medication_data.PatientID,
+               Schedule.EndDate >= medication_data.AdministerDate
+            )).scalar_one()
+            
             composite_key = {
-               "MedicationID": medication_data.MedicationID,
-               "ScheduleID": medication_data.ScheduleID,
+               "MedicationID": medication_record.MedicationID,
+               "ScheduleID": schedule_record.ScheduleID,
                "AdministerDate": medication_data.AdministerDate,
                "AdministerTime": medication_data.AdministerTime
             }
@@ -258,7 +270,7 @@ class MedicationScheduleWrite(ConfigDependant):
         
     @classmethod
     def __checkAndFlush(cls, conn: Connection, session: Session):
-        existingMedicationSchedule: pd.DataFrame = ExistingMedicationScheduleView.get_data(conn)
+        existingMedicationSchedule: pd.DataFrame = pd.read_sql(select(MedicationSchedule), session.bind)
         # based on schema: MedicationID: int64, ScheduleID: int64, AdministerTime: object, AdministerDate: datetime64[ns], AssignedTo: object, Status: object
         # print(existingMedicationSchedule.dtypes)
         if existingMedicationSchedule.empty:
