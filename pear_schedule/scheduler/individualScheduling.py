@@ -365,19 +365,23 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                             break
 
                         find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
-                        new_activity = \
+                        new_activity: str = \
                             find_activity(preferred_activities, curr_day_activities) or \
                             find_activity(non_preferred_activites, curr_day_activities)
-                        new_activity_duration = new_activity["MinDuration"] if new_activity else 0
+                        # min slot duration for replacement with Free and Easy
+                        new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
 
                         if not new_activity:
                             new_activity = "Free and Easy"
                         
                         curr_day_activities.add(new_activity)
-                        num_slots = new_activity_duration // -cls.config["MIN_ACTIVITY_DURATION"] * -1
-                        if not new_activity_duration and j-i == num_slots:
+                        num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
+                        if j-i+1 >= num_slots:
                             for k in range(num_slots):
                                 day_sched[i+k] = new_activity
+                    else:
+                        # potentially prevent the same activity from being scheduled again in the same day
+                        curr_day_activities.add(day_sched[i])
                         
                     i += 1
 
@@ -389,7 +393,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         day: int, 
         slot: int,
         slot_size: int,
-    ) -> Optional[pd.DataFrame]:
+    ) -> Optional[str]:
         """ 
         Find the activity that can be scheduled closest to the given slot and day
         Used_activities: activities that have already been scheduled for each patient that day 
@@ -433,7 +437,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         if out[0] < 0:
             return None
 
-        return activities.iloc[out[0]]
+        return activities.iloc[out[0]]["ActivityTitle"]
 
     @classmethod
     def getMostUpdatedSchedules(

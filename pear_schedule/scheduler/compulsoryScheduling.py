@@ -1,6 +1,9 @@
 from typing import List, Mapping
 from pear_schedule.db_utils.views import CompulsoryActivitiesOnlyView
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CompulsoryActivityScheduler(BaseScheduler):
     @classmethod
@@ -18,7 +21,11 @@ class CompulsoryActivityScheduler(BaseScheduler):
                 duration_slots = -(row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) - 1
 
                 for pid in patientSchedules.keys():
-                    patientSchedules[pid][day][hour] = row["ActivityTitle"]
+                    try:
+                      patientSchedules[pid][day][hour] = row["ActivityTitle"]
+                    except IndexError:
+                        logger.error(f"A fixed time slot has been provided which exceeds the opening hours of the centre")
+                        return
                     for d in range(1, duration_slots + 1):
                         patientSchedules[pid][day][hour + d] = row["ActivityTitle"] # ? trust activity handling will not go past closing hour
 

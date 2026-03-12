@@ -78,7 +78,10 @@ class GroupActivityScheduler(BaseScheduler):
             
         
             # Find preferred patients of activity
-            preferredDF = groupPreferenceDF.query(f"CentreActivityID == {centreActivityID} and IsLike == 1")
+            preferredDF = groupPreferenceDF[
+                (groupPreferenceDF["CentreActivityID"] == centreActivityID) &
+                (groupPreferenceDF["IsLike"].astype(int) == 1)
+            ]
             for id in preferredDF["PatientID"]:
                 if id in patients and id not in activityExclusionMap[activityTitle]:
                     activityMap[(activityTitle, duration)].add(id)
@@ -126,7 +129,8 @@ class GroupActivityScheduler(BaseScheduler):
         for key_tuple in toRemoveList:
             activityMap.pop(key_tuple)
 
-       # Initialize timetable
+        # Initialize timetable
+        logger.info(f"activityMap: {activityMap}")
         timetable = {} 
         patientCount = 0
         slots_in_bin = cls.config["MAX_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"]
@@ -225,7 +229,7 @@ class GroupActivityScheduler(BaseScheduler):
                     i+=1
                 if i==0: 
                     continue
-                elif pid not in activityExclusionMap[activity] and i==slots:
+                elif pid not in activityExclusionMap[activity] and i<=slots:
                     for j in range(slots):
                         secondTimeTable[pid][activitySlot][j] = activity
                     toAdd -= 1
@@ -257,7 +261,7 @@ class GroupActivityScheduler(BaseScheduler):
                 i = 0
                 while i < slots_in_bin and not timeTable[person][time_slot][i] : 
                     i+=1
-                if i != (activityDuration // cls.config["MIN_ACTIVITY_DURATION"]):
+                if i < (activityDuration // cls.config["MIN_ACTIVITY_DURATION"]):
                     return False
             return True
 
@@ -298,9 +302,9 @@ class GroupActivityScheduler(BaseScheduler):
                     isScheduled = True
 
                     # Place activity
-                    # TODO: adjust here
+                    num_slots = activityDuration // cls.config["MIN_ACTIVITY_DURATION"]
                     for person in activityMap[activity_key]:
-                        for i in range(activityDuration // cls.config["MIN_ACTIVITY_DURATION"]):
+                        for i in range(num_slots):
                             timeTable[person][ts][i] = activity
                         emptySlots -= 1
 
@@ -309,7 +313,7 @@ class GroupActivityScheduler(BaseScheduler):
 
                     # Backtrack
                     for person in activityMap[activity_key]:
-                        for i in range(activityDuration // cls.config["MIN_ACTIVITY_DURATION"]):
+                        for i in range(num_slots):
                             timeTable[person][ts][i] = ""
                         emptySlots += 1
 

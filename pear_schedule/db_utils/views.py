@@ -212,6 +212,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinPeopleReq"],
+            centre_activity.c["MinDuration"]
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
