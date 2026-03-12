@@ -1,7 +1,7 @@
 import datetime
 from functools import partial
 import logging
-from typing import Dict, List, Mapping, Optional, Set
+from typing import Dict, List, Mapping, Optional, Set, NamedTuple
 from pandas import Timestamp
 import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
@@ -186,15 +186,26 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                         continue
 
                     # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
-                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["ProcessedTimeSlots"], activity["MinDuration"])
+                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["ProcessedTimeSlots"])
 
-                    # if there are no such slots, we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
+                    # if activity can scheduled at a starting slot, first check whether there are enough consecutive slots for a 1hr or longer activity
+                    if curr_availability < float("inf"):
+                        num_slots = activity["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"] * -1
+                        for i in range(1, num_slots):
+                            if day_schedule[slot+i]:
+                                curr_availability = float("inf")
+                                break
+
+                    # if there are no such slots (0), we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
                     if not curr_availability:
                         scheduled_idx.loc[row] = True
 
                     if curr_availability < lowest_availability:
                         least_available = row
                         lowest_availability = curr_availability
+                    # if tie in availability, prioritise activity with longer duration
+                    elif curr_availability == lowest_availability and lowest_availability != float("inf"):
+                        least_available = row if activity["MinDuration"] > activities.loc[least_available, "MinDuration"] else least_available
                     
                 if least_available < 0 and not available_activities.empty:
                     continue
@@ -204,8 +215,12 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
                 # availability should apply to activities that can be scheduled at this slot or later
                 scheduled_idx.loc[least_available] = True
-
-                day_schedule[slot] = activities.loc[least_available, "ActivityTitle"]
+                
+                # if the activity determined to be scheduled at this starting slot > MIN_DURATION, fill adjacent slots with activity title
+                selected_activity_row = activities.loc[least_available]
+                selected_activity = selected_activity_row["ActivityTitle"]
+                for i in range((selected_activity_row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1):
+                    day_schedule[slot + i] = selected_activity
 
     @classmethod
     def __fillRoutines(
@@ -262,6 +277,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     ):
         """
         Fill in recommended activities that do not have fixedTimeSlots, i.e. fixedTimeSlots is empty
+        Assumed to be schedulable at any time. Iterates through schedule and fills in the first available slot.
         """
         # set week_start to current week monday if not given
         week_start = week_start or \
@@ -281,9 +297,18 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                             a["ActivityID"], patient_info["exclusions"], day, week_start
                     ):
                         continue
-
-                    patient_schedule[day][time] = a["ActivityTitle"]
-                    scheduled_activities.add(a["ActivityTitle"])
+                    
+                    num_slots = (a["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1
+                    activity_schedulable = True
+                    for i in range(1, num_slots):
+                        if patient_schedule[day][time+i]:
+                            activity_schedulable = False
+                            break
+                        
+                    if activity_schedulable:
+                        for i in range(num_slots):
+                            patient_schedule[day][time+i] = a["ActivityTitle"]
+                            scheduled_activities.add(a["ActivityTitle"])
 
                 if len(scheduled_activities) == len(activities):
                     return
@@ -331,6 +356,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 i = 0
                 while i < len(day_sched):
                     if not day_sched[i]:
+                        # find the longest stretch of empty slots
                         j = i + 1
                         while (j < len(day_sched) and not day_sched[j]):
                             j += 1
@@ -342,11 +368,17 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                         new_activity = \
                             find_activity(preferred_activities, curr_day_activities) or \
                             find_activity(non_preferred_activites, curr_day_activities)
+                        new_activity_duration = new_activity["MinDuration"] if new_activity else 0
 
                         if not new_activity:
                             new_activity = "Free and Easy"
+                        
                         curr_day_activities.add(new_activity)
-                        day_sched[i] = new_activity
+                        num_slots = new_activity_duration // -cls.config["MIN_ACTIVITY_DURATION"] * -1
+                        if not new_activity_duration and j-i == num_slots:
+                            for k in range(num_slots):
+                                day_sched[i+k] = new_activity
+                        
                     i += 1
 
     @classmethod
@@ -357,7 +389,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         day: int, 
         slot: int,
         slot_size: int,
-    ) -> Optional[str]:
+    ) -> Optional[pd.DataFrame]:
         """ 
         Find the activity that can be scheduled closest to the given slot and day
         Used_activities: activities that have already been scheduled for each patient that day 
@@ -401,7 +433,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         if out[0] < 0:
             return None
 
-        return activities.iloc[out[0]]["ActivityTitle"]
+        return activities.iloc[out[0]]
 
     @classmethod
     def getMostUpdatedSchedules(
@@ -515,8 +547,11 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 logger.error("Schedule updating failed")
 
 
-
-def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Set[tuple], duration: int) -> int:
+"""
+This function calculates and returns the number of slots that an activity can be scheduled at or later than the given slot and day.
+Returns float("inf") if activity cannot be scheduled at the given slot. 1000 if the activity has no fixed time slots.
+"""
+def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
     # first check whether activity can be scheduled at all at this slot
     if (day,slot) not in processedTimeSlots:
         return float("inf")
