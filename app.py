@@ -6,6 +6,9 @@ import sys
 import threading
 import signal
 import asyncio
+import json
+import pandas as pd
+import datetime
 from typing import Any, Mapping
 
 import uvicorn
@@ -13,6 +16,7 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
+from pear_schedule.db_utils.views import CareCentreView
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -110,7 +114,33 @@ def create_app():
     app.state.config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(app.state.config["DB_CONN_STR"], app.state.config)
-    loadConfigs(app.state.config)
+    logger.info("Initialising Care Centre View")
+    CareCentreView.init_app(app.state.config)
+    careCentreView: pd.DataFrame = CareCentreView.get_data()
+    workingHours_str = ""
+    try:
+        workingHours_str = careCentreView.iloc[0]["WorkingHours"]
+    except IndexError:
+        raise Exception("No care centre found in database.")
+    if not workingHours_str:
+        raise Exception("Working hours not found for care centre.")
+    workingHours: dict = json.loads(workingHours_str)
+    # data format: day in lowercase -> open, close (24hr format, e.g. 0900, 1700)
+    schedulable_days = []
+    num_slots_per_day = {}
+    for day in app.state.config["DAY_OF_WEEK_ORDER"]:
+        opening_info: dict = workingHours.get(day.lower())
+        if opening_info.get("open"):
+            schedulable_days.append(day)
+            open_hour = datetime.datetime.strptime(workingHours.get(day.lower()).get("open"), "%H:%M")
+            closing_hour = datetime.datetime.strptime(workingHours.get(day.lower()).get("close"), "%H:%M")
+            num_slots_per_day[day] = (closing_hour - open_hour) // datetime.timedelta(minutes=app.state.config["MIN_ACTIVITY_DURATION"])
+    
+    # push this as global config variable for writer.py to use. reload configs for all subclasses of ConfigDependant
+    app.state.config["OPEN_DAYS"] = schedulable_days
+    app.state.config["WORKING_HOURS"] = workingHours
+    app.state.config["SLOTS_PER_DAY"] = num_slots_per_day
+    loadConfigs(app.state.config) # then load config for the rest of the classes
 
     # Add startup and shutdown events for consumer management
     @app.on_event("startup")

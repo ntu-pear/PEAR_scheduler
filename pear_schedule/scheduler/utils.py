@@ -15,9 +15,8 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     patientDF = PatientsOnlyView.get_data()
     groupActivityDF = GroupActivitiesOnlyView.get_data()
 
-    # TODO: have to modify to read in from centre
     for id in patientDF["PatientID"]:
-        patientSchedules[id] = [["" for _ in range(config["HOURS"])] for _ in range(config["DAYS"])]
+        patientSchedules[id] = [["" for _ in range(config["SLOTS_PER_DAY"].get(day))] for day in config["OPEN_DAYS"]]
 
 
     # Schedule compulsory activities

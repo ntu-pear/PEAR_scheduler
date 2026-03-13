@@ -186,7 +186,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                         continue
 
                     # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
-                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["ProcessedTimeSlots"])
+                    curr_availability: int = calculate_activity_availabillity(cls, day, slot, activity["ProcessedTimeSlots"])
 
                     # if activity can scheduled at a starting slot, first check whether there are enough consecutive slots for a 1hr or longer activity
                     if curr_availability < float("inf"):
@@ -406,6 +406,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             .reset_index(drop=True)
         
         out = [-1, 1000, False]
+        o = cls.config["OPEN_DAYS"]
 
         for i, a in activities.iterrows():
             if a["ActivityTitle"] in used_activities:
@@ -417,7 +418,8 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             if a["FixedTimeSlots"]:
                 # e.g. takes in ["1-2","1-3"], map output: [["1","2"],["1","3"]]
-                timeSlots = [t for t in a["ProcessedTimeSlots"] if t[0]==day and t[1]==slot and t[1]+minSlots<=slot+slot_size]
+                timeSlots = [t for t in a["ProcessedTimeSlots"] if t[0]<len(o) and t[1]<len(cls.config["SLOTS_PER_DAY"].get(o[t[0]])) and \
+                             t[0]==day and t[1]==slot and t[1]+minSlots<=slot+slot_size]
 
                 if not timeSlots:
                     continue
@@ -555,7 +557,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 This function calculates and returns the number of slots that an activity can be scheduled at or later than the given slot and day.
 Returns float("inf") if activity cannot be scheduled at the given slot. 1000 if the activity has no fixed time slots.
 """
-def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
+def calculate_activity_availabillity(cls: RecommendedRoutineActivityScheduler, day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
     # first check whether activity can be scheduled at all at this slot
     if (day,slot) not in processedTimeSlots:
         return float("inf")
@@ -564,6 +566,9 @@ def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Se
     if not processedTimeSlots:
         return 1000
     
-    tally = sum([1 for d,s in processedTimeSlots if d>day or (d==day and s>=slot)])
+    # do not count time slots that are invalid, i.e. exceed opening days and available time slots
+    o = cls.config["OPEN_DAYS"]
+    # TODO: test
+    tally = sum([1 for d,s in processedTimeSlots if d<len(o) and slot<cls.config["SLOTS_PER_DAY"].get(o[d]) and (d>day or (d==day and s>=slot))])
     
     return tally

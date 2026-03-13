@@ -18,15 +18,17 @@ class CompulsoryActivityScheduler(BaseScheduler):
                 # TODO: placeholder - For activities whose duration is more than 1 slot, assume that the slot in FixedTimeSlots denotes the starting slot
                 day = int(slot.split("-")[0])
                 hour = int(slot.split("-")[1])
-                duration_slots = -(row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) - 1
+                num_slots = row["MinDuration"] // cls.config["MIN_ACTIVITY_DURATION"]
 
                 for pid in patientSchedules.keys():
-                    try:
-                      patientSchedules[pid][day][hour] = row["ActivityTitle"]
-                    except IndexError:
-                        logger.error(f"A fixed time slot has been provided which exceeds the opening hours of the centre")
-                        return
-                    for d in range(1, duration_slots + 1):
-                        patientSchedules[pid][day][hour + d] = row["ActivityTitle"] # ? trust activity handling will not go past closing hour
+                    # skip over time slots that are out of bounds
+                    if day >= len(patientSchedules[pid]) or hour >= len(patientSchedules[pid][day]):
+                        continue
 
-
+                    # handling for accidental conflicting compulsory activities
+                    i = 0
+                    while i < len(patientSchedules[pid][day]) and not patientSchedules[pid][day][i]:
+                        i += 1
+                    if i <= num_slots:
+                      for d in range(num_slots):
+                        patientSchedules[pid][day][hour + d] = row["ActivityTitle"]
