@@ -192,7 +192,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     if curr_availability < float("inf"):
                         num_slots = activity["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"] * -1
                         for i in range(1, num_slots):
-                            if day_schedule[slot+i]:
+                            if (num_slots > 1 and slot+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or day_schedule[slot+i]:
                                 curr_availability = float("inf")
                                 break
 
@@ -301,7 +301,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     num_slots = (a["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1
                     activity_schedulable = True
                     for i in range(1, num_slots):
-                        if patient_schedule[day][time+i]:
+                        if (num_slots > 1 and time+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or patient_schedule[day][time+i]:
                             activity_schedulable = False
                             break
                         
@@ -418,7 +418,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             if a["FixedTimeSlots"]:
                 # e.g. takes in ["1-2","1-3"], map output: [["1","2"],["1","3"]]
-                timeSlots = [t for t in a["ProcessedTimeSlots"] if t[0]<len(o) and t[1]<len(cls.config["SLOTS_PER_DAY"].get(o[t[0]])) and \
+                timeSlots = [t for t in a["ProcessedTimeSlots"] if t[0]<len(o) and t[1]<cls.config["SLOTS_PER_DAY"].get(o[t[0]]) and \
                              t[0]==day and t[1]==slot and t[1]+minSlots<=slot+slot_size]
 
                 if not timeSlots:
@@ -568,7 +568,6 @@ def calculate_activity_availabillity(cls: RecommendedRoutineActivityScheduler, d
     
     # do not count time slots that are invalid, i.e. exceed opening days and available time slots
     o = cls.config["OPEN_DAYS"]
-    # TODO: test
     tally = sum([1 for d,s in processedTimeSlots if d<len(o) and slot<cls.config["SLOTS_PER_DAY"].get(o[d]) and (d>day or (d==day and s>=slot))])
     
     return tally

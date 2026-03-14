@@ -62,25 +62,45 @@ class ScheduleWriter(ConfigDependant):
         try:
             for p, slots in patientSchedules.items():
                 
-                days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+                days = cls.config["OPEN_DAYS"]
                 converted_schedule = {}
 
                 for i, day in enumerate(days):
-                    activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
-                    converted_schedule[day] = activities
+                    activities = {}
+                    # skip_ahead = 0
+                    for j, activity in enumerate(slots[i]):
+                        # if skip_ahead:
+                        #    skip_ahead -= 1
+                        #    continue
+
+                        # if activities share the same title, assume that they are the same and combine.
+                        key = cls.config["DAY_TIMESLOTS"][j]
+                        # k = j
+                        # # find longest consecutive sequence of same activity
+                        # merged = key.split("-")
+                        # while k + 1 < len(slots[i]) and slots[i][k] == slots[i][k+1]:
+                        #    k+=1
+                        #    merged+=cls.config["DAY_TIMESLOTS"][k].split("-")
+                        
+                        # # storing json as VARCHAR(max) is still ok; VARCHAR for non-unicode, NVARCHAR for unicode
+                        # key = f"{merged[0]}-{merged[-1]}" if k > j else key
+                        activities[key] = 'Free and Easy' if not activity else activity
+                        # if k > j: skip_ahead = k - j
+                    # activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
+                    converted_schedule[day] = json.dumps(activities)
                 
                 schedule_data = {
                     ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
                     "PatientID": p,
                     "StartDate": start_of_week,
                     "EndDate": end_of_week,
-                    "Monday": converted_schedule["Monday"],
-                    "Tuesday": converted_schedule["Tuesday"],
-                    "Wednesday": converted_schedule["Wednesday"],
-                    "Thursday": converted_schedule["Thursday"],
-                    "Friday": converted_schedule["Friday"],
-                    "Saturday": "",
-                    "Sunday": "",
+                    "Monday": converted_schedule.get("Monday", ""),
+                    "Tuesday": converted_schedule.get("Tuesday", ""),
+                    "Wednesday": converted_schedule.get("Wednesday", ""),
+                    "Thursday": converted_schedule.get("Thursday", ""),
+                    "Friday": converted_schedule.get("Friday", ""),
+                    "Saturday": converted_schedule.get("Saturday", ""),
+                    "Sunday": converted_schedule.get("Sunday", ""),
                     "MedicationSchedule": json.dumps(medication_schedule.get(int(p), {})),
                     # "MedicationLog": "",
                     "IsDeleted": 0, ## Mandatory Field 

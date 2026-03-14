@@ -48,16 +48,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
             logger.info(f"FOR PATIENT {p}")
             
             for day, activities in enumerate(slots):
-                if day == 0:
-                    logger.info(f"\t Monday: ")
-                elif day == 1:
-                    logger.info(f"\t Tuesday: ")
-                elif day == 2:
-                    logger.info(f"\t Wednesday: ")
-                elif day == 3:
-                    logger.info(f"\t Thursday: ")
-                elif day == 4:
-                    logger.info(f"\t Friday: ")
+                logger.info(f"\t {config['OPEN_DAYS'][day]}: ")
                 
                 for index, hour in enumerate(activities):
                     logger.info(f"\t\t {index}: {hour}")

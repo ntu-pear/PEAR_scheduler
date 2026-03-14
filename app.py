@@ -140,6 +140,22 @@ def create_app():
     app.state.config["OPEN_DAYS"] = schedulable_days
     app.state.config["WORKING_HOURS"] = workingHours
     app.state.config["SLOTS_PER_DAY"] = num_slots_per_day
+
+    for i, timeslot_str in enumerate(app.state.config["GROUP_TIMESLOT_MAPPING"]):
+        qualified_day = timeslot_str.split(" ")[0]
+        if qualified_day not in app.state.config["OPEN_DAYS"]:
+            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because centre is not open on {qualified_day}.")
+        day = app.state.config["OPEN_DAYS"].index(qualified_day)
+        
+        time_obj = datetime.datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
+        opening_time_obj = datetime.datetime.strptime(app.state.config["WORKING_HOURS"].get(qualified_day.lower()).get("open"), "%H:%M")
+        slot = (time_obj - opening_time_obj) // -datetime.timedelta(minutes=app.state.config["MIN_ACTIVITY_DURATION"]-1) * -1
+        slot = 0 if not slot else slot-1
+        if slot < 0 or slot >= app.state.config["SLOTS_PER_DAY"].get(qualified_day):
+            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because timing is out of bounds for center's working hours.")
+        app.state.config["GROUP_TIMESLOT_MAPPING"][i] = (day, slot)
+    
+    logger.info(f"check group timeslot mapping: {app.state.config['GROUP_TIMESLOT_MAPPING']}")
     loadConfigs(app.state.config) # then load config for the rest of the classes
 
     # Add startup and shutdown events for consumer management
