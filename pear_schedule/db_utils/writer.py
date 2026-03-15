@@ -183,8 +183,13 @@ class ScheduleWriter(ConfigDependant):
         return responseData
     
 class MedicationScheduleWrite(ConfigDependant):
+    """
+    This function is responsible for writing medication schedules for the day based on the MedicationSchedule generated
+    by medicationScheduler on /generate and /regenerate. Removes any outstanding medication schedule records due to expiry, deletion of course, etc, 
+    before inserting/updating records.
+    """
     @classmethod
-    def write(cls) -> bool:
+    def write(cls, schedules=None) -> bool:
         with DB.get_engine().begin() as conn:
             with Session(bind=conn) as session:
                 try:
@@ -196,6 +201,8 @@ class MedicationScheduleWrite(ConfigDependant):
                   session.rollback()
                   return False # do not proceed if unable to delete
             try:
+              if not schedules:
+                return cls.__writeRecordsUsingSchedules(conn, schedules)
               return cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
             except Exception as e:
               logger.exception(e)
@@ -287,7 +294,48 @@ class MedicationScheduleWrite(ConfigDependant):
                      medication_schedule_table.update().where(*composite_key_filters).values({"AssignedTo": medication_schedule_data["AssignedTo"]})
                   )
         return True
+    
+    @classmethod
+    def __writeRecordsUsingSchedules(cls, conn: Connection, schedules: Mapping[int, List[int]]) -> bool:
+        today = datetime.datetime.now()
+        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
         
+        schedule_table = DB.schema.tables[cls.config["DB_TABLES"].SCHEDULE_TABLE]
+        for patient_id, meds in schedules.items():
+          if len(meds) == 0: continue
+          for med in meds:
+            # if schedule id is none, create a new schedule for the patient, primarily so as to allow flushing of records to medlog
+            sid = med["ScheduleID"]
+            if not sid:
+                data = {
+                   "PatientID": patient_id,
+                   "StartDate": start_of_week,
+                   "EndDate": end_of_week,
+                   "IsDeleted": 0,
+                   "UpdatedDateTime": today,
+                   "CreatedById": SYSTEM_USER_ID,
+                   "ModifiedById": SYSTEM_USER_ID,
+                   "CreatedDateTime": today
+                }
+                result = conn.execute(schedule_table.insert().values(data))
+                sid = result.inserted_primary_key[0] # returns a row obj representing a NamedTuple
+            with Session(bind=conn) as s:
+                try:
+                  med["ScheduleID"] = sid
+                  s.merge(MedicationSchedule(**med))
+                  s.commit()
+                except Exception as e:
+                  logger.error(f"Error with merge: {e}\n\n{traceback.format_exc()}")
+                  s.rollback()
+                  return False
+                
+        return True
+
+    """
+    This function flushes outstanding medication schedule records to the medication log field in Schedule based on the schedule id.
+    """
     @classmethod
     def __checkAndFlush(cls, conn: Connection, session: Session):
         existingMedicationSchedule: pd.DataFrame = pd.read_sql(select(MedicationSchedule), session.bind)

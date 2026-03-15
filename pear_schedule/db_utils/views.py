@@ -425,7 +425,7 @@ class DisrecommendedActivitiesView(BaseView):
 
 class MedicationView(BaseView): # Just medication table view
     @classmethod
-    def build_query(cls) -> Select:
+    def build_query(cls, curDate=False) -> Select:
         logger.info("Building prescription view query")
         schema = DB.schema
         curDateTime = datetime.now()
@@ -438,6 +438,12 @@ class MedicationView(BaseView): # Just medication table view
             # medication.c["EndDateTime"] >= curDateTime
             medication.c["IsDeleted"] == False
         )
+        if curDate:
+            # startDateTime <| curDateTime |> endDateTime
+            query = query.where(
+                medication.c["StartDateTime"] <= curDateTime,
+                medication.c["EndDateTime"] >= curDateTime
+            )
         return query
 #ROUTINETable Not Ready, add in once ready.
 class ValidRoutineActivitiesView(BaseView): # 

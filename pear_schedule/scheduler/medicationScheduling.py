@@ -3,7 +3,7 @@ import datetime
 import pandas as pd
 from typing import List, Mapping, Dict
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
-from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView
+from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView, ExistingScheduleView
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,8 @@ class medicationScheduleData:
             # ======== Inserting medication into the scheduler ========
             slots = administerTime.split(",")
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
-            assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId']) if not allocation_row.empty else "UNASSIGNED"
+            assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId'] or allocation_row.iloc[0]['supervisorId']) if not allocation_row.empty \
+                else "UNASSIGNED"
             
             for slot in slots:
                 # full_hour = cls.config["DAY_TIMESLOTS"][hour]
@@ -137,6 +138,51 @@ class medicationScheduler(BaseScheduler):
               patientSchedules[pid][day][hour] += s
         
         return medicationSchedule_ref
+    
+    """
+    This function is an alternative, meant to be called by the /MedicationSchedule/get/ endpoint to retrieve the medication schedules
+    only for the day for convenience (without having to call /generate or /regenerate to get the latest schedules)
+    """
+    @classmethod
+    def generateTodayMedSchedule(cls) -> Mapping[int, List[Dict]]:
+        # startDateTime to endDateTime range contains today
+        medicationDF = MedicationView.get_data(curDate=True)
+        allocationDF = CaregiverAllocatedView.get_data()
+        today = datetime.datetime.now()
+
+        # note that there may be multiple medications for the same patient
+        medicationSchedules = {}
+        for row in medicationDF.itertuples():
+            pid = row.PatientID
+            mid = row.MedicationID
+            sid = None
+            administerTimes = row.AdministerTime
+
+            # if there is already a schedule generated for the week, use that schedule id
+            existingSchedule = ExistingScheduleView.get_data(patient_id=pid, start_dateTime=today)
+            if not existingSchedule.empty:
+                sid = existingSchedule.iloc[0]['ScheduleID']
+
+            allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
+            assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId'] or allocation_row.iloc[0]['supervisorId']) if not allocation_row.empty \
+                else "UNASSIGNED"
+            administerTimes: list = administerTimes.split(",")
+            for time in administerTimes:
+                qualified_day = today.strftime("%A")
+                if qualified_day not in cls.config["OPEN_DAYS"]:
+                    continue
+                slot = getTimeSlot(cls, qualified_day, time)
+                if slot <= -1 or slot >= cls.config["SLOTS_PER_DAY"].get(qualified_day):
+                    continue
+                medicationSchedules.setdefault(pid, []).append({
+                    "MedicationID": mid,
+                    "AdministerTime": time,
+                    "AdministerDate": today.strftime(cls.config["STD_DATE_FORMAT"]),
+                    "AssignedTo": assigned_caregiver,
+                    "ScheduleID": sid
+                })
+            
+        return medicationSchedules
 
 
 def getTimeSlot(cls, day, time):
