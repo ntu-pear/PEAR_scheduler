@@ -225,11 +225,11 @@ class GroupActivityScheduler(BaseScheduler):
                 i = 0
                 bin: list = secondTimeTable[pid][activitySlot]
                 slots = activityDuration // cls.config["MIN_ACTIVITY_DURATION"]
-                while not bin[i] and i < len(bin): 
+                while i < len(bin) and not bin[i]: 
                     i+=1
                 if i==0: 
                     continue
-                elif pid not in activityExclusionMap[activity] and i<=slots:
+                elif pid not in activityExclusionMap[activity] and i>=slots:
                     for j in range(slots):
                         secondTimeTable[pid][activitySlot][j] = activity
                     toAdd -= 1

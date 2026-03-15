@@ -29,6 +29,6 @@ class CompulsoryActivityScheduler(BaseScheduler):
                     i = 0
                     while i < len(patientSchedules[pid][day]) and not patientSchedules[pid][day][i]:
                         i += 1
-                    if i <= num_slots:
+                    if i >= num_slots:
                       for d in range(num_slots):
                         patientSchedules[pid][day][hour + d] = row["ActivityTitle"]
