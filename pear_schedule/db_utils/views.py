@@ -40,6 +40,17 @@ class BaseView(ConfigDependant):
     def build_query(cls, **query_kwargs) -> Select:
         raise NotImplementedError(f"build_query() not implemented for {cls.__name__}")
 
+class CareCentreView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building care centre query")
+        care_centre = DB.schema.tables[cls.db_tables.CARE_CENTRE_TABLE]
+
+        query: Select = select(
+            care_centre.c["working_hours"].label("WorkingHours"),
+        ).where(care_centre.c["id"] == cls.config["CARE_CENTRE_ID"])
+        return query
+
 class AllActivitiesView(BaseView):
     @classmethod
     def build_query(cls) -> Select:
@@ -212,6 +223,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinPeopleReq"],
+            centre_activity.c["MinDuration"]
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True

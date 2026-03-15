@@ -1,7 +1,7 @@
 import datetime
 import logging
 from typing import Dict, List, Optional, Tuple, Mapping
-from pear_schedule.db_utils.views import PatientsOnlyView
+from pear_schedule.db_utils.views import PatientsOnlyView, GroupActivitiesOnlyView
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +13,10 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler, RecommendedRoutineActivityScheduler
     from pear_schedule.scheduler.medicationScheduling import medicationScheduler, medicationScheduleData
     patientDF = PatientsOnlyView.get_data()
+    groupActivityDF = GroupActivitiesOnlyView.get_data()
 
     for id in patientDF["PatientID"]:
-        patientSchedules[id] = [["" for _ in range(config["HOURS"])] for _ in range(config["DAYS"])]
+        patientSchedules[id] = [["" for _ in range(config["SLOTS_PER_DAY"].get(day))] for day in config["OPEN_DAYS"]]
 
 
     # Schedule compulsory activities
@@ -25,13 +26,16 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     RecommendedRoutineActivityScheduler.fillSchedule(patientSchedules)
 
     # Schedule group activities
-    groupSchedule = GroupActivityScheduler.fillSchedule(patientSchedules)
+    groupSchedule: Mapping[int, list[list[str]]] = GroupActivityScheduler.fillSchedule(patientSchedules)
     for patientID, scheduleArr in groupSchedule.items():
         for i, activity in enumerate(scheduleArr):
-            if activity == "-": # routine activity alr scheduled
+            if activity[0] == "-" or not activity[0]: # routine activity alr scheduled
                 continue
             day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
-            patientSchedules[patientID][day][hour] = activity
+            logger.info(f"Scheduling group activity {activity[0]} for patient {patientID} on day {day} at hour {hour}")
+            activityDuration = groupActivityDF.query(f"ActivityTitle == '{activity[0]}'").iloc[0]["MinDuration"]
+            for j in range(activityDuration // config["MIN_ACTIVITY_DURATION"]):
+                patientSchedules[patientID][day][hour+j] = activity[0]
 
     # Schedule individual preferred activities
     PreferredActivityScheduler.fillSchedule(patientSchedules)
@@ -44,16 +48,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
             logger.info(f"FOR PATIENT {p}")
             
             for day, activities in enumerate(slots):
-                if day == 0:
-                    logger.info(f"\t Monday: ")
-                elif day == 1:
-                    logger.info(f"\t Tuesday: ")
-                elif day == 2:
-                    logger.info(f"\t Wednesday: ")
-                elif day == 3:
-                    logger.info(f"\t Thursday: ")
-                elif day == 4:
-                    logger.info(f"\t Friday: ")
+                logger.info(f"\t {config['OPEN_DAYS'][day]}: ")
                 
                 for index, hour in enumerate(activities):
                     logger.info(f"\t\t {index}: {hour}")
