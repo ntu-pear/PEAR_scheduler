@@ -7,7 +7,7 @@ from typing import Mapping, List, Dict
 
 from sqlalchemy import Connection, column, delete, select, func, literal_column, column
 from pear_schedule.db import DB
-from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView
+from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView, WeeklyScheduleView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from pear_schedule.models.schedule_model import Schedule
@@ -112,12 +112,21 @@ class ScheduleWriter(ConfigDependant):
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
                     existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
-                    if len(existingScheduleDF) > 0:
-                        continue
-                    
                     schedule_data["CreatedDateTime"] = today ## Mandatory Field 
-                    # Use the add method to add data to the session
-                    schedule_instance = schedule_table.insert().values(schedule_data)
+                    if len(existingScheduleDF) > 0:
+                        null_schedule = False
+                        for day in cls.config["OPEN_DAYS"]:
+                           if not existingScheduleDF.iloc[0][day]:
+                              null_schedule = True
+                              break
+                        if not null_schedule:
+                           continue
+                        schedule_instance = schedule_table.update().values(schedule_data).where(
+                            schedule_table.c["ScheduleID"] == int(existingScheduleDF.iloc[0]["ScheduleID"])
+                        )
+                    else:
+                        # Use the add method to add data to the session
+                        schedule_instance = schedule_table.insert().values(schedule_data)
                 else:
                     if schedule_meta is None:
                         raise Exception("schedule_meta must be provided when overwriteExisting is used for schedules")
@@ -201,7 +210,7 @@ class MedicationScheduleWrite(ConfigDependant):
                   session.rollback()
                   return False # do not proceed if unable to delete
             try:
-              if not schedules:
+              if schedules:
                 return cls.__writeRecordsUsingSchedules(conn, schedules)
               return cls.__writeRecords(conn) # transaction will be automatically committed (begin once)
             except Exception as e:
@@ -308,7 +317,8 @@ class MedicationScheduleWrite(ConfigDependant):
           for med in meds:
             # if schedule id is none, create a new schedule for the patient, primarily so as to allow flushing of records to medlog
             sid = med["ScheduleID"]
-            if not sid:
+            x = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=patient_id)
+            if not sid and x.empty:
                 data = {
                    "PatientID": patient_id,
                    "StartDate": start_of_week,
@@ -321,9 +331,11 @@ class MedicationScheduleWrite(ConfigDependant):
                 }
                 result = conn.execute(schedule_table.insert().values(data))
                 sid = result.inserted_primary_key[0] # returns a row obj representing a NamedTuple
+            else:
+                sid = sid or x.iloc[0]["ScheduleID"]
             with Session(bind=conn) as s:
                 try:
-                  med["ScheduleID"] = sid
+                  med["ScheduleID"] = int(sid)
                   s.merge(MedicationSchedule(**med))
                   s.commit()
                 except Exception as e:
@@ -383,7 +395,7 @@ class MedicationScheduleWrite(ConfigDependant):
         
         medicationLog = pd.concat([expiredSchedules, deletedMedications, alteredMedications])
         if medicationLog.empty: return # if there is nothing that was deleted, then no need to update logs, return
-        medicationLog["AdministerDate"] = medicationLog["AdministerDate"].dt.strftime(cls.config["STD_DATE_FORMAT"])
+        medicationLog["AdministerDate"] = pd.to_datetime(medicationLog["AdministerDate"]).dt.strftime(cls.config["STD_DATE_FORMAT"])
         date_str = medicationLog["AdministerDate"].mode()[0]
         medicationLog = medicationLog.drop("AdministerDate", axis=1).set_index("ScheduleID").groupby(level=0).apply(lambda x: x.to_dict(orient="records")).to_dict()
 

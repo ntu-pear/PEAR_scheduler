@@ -548,6 +548,13 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
             schedule.c["ScheduleID"],
             schedule.c["PatientID"],
             schedule.c["MedicationSchedule"],
+            schedule.c["Monday"],
+            schedule.c["Tuesday"],
+            schedule.c["Wednesday"],
+            schedule.c["Thursday"],
+            schedule.c["Friday"],
+            schedule.c["Saturday"],
+            schedule.c["Sunday"],
         ).where(schedule.c["IsDeleted"] == False)
 
         # TODO: May need to tighten the condition
