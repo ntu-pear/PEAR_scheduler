@@ -808,3 +808,65 @@ class ActivityAndCentreActivityView(BaseView): # Get all the activities and cent
         )
         
         return query
+
+class AdhocActivityView(BaseView):
+    """View for querying adhoc activities with related information"""
+
+    @classmethod
+    def build_query(cls, **query_kwargs) -> Select:
+        logger.info("Building adhoc activities query")
+        schema = DB.schema
+
+        adhoc = schema.tables[cls.db_tables.ADHOC_TABLE]
+        patient = schema.tables[cls.db_tables.PATIENT_TABLE]
+        old_centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE].alias(
+            "old_centre_activity"
+        )
+        new_centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE].alias(
+            "new_centre_activity"
+        )
+        old_activity = schema.tables[cls.db_tables.ACTIVITY_TABLE].alias("old_activity")
+        new_activity = schema.tables[cls.db_tables.ACTIVITY_TABLE].alias("new_activity")
+
+        query: Select = (
+            select(
+                adhoc.c["AdhocID"],
+                adhoc.c["PatientID"],
+                patient.c["Name"].label("PatientName"),
+                adhoc.c["OldCentreActivityID"],
+                old_activity.c["ActivityTitle"].label("OldActivityTitle"),
+                adhoc.c["NewCentreActivityID"],
+                new_activity.c["ActivityTitle"].label("NewActivityTitle"),
+                adhoc.c["StartDate"],
+                adhoc.c["EndDate"],
+                adhoc.c["Status"],
+                adhoc.c["IsDeleted"],
+                adhoc.c["CreatedDateTime"],
+                adhoc.c["UpdatedDateTime"],
+            )
+            .join(patient, adhoc.c["PatientID"] == patient.c["PatientID"])
+            .join(
+                old_centre_activity,
+                adhoc.c["OldCentreActivityID"]
+                == old_centre_activity.c["CentreActivityID"],
+            )
+            .join(
+                new_centre_activity,
+                adhoc.c["NewCentreActivityID"]
+                == new_centre_activity.c["CentreActivityID"],
+            )
+            .join(
+                old_activity,
+                old_centre_activity.c["ActivityID"] == old_activity.c["ActivityID"],
+            )
+            .join(
+                new_activity,
+                new_centre_activity.c["ActivityID"] == new_activity.c["ActivityID"],
+            )
+            .where(adhoc.c["IsDeleted"] == "0")
+        )
+
+        if "arg1" in query_kwargs:
+            query = query.where(adhoc.c["PatientID"] == query_kwargs["arg1"])
+
+        return query

@@ -12,6 +12,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
     from pear_schedule.scheduler.compulsoryScheduling import CompulsoryActivityScheduler
     from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler, RecommendedRoutineActivityScheduler
     from pear_schedule.scheduler.medicationScheduling import medicationScheduler, medicationScheduleData
+    from pear_schedule.scheduler.adhocScheduling import AdhocScheduler
     patientDF = PatientsOnlyView.get_data()
     groupActivityDF = GroupActivitiesOnlyView.get_data()
 
@@ -39,7 +40,7 @@ def build_schedules(config, patientSchedules: Dict) -> Dict:
 
     # Schedule individual preferred activities
     PreferredActivityScheduler.fillSchedule(patientSchedules)
-    
+    AdhocScheduler.fillSchedule(patientSchedules)
     # Insert the medication schedule into scheduler
     medicationSchedule_ref: medicationScheduleData = medicationScheduler.fillSchedule(patientSchedules)
     
