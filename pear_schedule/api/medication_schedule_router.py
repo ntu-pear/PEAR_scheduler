@@ -20,6 +20,8 @@ router = APIRouter(tags=["Medication Schedule"])
 def get_medication_schedule(request: Request):
     try:
         medicationSchedules = medicationScheduler.generateTodayMedSchedule()
+        if not medicationSchedules: 
+            return JSONResponse(status_code=200, content=jsonable_encoder({"message": "No medication schedules to be returned"}))
         if not MedicationScheduleWrite.write(schedules=medicationSchedules):
             raise HTTPException(status_code=500, detail="Failed to write medication schedules to the database")
         medication_schedules: pd.DataFrame = TodayMedicationScheduleView.get_data()

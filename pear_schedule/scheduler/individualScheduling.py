@@ -161,66 +161,65 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         # set week_start to current week monday if not given
         week_start = week_start or \
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        series_timeslots = activities["ProcessedTimeSlots"]
+        timeslots_set = set.union(*series_timeslots)
 
         scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
         
-        for day, day_schedule in enumerate(patient_schedule):
-
+        for (day, slot) in timeslots_set:
             if scheduled_idx.all():
                 break
 
-            for slot, curr_activity in enumerate(day_schedule):
-                if curr_activity:
+            if day >= len(cls.config["OPEN_DAYS"]) or slot >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day]) \
+                or patient_schedule[day][slot]:
+                continue
+            # scan remaining allowed activities to find most constrained (fewer available time slots)
+            # not ideal but no. of activities is expected to be small so O(n2) is acceptable
+
+            least_available = -1
+            lowest_availability = float("inf")
+
+            available_activities: pd.DataFrame = activities[~scheduled_idx]
+            for row, activity in available_activities.iterrows():
+                if checkActivityExcluded(
+                    activity["ActivityID"], patient_info["exclusions"], day, week_start
+                ):
                     continue
-                # scan remaining allowed activities to find most constrained (fewer available time slots)
-                # not ideal but no. of activities is expected to be small so O(n2) is acceptable
 
-                least_available = -1
-                lowest_availability = float("inf")
+                # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
+                curr_availability: int = calculate_activity_availabillity(cls, day, slot, activity["ProcessedTimeSlots"])
 
-                available_activities: pd.DataFrame = activities[~scheduled_idx]
-                for row, activity in available_activities.iterrows():
-                    if checkActivityExcluded(
-                        activity["ActivityID"], patient_info["exclusions"], day, week_start
-                    ):
-                        continue
+                # if activity can scheduled at a starting slot, first check whether there are enough consecutive slots for a 1hr or longer activity
+                if curr_availability < float("inf"):
+                    num_slots = activity["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"] * -1
+                    for i in range(1, num_slots):
+                        if (num_slots > 1 and slot+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or patient_schedule[day][slot+i]:
+                            curr_availability = float("inf")
+                            break
 
-                    # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
-                    curr_availability: int = calculate_activity_availabillity(cls, day, slot, activity["ProcessedTimeSlots"])
+                # if there are no such slots (0), we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
+                if not curr_availability:
+                    scheduled_idx.loc[row] = True
 
-                    # if activity can scheduled at a starting slot, first check whether there are enough consecutive slots for a 1hr or longer activity
-                    if curr_availability < float("inf"):
-                        num_slots = activity["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"] * -1
-                        for i in range(1, num_slots):
-                            if (num_slots > 1 and slot+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or day_schedule[slot+i]:
-                                curr_availability = float("inf")
-                                break
-
-                    # if there are no such slots (0), we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
-                    if not curr_availability:
-                        scheduled_idx.loc[row] = True
-
-                    if curr_availability < lowest_availability:
-                        least_available = row
-                        lowest_availability = curr_availability
-                    # if tie in availability, prioritise activity with longer duration
-                    elif curr_availability == lowest_availability and lowest_availability != float("inf"):
-                        least_available = row if activity["MinDuration"] > activities.loc[least_available, "MinDuration"] else least_available
+                if curr_availability < lowest_availability:
+                    least_available = row
+                    lowest_availability = curr_availability
+                # if tie in availability, prioritise activity with longer duration
+                elif curr_availability == lowest_availability and lowest_availability != float("inf"):
+                    least_available = row if activity["MinDuration"] > activities.loc[least_available, "MinDuration"] else least_available
                     
-                if least_available < 0 and not available_activities.empty:
-                    continue
-                elif least_available < 0 and available_activities.empty:
-                    break
+            if least_available < 0:
+                continue
 
-                # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
-                # availability should apply to activities that can be scheduled at this slot or later
-                scheduled_idx.loc[least_available] = True
+            # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
+            # availability should apply to activities that can be scheduled at this slot or later
+            scheduled_idx.loc[least_available] = True
                 
-                # if the activity determined to be scheduled at this starting slot > MIN_DURATION, fill adjacent slots with activity title
-                selected_activity_row = activities.loc[least_available]
-                selected_activity = selected_activity_row["ActivityTitle"]
-                for i in range((selected_activity_row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1):
-                    day_schedule[slot + i] = selected_activity
+            # if the activity determined to be scheduled at this starting slot > MIN_DURATION, fill adjacent slots with activity title
+            selected_activity_row = activities.loc[least_available]
+            selected_activity = selected_activity_row["ActivityTitle"]
+            for i in range((selected_activity_row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1):
+                patient_schedule[day][slot + i] = selected_activity
 
     @classmethod
     def __fillRoutines(
