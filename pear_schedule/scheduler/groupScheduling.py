@@ -351,20 +351,23 @@ class GroupActivityScheduler(BaseScheduler):
     @classmethod
     def getFixedTimeArr(cls, fixedTimeSlots):
         fixedTimeArr = fixedTimeSlots.split(",")
+        validTimeSlots = [x for x in fixedTimeArr if x in cls.config["GROUP_TIMESLOT_MAPPING"]]
+        if len(validTimeSlots):
+            raise ValueError(f"Invalid group time slots")
 
         timeSlotMappingReverse = {}
         for i , slot in enumerate(cls.config["GROUP_TIMESLOT_MAPPING"]):
             timeSlotMappingReverse[slot] = i
 
         # Reformat data
-        for i in range(len(fixedTimeArr)):
-            value = fixedTimeArr[i]
+        for i in range(len(validTimeSlots)):
+            value = validTimeSlots[i]
             valueArr = value.split("-")
             day = int(valueArr[0])
             slot = int(valueArr[1])
-            fixedTimeArr[i] = timeSlotMappingReverse[(day,slot)]
+            validTimeSlots[i] = timeSlotMappingReverse[(day,slot)]
 
-        return fixedTimeArr
+        return validTimeSlots
 
 
 def getAllScheduledActivities(timeTable):
