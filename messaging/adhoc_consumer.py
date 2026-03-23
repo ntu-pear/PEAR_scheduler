@@ -28,17 +28,17 @@ class AdhocConsumer:
         self.is_consuming = False
 
         from pear_schedule.crud.ref_adhoc_crud import (
-            ref_create_adhoc,
-            ref_update_adhoc,
-            ref_delete_adhoc,
+            create_ref_adhoc,
+            update_ref_adhoc,
+            delete_ref_adhoc,
             is_event_already_processed,
         )
         from pear_schedule.database import get_db
         from messaging.mappers.mapper_util import map_adhoc_create, map_adhoc_update
 
-        self.ref_create_adhoc = ref_create_adhoc
-        self.ref_update_adhoc = ref_update_adhoc
-        self.ref_delete_adhoc = ref_delete_adhoc
+        self.create_ref_adhoc = create_ref_adhoc
+        self.update_ref_adhoc = update_ref_adhoc
+        self.delete_ref_adhoc = delete_ref_adhoc
         self.is_event_already_processed = is_event_already_processed
         self.get_db = get_db
         self.map_adhoc_create = map_adhoc_create
@@ -267,7 +267,7 @@ class AdhocConsumer:
                 return MessageProcessingResult.FAILED_PERMANENT
 
             # Create adhoc using CRUD operation with idempotency
-            result, was_duplicate = self.ref_create_adhoc(
+            result, was_duplicate = self.create_ref_adhoc(
                 db=db, adhoc=ref_adhoc_data, correlation_id=correlation_id, created_by=created_by
             )
 
@@ -326,7 +326,7 @@ class AdhocConsumer:
 
             # Update adhoc using CRUD operation with idempotency
             # For sync events, bypass duplicate check in CRUD
-            result, was_duplicate = self.ref_update_adhoc(
+            result, was_duplicate = self.update_ref_adhoc(
                 db=db,
                 adhoc_id=adhoc_id,
                 adhoc_update=ref_adhoc_update,
@@ -349,7 +349,7 @@ class AdhocConsumer:
                         mapped_adhoc_data = self.map_adhoc_create(adhoc_data)
                         if mapped_adhoc_data:
                             ref_adhoc_data = RefAdhocCreate(**mapped_adhoc_data)
-                            create_result, _ = self.ref_create_adhoc(
+                            create_result, _ = self.create_ref_adhoc(
                                 db=db, adhoc=ref_adhoc_data, correlation_id=correlation_id, created_by=modified_by
                             )
                             if create_result:
@@ -417,7 +417,7 @@ class AdhocConsumer:
                 logger.error(f"Pydantic validation failed: {str(e)}")
                 return MessageProcessingResult.FAILED_PERMANENT
 
-            result, was_duplicate = self.ref_delete_adhoc(
+            result, was_duplicate = self.delete_ref_adhoc(
                 db=db,
                 adhoc_id=adhoc_id,
                 adhoc_delete=ref_adhoc_delete,
