@@ -45,7 +45,7 @@ class IndividualActivityScheduler(BaseScheduler):
                     "preferences":set(), "exclusions": dict(), "dispreferences": set()  # recommendations handled in compulsory scheduling
                 }
             
-            # If ActivityEndDate is null, means the Activity will restart every week. #ToBeConfirmed
+            # If ActivityEndDate is Null, means the Activity will restart every week. #ToBeConfirmed
             
             if p["ActivityEndDate"] <= week_end:
                 continue
