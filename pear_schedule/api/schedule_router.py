@@ -3,19 +3,20 @@ import logging
 from fastapi import APIRouter, Query, Request, Depends
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
-from typing import List, Optional, Annotated
+from typing import List, Optional, Annotated, Mapping, Dict
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, GroupActivitiesOnlyView, WeeklyScheduleView, CompulsoryActivitiesOnlyView,PatientsOnlyView,AllActivitiesView
 import pandas as pd
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
 import datetime
-from pear_schedule.db_utils.writer import ScheduleWriter
+from pear_schedule.db_utils.writer import ScheduleWriter, MedicationScheduleWrite
 
 from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
 from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
+from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import DBTABLES
 
 from pear_schedule.api.auth_util import Token, generateAccessToken_onLogin, JWTPayload, get_current_user, is_supervisor
@@ -62,9 +63,10 @@ def generate_schedule(request: Request):
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
 
-        if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, overwriteExisting=False) \
+            and MedicationScheduleWrite.write():
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -89,7 +91,7 @@ def generate_schedule(request: Request):
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -99,7 +101,8 @@ def generate_schedule(request: Request):
                 "ScheduleID": row["ScheduleID"],
             }
 
-        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
+            MedicationScheduleWrite.write():
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -124,7 +127,7 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -134,7 +137,8 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
                 "ScheduleID": row["ScheduleID"],
             }
 
-        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
+            MedicationScheduleWrite.write():
             weeklyScheduleViewDF = WeeklyScheduleView.get_data()
             weeklyScheduleViewDF.pop("ScheduleID")
             schedules_json = weeklyScheduleViewDF.to_dict(orient="records")

@@ -21,13 +21,20 @@ class DBTABLES:
     # ROUTINE_TABLE: str
     # ROUTINE_ACTIVITY_TABLE: str
     SCHEDULE_TABLE: str
+    MEDICATION_SCHEDULE_TABLE: str
     MEDICATION_TABLE: str
+    ALLOCATION_TABLE: str
+    CARE_CENTRE_TABLE: str
+    ADHOC_TABLE: str
+
 
 # ACTIVITY_AVAILABILITY_TABLE: str
+
 
 @dataclass(kw_only=True, frozen=True)
 class MICROSERVICE_TABLES:
     """New dataclass specifically for the microservices ref tables"""
+
     REF_PATIENT: str = "REF_PATIENT"
     REF_ACTIVITY: str = "REF_ACTIVITY"
     REF_CENTRE_ACTIVITY: str = "REF_CENTRE_ACTIVITY"
@@ -36,11 +43,15 @@ class MICROSERVICE_TABLES:
     REF_ACTIVITY_RECOMMENDATION: str = "REF_ACTIVITY_RECOMMENDATION"
     REF_ACTIVITY_ROUTINE: str = "REF_ACTIVITY_ROUTINE"
     REF_PATIENT_MEDICATION: str = "REF_PATIENT_MEDICATION"
+    REF_PATIENT_ALLOCATION: str = "REF_PATIENT_ALLOCATION"
+    REF_ADHOC: str = "REF_ADHOC"
     SCHEDULE: str = "SCHEDULE"
+    # MEDICATION_SCHEDULE: str = "MEDICATION_SCHEDULE"
 
 
 class ConfigDependant:
     config: Mapping[str, Any]
+
     def __init_subclass__(cls) -> None:
         CONFIG_DEPENDANTS[cls.__name__] = cls
 
@@ -62,14 +73,17 @@ def get_ref_table_mapping():
     return {
         "Patient": "REF_PATIENT",
         "Activity": "REF_ACTIVITY",
-        "CentreActivity": "REF_CENTRE_ACTIVITY", 
+        "CentreActivity": "REF_CENTRE_ACTIVITY",
         "ActivityExclusion": "REF_ACTIVITY_EXCLUSION",
         "CentreActivityPreference": "REF_ACTIVITY_PREFERENCE",
         "CentreActivityRecommendation": "REF_ACTIVITY_RECOMMENDATION",
         "Routine": "REF_ACTIVITY_ROUTINE",
         "RoutineActivity": "REF_ACTIVITY_ROUTINE",
         "Medication": "REF_PATIENT_MEDICATION",
-        "Schedule": "SCHEDULE"
+        "Allocation": "REF_PATIENT_ALLOCATION",
+        "Adhoc": "REF_ADHOC",
+        "Schedule": "SCHEDULE",
+        # "MedicationSchedule": "MEDICATION_SCHEDULE"
     }
 
 
@@ -85,11 +99,16 @@ def get_model_for_table(table_name: str):
     from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
     from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
     from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
-    from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
+    from pear_schedule.models.ref_activity_recommendation_model import (
+        RefActivityRecommendation,
+    )
     from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
     from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
+    from pear_schedule.models.ref_patient_allocation_model import RefPatientAllocation
+    from pear_schedule.models.ref_adhoc_model import RefAdhoc
     from pear_schedule.models.schedule_model import Schedule
-    
+    # from pear_schedule.models.medication_schedule_model import MedicationSchedule
+
     model_mapping = {
         "REF_PATIENT": RefPatient,
         "REF_ACTIVITY": RefActivity,
@@ -99,7 +118,10 @@ def get_model_for_table(table_name: str):
         "REF_ACTIVITY_RECOMMENDATION": RefActivityRecommendation,
         "REF_ACTIVITY_ROUTINE": RefActivityRoutine,
         "REF_PATIENT_MEDICATION": RefPatientMedication,
-        "SCHEDULE": Schedule
+        "REF_PATIENT_ALLOCATION": RefPatientAllocation,
+        "REF_ADHOC": RefAdhoc,
+        "SCHEDULE": Schedule,
+        # "MEDICATION_SCHEDULE": MedicationSchedule
     }
-    
+
     return model_mapping.get(table_name)
