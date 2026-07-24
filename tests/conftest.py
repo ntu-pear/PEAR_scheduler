@@ -1,7 +1,9 @@
 import pytest
-from unittest.mock import Mock, MagicMock
+import pandas as pd
+from unittest.mock import Mock, MagicMock, patch
 from datetime import datetime
 from tests.utils.mock_db import get_db_session_mock
+from tests.utils.scheduler_config import make_scheduler_config
 from pear_schedule.models.ref_patient_model import RefPatient
 from pear_schedule.models.ref_activity_model import RefActivity
 from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
@@ -12,6 +14,7 @@ from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 from pear_schedule.models.schedule_model import Schedule
 
+# CRUD / model fixtures
 
 @pytest.fixture
 def db_session_mock():
@@ -57,8 +60,8 @@ def sample_ref_activity():
 def sample_schedule():
     """Create a sample Schedule instance based on actual data"""
     return Schedule(
-        Id=1560,
-        PatientId=3,
+        ScheduleID=1560,
+        PatientID=3,
         StartDate=datetime(2024, 12, 2),
         EndDate=datetime(2024, 12, 8, 23, 59, 59),
         Monday="Breathing+Vital Check--Board Games--Picture Coloring--Lunch--Watch television--Act1--Leslie history routine--Clip Coupons",
@@ -132,9 +135,9 @@ def sample_activity_recommendation():
 def sample_activity_routine():
     """Create a sample RefActivityRoutine instance based on actual data"""
     return RefActivityRoutine(
-        Id=1,
-        PatientId=4,
-        ActivityId=9,
+        RoutineID=1,
+        PatientID=4,
+        ActivityID=9,
         IncludeInSchedule="1",
         RoutineIssues="Too slow",
         RoutineTimeSlots="0-2,4-2",
@@ -192,9 +195,9 @@ def sample_patient_medication():
 def sample_complex_routine():
     """Create a sample routine with complex issues based on actual data"""
     return RefActivityRoutine(
-        Id=8,
-        PatientId=13,
-        ActivityId=20,
+        RoutineID=8,
+        PatientID=13,
+        ActivityID=20,
         IncludeInSchedule="1",
         RoutineIssues="Here we choose Tues and Thurs. In Manage Activities it was Mon, Wed, Fri.",
         RoutineTimeSlots="1-6,3-6",  # Tuesday and Thursday at 6pm
@@ -210,8 +213,8 @@ def sample_complex_routine():
 def sample_overlapping_schedule():
     """Create a sample overlapping schedule for testing conflicts"""
     return Schedule(
-        Id=9999,
-        PatientId=3,  # Same patient as sample_schedule
+        ScheduleID=9999,
+        PatientID=3,  # Same patient as sample_schedule
         StartDate=datetime(2024, 12, 5),  # Overlaps with existing schedule
         EndDate=datetime(2024, 12, 12),
         Monday="Different Monday Activities",
@@ -232,13 +235,192 @@ def sample_overlapping_schedule():
 @pytest.fixture
 def mock_log_crud_action():
     """Mock the log_crud_action function"""
-    with pytest.mock.patch('app.crud.schedule_crud.log_crud_action') as mock_log:
+    with patch('pear_schedule.crud.schedule_crud.log_crud_action') as mock_log:
         yield mock_log
 
 
 @pytest.fixture
 def mock_serialize_data():
     """Mock the serialize_data function"""
-    with pytest.mock.patch('app.crud.schedule_crud.serialize_data') as mock_serialize:
+    with patch('pear_schedule.crud.schedule_crud.serialize_data') as mock_serialize:
         mock_serialize.side_effect = lambda x: str(x)
         yield mock_serialize
+
+
+# Scheduler fixtures - config/date + one empty-or-sample DataFrame per views.py View class
+# used across the scheduler tests
+
+@pytest.fixture
+def scheduler_config():
+    """See tests/utils/scheduler_config.py - deterministic, no datetime.now() in here."""
+    return make_scheduler_config()
+
+
+@pytest.fixture
+def fixed_monday():
+    return datetime(2024, 3, 18)
+
+
+@pytest.fixture
+def compulsory_activities_df():
+    return pd.DataFrame({
+        "ActivityTitle": ["Breathing+Vital Check"],
+        "IsFixed": [1],
+        "FixedTimeSlots": ["0-0"],
+        "MinDuration": [30],
+    })
+
+
+@pytest.fixture
+def recommended_activities_df():
+    return pd.DataFrame({
+        "ActivityID": [1],
+        "IsFixed": [1],
+        "MinDuration": [30],
+        "ActivityTitle": ["Physiotherapy"],
+        "FixedTimeSlots": ["0-1"],
+        "PatientID": [1],
+        "ActivityEndDate": [pd.Timestamp("2099-12-31")],
+    })
+
+
+@pytest.fixture
+def disrecommended_activities_df():
+    return pd.DataFrame({
+        "ActivityID": pd.Series([], dtype="int64"),
+        "IsFixed": pd.Series([], dtype="int64"),
+        "ActivityTitle": pd.Series([], dtype="object"),
+        "PatientID": pd.Series([], dtype="int64"),
+        "ActivityEndDate": pd.Series([], dtype="datetime64[ns]"),
+    })
+
+
+@pytest.fixture
+def patients_view_df():
+    return pd.DataFrame({
+        "PatientID": pd.Series([], dtype="int64"),
+        "PreferredActivityID": pd.Series([], dtype="int64"),
+        "ActivityEndDate": pd.Series([], dtype="datetime64[ns]"),
+    })
+
+
+@pytest.fixture
+def patients_unpreferred_df():
+    return pd.DataFrame({
+        "PatientID": pd.Series([], dtype="int64"),
+        "DispreferredActivityID": pd.Series([], dtype="int64"),
+        "ActivityEndDate": pd.Series([], dtype="datetime64[ns]"),
+    })
+
+
+@pytest.fixture
+def activities_excluded_df():
+    return pd.DataFrame({
+        "ActivityExclusionID": pd.Series([], dtype="int64"),
+        "ActivityID": pd.Series([], dtype="int64"),
+        "PatientID": pd.Series([], dtype="int64"),
+        "ExclusionRemarks": pd.Series([], dtype="object"),
+        "EndDateTime": pd.Series([], dtype="datetime64[ns]"),
+        "ActivityTitle": pd.Series([], dtype="object"),
+    })
+
+
+@pytest.fixture
+def activities_view_df():
+    return pd.DataFrame({
+        "ActivityID": [1],
+        "ActivityTitle": ["Board Games"],
+        "IsFixed": [0],
+        "FixedTimeSlots": [""],
+        "MinDuration": [30],
+        "MaxDuration": [30],
+        "EndDate": [pd.Timestamp("2099-12-31")],
+        "StartDate": [pd.Timestamp("2020-01-01")],
+    })
+
+
+@pytest.fixture
+def group_activities_only_df():
+    return pd.DataFrame({
+        "ActivityID": [1],
+        "CentreActivityID": [1],
+        "ActivityTitle": ["Mahjong"],
+        "IsFixed": [0],
+        "FixedTimeSlots": [""],
+        "MinPeopleReq": [2],
+        "MinDuration": [30],
+    })
+
+
+@pytest.fixture
+def group_activities_preference_df():
+    return pd.DataFrame({
+        "CentreActivityID": pd.Series([], dtype="int64"),
+        "PatientID": pd.Series([], dtype="int64"),
+        "IsLike": pd.Series([], dtype="int64"),
+    })
+
+
+@pytest.fixture
+def group_activities_recommendation_df():
+    return pd.DataFrame({
+        "CentreActivityID": pd.Series([], dtype="int64"),
+        "PatientID": pd.Series([], dtype="int64"),
+        "DoctorRecommendation": pd.Series([], dtype="int64"),
+    })
+
+
+@pytest.fixture
+def group_activities_exclusion_df():
+    return pd.DataFrame({
+        "CentreActivityID": pd.Series([], dtype="int64"),
+        "PatientID": pd.Series([], dtype="int64"),
+    })
+
+
+@pytest.fixture
+def patients_only_df():
+    return pd.DataFrame({"PatientID": [1, 2]})
+
+
+@pytest.fixture
+def medication_view_df():
+    return pd.DataFrame({
+        "PatientID": [1],
+        "MedicationID": [1],
+        "PrescriptionName": ["Aspirin"],
+        "Dosage": ["1 tablet"],
+        "AdministerTime": ["0900"],
+        "StartDateTime": [pd.Timestamp("2020-01-01")],
+        "EndDateTime": [pd.Timestamp("2099-12-31")],
+        "Instruction": ["Take with food"],
+        "IsDeleted": [0],
+    })
+
+
+@pytest.fixture
+def caregiver_allocated_df():
+    return pd.DataFrame({
+        "patientId": [1],
+        "caregiverId": ["CG1"],
+        "tempCaregiverId": [""],
+    })
+
+
+@pytest.fixture
+def adhoc_activity_df():
+    return pd.DataFrame({
+        "AdhocID": [1],
+        "PatientID": [1],
+        "PatientName": ["John Doe"],
+        "OldCentreActivityID": [1],
+        "OldActivityTitle": ["Breathing+Vital Check"],
+        "NewCentreActivityID": [2],
+        "NewActivityTitle": ["Adhoc Replacement Activity"],
+        "StartDate": [pd.Timestamp("2024-03-18")],
+        "EndDate": [pd.Timestamp("2024-03-24")],
+        "Status": ["Active"],
+        "IsDeleted": [0],
+        "CreatedDateTime": [pd.Timestamp("2024-03-01")],
+        "UpdatedDateTime": [pd.Timestamp("2024-03-01")],
+    })
