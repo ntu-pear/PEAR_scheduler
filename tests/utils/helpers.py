@@ -4,7 +4,7 @@ import pandas as pd
 def validateDF(result: pd.DataFrame, expected: pd.DataFrame):
     if (set(result.columns) != expected.columns):
         raise Exception(f"columns mismatch: \n expected {set(expected.columns)}\ngot {set(result.columns)}")
-    
+
     if (result.shape != expected.shape):
         raise Exception(f"shape mismatch: expected {expected.shape} got {result.shape}")
 

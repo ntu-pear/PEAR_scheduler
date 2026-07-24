@@ -14,11 +14,11 @@ def create_or_update_ref_activity_routine(db: Session, routine: RefActivityRouti
     Creates if doesn't exist, updates if exists
     """
     current_time = datetime.now()
-    
+
     # For routines, we'll check by PatientId and ActivityId combination
     existing_routine = db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.PatientId == routine.PatientId,
-        RefActivityRoutine.ActivityId == routine.ActivityId,
+        RefActivityRoutine.PatientID == routine.PatientId,
+        RefActivityRoutine.ActivityID == routine.ActivityId,
         RefActivityRoutine.IsDeleted == "0"
     ).first()
     
@@ -38,8 +38,8 @@ def create_or_update_ref_activity_routine(db: Session, routine: RefActivityRouti
     else:
         # Create new routine
         new_routine = RefActivityRoutine(
-            PatientId=routine.PatientId,
-            ActivityId=routine.ActivityId,
+            PatientID=routine.PatientId,
+            ActivityID=routine.ActivityId,
             IncludeInSchedule=routine.IncludeInSchedule,
             RoutineIssues=routine.RoutineIssues,
             RoutineTimeSlots=routine.RoutineTimeSlots,
@@ -61,13 +61,13 @@ def update_ref_activity_routine_idempotent(db: Session, routine_id: int, routine
     Idempotent update - won't fail if routine doesn't exist
     """
     db_routine = db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.Id == routine_id
+        RefActivityRoutine.RoutineID == routine_id
     ).first()
     
     if not db_routine:
         # Routine doesn't exist - this is OK for idempotent operations
         return None
-    
+
     # Update fields
     for key, value in routine.model_dump(exclude_unset=True).items():
         if hasattr(db_routine, key):
@@ -85,16 +85,16 @@ def soft_delete_ref_activity_routine_idempotent(db: Session, routine_id: int, us
     """
     Idempotent soft delete - won't fail if routine doesn't exist or already deleted
     """
-    db_routine = db.query(RefActivityRoutine).filter(RefActivityRoutine.Id == routine_id).first()
+    db_routine = db.query(RefActivityRoutine).filter(RefActivityRoutine.RoutineID == routine_id).first()
     
     if not db_routine:
         # Routine doesn't exist - idempotent operation should succeed
         return None
-    
+
     if db_routine.IsDeleted == "1":
         # Already deleted - idempotent operation should succeed
         return db_routine
-    
+
     # Perform soft delete
     db_routine.IsDeleted = "1"
     db_routine.UpdatedDateTime = datetime.now()
@@ -114,52 +114,52 @@ def get_ref_activity_routines(db: Session, pageNo: int = 0, pageSize: int = 10,
 
     # Apply patient filter if provided
     if patient_id:
-        query = query.filter(RefActivityRoutine.PatientId == patient_id)
+        query = query.filter(RefActivityRoutine.PatientID == patient_id)
 
     # Apply activity filter if provided
     if activity_id:
-        query = query.filter(RefActivityRoutine.ActivityId == activity_id)
+        query = query.filter(RefActivityRoutine.ActivityID == activity_id)
 
     # Apply include_in_schedule filter if provided
     if include_in_schedule in ["0", "1"]:
         query = query.filter(RefActivityRoutine.IncludeInSchedule == include_in_schedule)
 
     # Apply the same filters to count query
-    count_query = db.query(func.count(RefActivityRoutine.Id)).filter(RefActivityRoutine.IsDeleted == "0")
-    
+    count_query = db.query(func.count(RefActivityRoutine.RoutineID)).filter(RefActivityRoutine.IsDeleted == "0")
+
     if patient_id:
-        count_query = count_query.filter(RefActivityRoutine.PatientId == patient_id)
+        count_query = count_query.filter(RefActivityRoutine.PatientID == patient_id)
     if activity_id:
-        count_query = count_query.filter(RefActivityRoutine.ActivityId == activity_id)
+        count_query = count_query.filter(RefActivityRoutine.ActivityID == activity_id)
     if include_in_schedule in ["0", "1"]:
         count_query = count_query.filter(RefActivityRoutine.IncludeInSchedule == include_in_schedule)
-    
+
     totalRecords = count_query.scalar()
     totalPages = math.ceil(totalRecords / pageSize) if pageSize > 0 else 1
 
-    db_routines = query.order_by(RefActivityRoutine.PatientId.asc()).offset(offset).limit(pageSize).all()
+    db_routines = query.order_by(RefActivityRoutine.PatientID.asc()).offset(offset).limit(pageSize).all()
 
     return db_routines, totalRecords, totalPages
 
 def get_ref_activity_routine_by_id(db: Session, routine_id: int):
     """Get activity routine by ID"""
     return db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.Id == routine_id,
+        RefActivityRoutine.RoutineID == routine_id,
         RefActivityRoutine.IsDeleted == "0"
     ).first()
 
 def get_routine_by_patient_and_activity(db: Session, patient_id: int, activity_id: int):
     """Get routine for a specific patient and activity"""
     return db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.PatientId == patient_id,
-        RefActivityRoutine.ActivityId == activity_id,
+        RefActivityRoutine.PatientID == patient_id,
+        RefActivityRoutine.ActivityID == activity_id,
         RefActivityRoutine.IsDeleted == "0"
     ).first()
 
 def get_patient_scheduled_routines(db: Session, patient_id: int):
     """Get all routines included in schedule for a patient"""
     return db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.PatientId == patient_id,
+        RefActivityRoutine.PatientID == patient_id,
         RefActivityRoutine.IncludeInSchedule == "1",
         RefActivityRoutine.IsDeleted == "0"
     ).all()
@@ -167,7 +167,7 @@ def get_patient_scheduled_routines(db: Session, patient_id: int):
 def get_patient_excluded_routines(db: Session, patient_id: int):
     """Get all routines excluded from schedule for a patient"""
     return db.query(RefActivityRoutine).filter(
-        RefActivityRoutine.PatientId == patient_id,
+        RefActivityRoutine.PatientID == patient_id,
         RefActivityRoutine.IncludeInSchedule == "0",
         RefActivityRoutine.IsDeleted == "0"
     ).all()

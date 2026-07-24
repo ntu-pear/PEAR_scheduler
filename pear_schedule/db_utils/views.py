@@ -40,6 +40,17 @@ class BaseView(ConfigDependant):
     def build_query(cls, **query_kwargs) -> Select:
         raise NotImplementedError(f"build_query() not implemented for {cls.__name__}")
 
+class CareCentreView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building care centre query")
+        care_centre = DB.schema.tables[cls.db_tables.CARE_CENTRE_TABLE]
+
+        query: Select = select(
+            care_centre.c["working_hours"].label("WorkingHours"),
+        ).where(care_centre.c["id"] == cls.config["CARE_CENTRE_ID"])
+        return query
+
 class AllActivitiesView(BaseView):
     @classmethod
     def build_query(cls) -> Select:
@@ -212,6 +223,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinPeopleReq"],
+            centre_activity.c["MinDuration"]
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(centre_activity.c["IsGroup"] == True
@@ -413,7 +425,7 @@ class DisrecommendedActivitiesView(BaseView):
 
 class MedicationView(BaseView): # Just medication table view
     @classmethod
-    def build_query(cls) -> Select:
+    def build_query(cls, curDate=False) -> Select:
         logger.info("Building prescription view query")
         schema = DB.schema
         curDateTime = datetime.now()
@@ -426,6 +438,12 @@ class MedicationView(BaseView): # Just medication table view
             # medication.c["EndDateTime"] >= curDateTime
             medication.c["IsDeleted"] == False
         )
+        if curDate:
+            # startDateTime <| curDateTime |> endDateTime
+            query = query.where(
+                medication.c["StartDateTime"] <= curDateTime,
+                medication.c["EndDateTime"] >= curDateTime
+            )
         return query
 #ROUTINETable Not Ready, add in once ready.
 class ValidRoutineActivitiesView(BaseView): # 
@@ -530,6 +548,13 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
             schedule.c["ScheduleID"],
             schedule.c["PatientID"],
             schedule.c["MedicationSchedule"],
+            schedule.c["Monday"],
+            schedule.c["Tuesday"],
+            schedule.c["Wednesday"],
+            schedule.c["Thursday"],
+            schedule.c["Friday"],
+            schedule.c["Saturday"],
+            schedule.c["Sunday"],
         ).where(schedule.c["IsDeleted"] == False)
 
         # TODO: May need to tighten the condition
@@ -782,4 +807,66 @@ class ActivityAndCentreActivityView(BaseView): # Get all the activities and cent
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         )
         
+        return query
+
+class AdhocActivityView(BaseView):
+    """View for querying adhoc activities with related information"""
+
+    @classmethod
+    def build_query(cls, **query_kwargs) -> Select:
+        logger.info("Building adhoc activities query")
+        schema = DB.schema
+
+        adhoc = schema.tables[cls.db_tables.ADHOC_TABLE]
+        patient = schema.tables[cls.db_tables.PATIENT_TABLE]
+        old_centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE].alias(
+            "old_centre_activity"
+        )
+        new_centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE].alias(
+            "new_centre_activity"
+        )
+        old_activity = schema.tables[cls.db_tables.ACTIVITY_TABLE].alias("old_activity")
+        new_activity = schema.tables[cls.db_tables.ACTIVITY_TABLE].alias("new_activity")
+
+        query: Select = (
+            select(
+                adhoc.c["AdhocID"],
+                adhoc.c["PatientID"],
+                patient.c["Name"].label("PatientName"),
+                adhoc.c["OldCentreActivityID"],
+                old_activity.c["ActivityTitle"].label("OldActivityTitle"),
+                adhoc.c["NewCentreActivityID"],
+                new_activity.c["ActivityTitle"].label("NewActivityTitle"),
+                adhoc.c["StartDate"],
+                adhoc.c["EndDate"],
+                adhoc.c["Status"],
+                adhoc.c["IsDeleted"],
+                adhoc.c["CreatedDateTime"],
+                adhoc.c["UpdatedDateTime"],
+            )
+            .join(patient, adhoc.c["PatientID"] == patient.c["PatientID"])
+            .join(
+                old_centre_activity,
+                adhoc.c["OldCentreActivityID"]
+                == old_centre_activity.c["CentreActivityID"],
+            )
+            .join(
+                new_centre_activity,
+                adhoc.c["NewCentreActivityID"]
+                == new_centre_activity.c["CentreActivityID"],
+            )
+            .join(
+                old_activity,
+                old_centre_activity.c["ActivityID"] == old_activity.c["ActivityID"],
+            )
+            .join(
+                new_activity,
+                new_centre_activity.c["ActivityID"] == new_activity.c["ActivityID"],
+            )
+            .where(adhoc.c["IsDeleted"] == "0")
+        )
+
+        if "arg1" in query_kwargs:
+            query = query.where(adhoc.c["PatientID"] == query_kwargs["arg1"])
+
         return query
