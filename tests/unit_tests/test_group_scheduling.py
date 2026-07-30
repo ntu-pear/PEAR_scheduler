@@ -7,6 +7,7 @@ from contextlib import ExitStack, contextmanager
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from pear_schedule.scheduler.groupScheduling import GroupActivityScheduler
 from tests.utils.scheduler_config import make_scheduler_config
@@ -188,20 +189,27 @@ class TestGroupScheduling:
 
         assert len(_scheduled_bins(result, 1, "Mahjong")) == 0
 
-    def test_get_fixed_time_arr_always_returns_empty_list(self, monkeypatch):
-        """
-        (BUG) fixed group time slots are not recognised
-        because the code compares string values like "0-2" with tuples like (0, 2).
-        As a result, fixed group activities cannot be scheduled.
-        """
+    def test_get_fixed_time_arr_translates_day_slot_string_to_index(self, monkeypatch):
+        """getFixedTimeArr parses "day-slot" strings and looks up their index in
+        GROUP_TIMESLOT_MAPPING, which holds (day, slot) tuples at scheduling time."""
         cfg = _group_config()
+        cfg["GROUP_TIMESLOT_MAPPING"] = [(0, 2), (1, 3), (2, 4)]
         monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
 
-        assert GroupActivityScheduler.getFixedTimeArr("0-2") == []
+        assert GroupActivityScheduler.getFixedTimeArr("1-3") == [1]
 
-    def test_fixed_group_activity_is_never_scheduled(self, monkeypatch):
-        """Full fillSchedule confirmation of the getFixedTimeArr bug: an IsFixed=1
-        activity is never scheduled for anyone, even with enough recommended patients."""
+    def test_get_fixed_time_arr_raises_on_unknown_slot(self, monkeypatch):
+        cfg = _group_config()
+        cfg["GROUP_TIMESLOT_MAPPING"] = [(0, 2), (1, 3), (2, 4)]
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        with pytest.raises(ValueError):
+            GroupActivityScheduler.getFixedTimeArr("5-9")
+
+    def test_fixed_group_activity_is_scheduled_when_recommended(self, monkeypatch):
+        """Full fillSchedule confirmation of the getFixedTimeArr fix: an IsFixed=1
+        activity is scheduled for recommended patients once its FixedTimeSlots value
+        actually resolves to a valid GROUP_TIMESLOT_MAPPING index."""
         cfg = _group_config()
         monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
 
@@ -219,7 +227,7 @@ class TestGroupScheduling:
             result = GroupActivityScheduler.fillSchedule(patient_schedules)
 
         for pid in patient_ids:
-            assert len(_scheduled_bins(result, pid, "Fixed Group Activity")) == 0
+            assert len(_scheduled_bins(result, pid, "Fixed Group Activity")) == 1
 
     def test_pre_occupied_slot_marked_unavailable(self, monkeypatch):
         """Checks that a group activity is not scheduled in a slot that already contains another activity for the patient."""
