@@ -162,7 +162,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         week_start = week_start or \
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
         series_timeslots = activities["ProcessedTimeSlots"]
-        timeslots_set = set.union(*series_timeslots)
+        timeslots_set = set.union(*series_timeslots) if len(series_timeslots) else set()
 
         scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
         

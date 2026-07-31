@@ -241,9 +241,9 @@ class TestRecommendedRoutineFillSchedule:
 
         assert schedules[1][0][1] == "Expired Activity"
 
-    def test_all_flexible_recommended_activities_raises_typeerror(self, monkeypatch):
-        """(BUG) no fixed activities means no time-slot sets to union, and set.union()
-        blows up on an empty sequence."""
+    def test_all_flexible_recommended_activities_are_scheduled(self, monkeypatch):
+        """No fixed activities means no time-slot sets to union; __fillByFixedTimeSlots
+        should just no-op and let __fillFlexibleActivities schedule the flexible activity."""
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
 
         monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
@@ -257,11 +257,9 @@ class TestRecommendedRoutineFillSchedule:
         week_start = datetime.datetime(2024, 3, 18)
 
         with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
-            try:
-                RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
-                assert False, "expected TypeError from set.union() on an empty sequence"
-            except TypeError:
-                pass
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][0] == "Flexible Activity"
 
     def test_excluded_activity_is_not_scheduled(self, monkeypatch):
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
