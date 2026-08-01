@@ -200,5 +200,4 @@ def getTimeSlot(cls, day, time):
     if (not time.strip()): return -1
     parsed_time = datetime.datetime.strptime(time, "%H%M")
     timeDiff_fromOpening: datetime.timedelta = parsed_time-datetime.datetime.strptime(cls.config["WORKING_HOURS"].get(day.lower()).get("open"), "%H:%M")
-    numSlotsFromOpening: int = (timeDiff_fromOpening // -datetime.timedelta(minutes=cls.config["MIN_ACTIVITY_DURATION"]-1)) * -1
-    return 0 if timeDiff_fromOpening == datetime.timedelta() else numSlotsFromOpening - 1
+    return timeDiff_fromOpening // datetime.timedelta(minutes=cls.config["MIN_ACTIVITY_DURATION"])

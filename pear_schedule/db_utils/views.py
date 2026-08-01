@@ -565,7 +565,8 @@ class ExistingScheduleView(BaseView): # check if have existing schedule
         
         return query
 
-class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
+class CaregiverAllocatedView(BaseView):
+    # Get the patient's responsible-party fallback chain: caregiver, temp caregiver, and supervisor (used as the last-resort assignee before "UNASSIGNED").
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building allocation query")
@@ -574,7 +575,8 @@ class CaregiverAllocatedView(BaseView): # Get caregiver assigned to each patient
         query: Select = select(
             allocation.c["patientId"],
             allocation.c["caregiverId"],
-            allocation.c["tempCaregiverId"]
+            allocation.c["tempCaregiverId"],
+            allocation.c["supervisorId"]
         ).where(allocation.c["isDeleted"] == False
         ).where(allocation.c["active"] == "Y")
         return query

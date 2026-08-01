@@ -404,6 +404,7 @@ def caregiver_allocated_df():
         "patientId": [1],
         "caregiverId": ["CG1"],
         "tempCaregiverId": [""],
+        "supervisorId": ["SUP1"],
     })
 
 

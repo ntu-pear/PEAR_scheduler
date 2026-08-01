@@ -71,6 +71,7 @@ def _empty_caregiver_df():
         "patientId": pd.Series([], dtype="int64"),
         "caregiverId": pd.Series([], dtype="object"),
         "tempCaregiverId": pd.Series([], dtype="object"),
+        "supervisorId": pd.Series([], dtype="object"),
     })
 
 
@@ -87,10 +88,7 @@ class TestGetTimeSlot:
 
         assert getTimeSlot(FakeCls, "monday", "0900") == 0
 
-    def test_drift_across_a_sweep_of_administer_times(self):
-        """(BUG) medicationScheduling.py ~203: getTimeSlot divides by
-        MIN_ACTIVITY_DURATION - 1 instead of MIN_ACTIVITY_DURATION, drifting
-        near-boundary times (e.g. "0959") into the next slot a minute early."""
+    def test_no_drift_across_a_sweep_of_administer_times(self):
         cfg = _config()
 
         class FakeCls:
@@ -99,7 +97,7 @@ class TestGetTimeSlot:
         expected = {
             "0900": 0, "0905": 0, "0915": 0, "0929": 0,
             "0930": 1, "0931": 1, "0945": 1,
-            "0959": 2,  # drifted a minute early into slot 2, "should" still be slot 1
+            "0959": 1,  # fixed: no longer drifts into slot 2
             "1000": 2, "1015": 2,
             "1030": 3, "1045": 3,
             "1100": 4, "1130": 5, "1200": 6, "1230": 7,
@@ -174,7 +172,7 @@ class TestMedicationSchedulerFillSchedule:
 
     def test_caregiver_id_used_when_present(self, monkeypatch):
         monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
-        caregiver_df = pd.DataFrame({"patientId": [1], "caregiverId": ["CG1"], "tempCaregiverId": [""]})
+        caregiver_df = pd.DataFrame({"patientId": [1], "caregiverId": ["CG1"], "tempCaregiverId": [""], "supervisorId": ["SUP1"]})
 
         with _freeze_now(monkeypatch), \
              patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=_medication_row()), \
@@ -183,27 +181,26 @@ class TestMedicationSchedulerFillSchedule:
 
         assert data.medicationSchedules[1][0]["assignedTo"] == "CG1"
 
-    def test_missing_caregiver_and_temp_raises_keyerror_on_supervisor_id(self, monkeypatch):
-        """(BUG) medicationScheduling.py ~54: falls back to allocation_row['supervisorId'],
-        but the view never selects that column - raises KeyError when caregiverId
-        and tempCaregiverId are both empty."""
+    def test_falls_back_to_supervisor_id_when_caregiver_and_temp_missing(self, monkeypatch):
+        """medicationScheduling.py: when caregiverId and tempCaregiverId are both empty,
+        falls back to allocation_row['supervisorId']. Now that CaregiverAllocatedView selects
+        that column, resolving to the supervisor instead of raising KeyError."""
         monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
-        caregiver_df = pd.DataFrame({"patientId": [1], "caregiverId": [""], "tempCaregiverId": [""]})
+        caregiver_df = pd.DataFrame({
+            "patientId": [1], "caregiverId": [""], "tempCaregiverId": [""], "supervisorId": ["SUP1"],
+        })
 
         with _freeze_now(monkeypatch), \
              patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=_medication_row()), \
              patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=caregiver_df):
-            raised = False
-            try:
-                medicationScheduleData(medicationScheduler)
-            except KeyError:
-                raised = True
-            assert raised, "expected KeyError on missing supervisorId column"
+            data = medicationScheduleData(medicationScheduler)
+
+        assert data.medicationSchedules[1][0]["assignedTo"] == "SUP1"
 
     def test_no_allocation_row_falls_back_to_unassigned(self, monkeypatch):
-        """Contrast with the KeyError case above: when there's no allocation row at all,
+        """Contrast with the fallback case above: when there's no allocation row at all,
         the `if not allocation_row.empty else "UNASSIGNED"` guard short-circuits before
-        ever reaching the supervisorId access."""
+        ever reaching the caregiver/tempCaregiver/supervisorId fallback chain."""
         monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
 
         with _freeze_now(monkeypatch), \

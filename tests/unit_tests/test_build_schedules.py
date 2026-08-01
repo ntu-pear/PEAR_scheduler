@@ -126,7 +126,7 @@ def _patch_all_views():
     })
     empty_caregiver = pd.DataFrame({
         "patientId": pd.Series([], dtype="int64"), "caregiverId": pd.Series([], dtype="object"),
-        "tempCaregiverId": pd.Series([], dtype="object"),
+        "tempCaregiverId": pd.Series([], dtype="object"), "supervisorId": pd.Series([], dtype="object"),
     })
 
     with ExitStack() as stack:
