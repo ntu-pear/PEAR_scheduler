@@ -19,3 +19,10 @@ def get_next_sunday():
     next_sunday = today + timedelta(days=days_until_sunday)  # Add days to today's date to get the next Sunday
     next_sunday = next_sunday.replace(hour=23, minute=59, second = 59)
     return next_sunday
+
+def timeslot_index(offset: timedelta, duration_minutes: int) -> int:
+    """Floor-divide a clock-time offset by a slot duration to get a 0-based slot index.
+
+    E.g. offset=45min, duration_minutes=30 -> 1 (the second 30-minute slot).
+    """
+    return offset // timedelta(minutes=duration_minutes)

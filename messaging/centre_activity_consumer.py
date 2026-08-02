@@ -3,12 +3,12 @@ import threading
 import json
 from typing import Dict, Any, Optional
 from datetime import datetime
-from datetime import timedelta
 from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
 from pear_schedule.utils import ConfigDependant
+from pear_schedule.db_utils.utils import timeslot_index
 
 logger = logging.getLogger(__name__)
 
@@ -445,8 +445,7 @@ class CentreActivityConsumer(ConfigDependant):
             day = self.config['OPEN_DAYS'].index(qualified_day)
             time_obj = datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
             opening_time_obj = datetime.strptime(self.config['WORKING_HOURS'].get(qualified_day.lower()).get("open"), "%H:%M")
-            slot = (time_obj - opening_time_obj) // -timedelta(minutes=self.config['MIN_ACTIVITY_DURATION']-1) * -1
-            slot = 0 if not slot else slot-1
+            slot = timeslot_index(time_obj - opening_time_obj, self.config['MIN_ACTIVITY_DURATION'])
             timeslot_list_tmp[i] = f"{day}-{slot}"
         return ",".join(timeslot_list_tmp)
         

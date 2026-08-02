@@ -4,6 +4,7 @@ import pandas as pd
 from typing import List, Mapping, Dict
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView, ExistingScheduleView
+from pear_schedule.db_utils.utils import timeslot_index
 
 logger = logging.getLogger(__name__)
 
@@ -200,4 +201,4 @@ def getTimeSlot(cls, day, time):
     if (not time.strip()): return -1
     parsed_time = datetime.datetime.strptime(time, "%H%M")
     timeDiff_fromOpening: datetime.timedelta = parsed_time-datetime.datetime.strptime(cls.config["WORKING_HOURS"].get(day.lower()).get("open"), "%H:%M")
-    return timeDiff_fromOpening // datetime.timedelta(minutes=cls.config["MIN_ACTIVITY_DURATION"])
+    return timeslot_index(timeDiff_fromOpening, cls.config["MIN_ACTIVITY_DURATION"])
