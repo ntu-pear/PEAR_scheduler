@@ -22,13 +22,17 @@ class CompulsoryActivityScheduler(BaseScheduler):
 
                 for pid in patientSchedules.keys():
                     # skip over time slots that are out of bounds
-                    if day >= len(patientSchedules[pid]) or hour >= len(patientSchedules[pid][day]):
+                    if day >= len(patientSchedules[pid]) or hour + num_slots > len(patientSchedules[pid][day]):
                         continue
 
-                    # handling for accidental conflicting compulsory activities
-                    i = 0
-                    while i < len(patientSchedules[pid][day]) and not patientSchedules[pid][day][i]:
-                        i += 1
-                    if i >= num_slots:
-                      for d in range(num_slots):
-                        patientSchedules[pid][day][hour + d] = row["ActivityTitle"]
+                    # handling for accidental conflicting compulsory activities:
+                    # only write if every slot this activity would occupy is currently free
+                    targetSlots = patientSchedules[pid][day][hour:hour + num_slots]
+                    if all(not slot for slot in targetSlots):
+                        for d in range(num_slots):
+                            patientSchedules[pid][day][hour + d] = row["ActivityTitle"]
+                    else:
+                        logger.warning(
+                            f"Skipping compulsory activity {row['ActivityTitle']!r} for patient {pid} "
+                            f"on day {day} at hour {hour}: target slot(s) already occupied"
+                        )
