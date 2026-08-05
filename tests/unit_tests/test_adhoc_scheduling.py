@@ -134,16 +134,22 @@ class TestAdhocScheduling:
 
         assert schedules[1][0][0] == "Old Activity"  # unchanged
 
-    def test_days_vs_open_days_mismatch(self, monkeypatch):
-        """(BUG) week_end uses config["DAYS"] instead of
-        len(OPEN_DAYS). With DAYS=6 but 5 OPEN_DAYS, this indexes past the
-        schedule and raises IndexError."""
+    def test_days_vs_open_days_mismatch_does_not_overflow_schedule(self, monkeypatch):
+        """week_end is derived from len(OPEN_DAYS), not the stale config["DAYS"].
+        With DAYS=6 but 5 OPEN_DAYS, a row spanning the whole DAYS=6 range must have
+        its overlap clipped to the real 5-day week (indices 0-4) instead of walking
+        into the nonexistent 6th day and raising IndexError. The row still overlaps
+        the real week (days 0-4), so the in-range replacement still happens - only
+        the out-of-bounds day 5 access is what the fix prevents."""
         cfg = _config(open_days=5, days=6)
         monkeypatch.setattr(AdhocScheduler, "config", cfg, raising=False)
         schedules = _schedule(num_days=5)
         schedules[1][0][0] = "Old Activity"
 
-        # week_end = week_start + (DAYS-1) = week_start + 5 days = the following Saturday
+        # Old (buggy) week_end = week_start + (DAYS-1) = +5 days would let the loop
+        # reach day_idx=5, past the 5-day schedule -> IndexError.
+        # Correct week_end = week_start + (len(OPEN_DAYS)-1) = +4 days clips overlap_end
+        # to day 4, so the loop only ever touches valid indices 0-4.
         adhoc_df = _adhoc_row(
             start_date=WEEK_START, end_date=WEEK_START + datetime.timedelta(days=5)
         )
@@ -151,12 +157,10 @@ class TestAdhocScheduling:
         with _freeze_now(monkeypatch), patch(
             "pear_schedule.db_utils.views.AdhocActivityView.get_data", return_value=adhoc_df
         ):
-            raised = False
-            try:
-                AdhocScheduler.fillSchedule(schedules)
-            except IndexError:
-                raised = True
-            assert raised, "expected IndexError from indexing schedules[patient_id][5] (DAYS=6 vs 5 OPEN_DAYS)"
+            AdhocScheduler.fillSchedule(schedules)  # should not raise
+
+        assert schedules[1][0][0] == "New Activity"  # day 0 is within the real week, still replaced
+        assert len(schedules[1]) == 5  # untouched - no out-of-bounds day was ever created/accessed
 
     def test_replacement_does_not_expand_into_adjacent_slots(self, monkeypatch):
         cfg = _config()
