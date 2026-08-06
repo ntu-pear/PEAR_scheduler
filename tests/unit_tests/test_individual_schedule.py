@@ -374,9 +374,9 @@ class TestPreferredScheduling:
 
         assert schedules[1][0][0] == "Board Games"
 
-    def test_activity_exceeding_gap_left_unfilled_not_free_and_easy(self, monkeypatch):
-        """an activity too long for the gap can still get picked - when it doesn't fit,
-        the gap just stays empty instead of falling back to Free and Easy"""
+    def test_activity_exceeding_gap_falls_back_to_free_and_easy(self, monkeypatch):
+        '''Fixed the bug where a preferred activity too long for the gap can still get picked.
+        Now it should fall back to "Free and Easy" directly.'''
         from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 
         self._neutralize_shuffle(monkeypatch)
@@ -392,7 +392,7 @@ class TestPreferredScheduling:
         with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
             PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
 
-        assert schedules[1][0][0] == ""
+        assert schedules[1][0][0] == "Free and Easy"
         assert schedules[1][0][1] == "Pre-Existing"
 
     def test_falls_back_to_neutral_activity_when_nothing_preferred(self, monkeypatch):
