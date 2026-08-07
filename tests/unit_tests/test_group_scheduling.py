@@ -205,6 +205,66 @@ class TestGroupScheduling:
 
         with pytest.raises(ValueError):
             GroupActivityScheduler.getFixedTimeArr("5-9")
+            
+    def test_empty_fixed_time_slots_raises_clear_value_error(self, monkeypatch):
+        """If a group activity has IsFixed=1 but an empty FixedTimeSlots string,
+        getFixedTimeArr rejects it with a clear ValueError naming the bad value."""
+        cfg = _group_config()
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        group_activity_df = pd.DataFrame({
+            "ActivityID": [1], "CentreActivityID": [1], "ActivityTitle": ["Fixed Group Activity"],
+            "IsFixed": [1], "FixedTimeSlots": [""], "MinPeopleReq": [2], "MinDuration": [30],
+        })
+        recommendation_df = pd.DataFrame({
+            "CentreActivityID": [1, 1], "PatientID": [1, 2], "DoctorRecommendation": [1, 1],
+        })
+        patient_ids = [1, 2]
+        patient_schedules = _empty_patient_schedules(patient_ids, cfg["OPEN_DAYS"], 8)
+
+        with _patch_group_views(patient_ids, group_activity_df, recommendation_df=recommendation_df):
+            with pytest.raises(ValueError):
+                GroupActivityScheduler.fillSchedule(patient_schedules)
+        
+    def test_trailing_comma_raises_clear_value_error(self, monkeypatch):
+        """If a group activity has IsFixed=1 but a trailing comma in its FixedTimeSlots string,
+        getFixedTimeArr rejects it with a clear ValueError naming the bad entry."""
+        cfg = _group_config()
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        group_activity_df = pd.DataFrame({
+            "ActivityID": [1], "CentreActivityID": [1], "ActivityTitle": ["Fixed Group Activity"],
+            "IsFixed": [1], "FixedTimeSlots": ["0-2,"], "MinPeopleReq": [2], "MinDuration": [30],
+        })
+        recommendation_df = pd.DataFrame({
+            "CentreActivityID": [1, 1], "PatientID": [1, 2], "DoctorRecommendation": [1, 1],
+        })
+        patient_ids = [1, 2]
+        patient_schedules = _empty_patient_schedules(patient_ids, cfg["OPEN_DAYS"], 8)
+
+        with _patch_group_views(patient_ids, group_activity_df, recommendation_df=recommendation_df):
+            with pytest.raises(ValueError):
+                GroupActivityScheduler.fillSchedule(patient_schedules)
+        
+    def test_null_fixed_time_slots_raises_clear_value_error(self, monkeypatch):
+        """If a group activity has IsFixed=1 but a null FixedTimeSlots value,
+        getFixedTimeArr rejects it with a clear ValueError instead of an AttributeError."""
+        cfg = _group_config()
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        group_activity_df = pd.DataFrame({
+            "ActivityID": [1], "CentreActivityID": [1], "ActivityTitle": ["Fixed Group Activity"],
+            "IsFixed": [1], "FixedTimeSlots": [None], "MinPeopleReq": [2], "MinDuration": [30],
+        })
+        recommendation_df = pd.DataFrame({
+            "CentreActivityID": [1, 1], "PatientID": [1, 2], "DoctorRecommendation": [1, 1],
+        })
+        patient_ids = [1, 2]
+        patient_schedules = _empty_patient_schedules(patient_ids, cfg["OPEN_DAYS"], 8)
+
+        with _patch_group_views(patient_ids, group_activity_df, recommendation_df=recommendation_df):
+            with pytest.raises(ValueError):
+                GroupActivityScheduler.fillSchedule(patient_schedules)
 
     def test_fixed_group_activity_is_scheduled_when_recommended(self, monkeypatch):
         """Full fillSchedule confirmation of the getFixedTimeArr fix: an IsFixed=1

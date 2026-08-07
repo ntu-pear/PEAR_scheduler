@@ -354,13 +354,18 @@ class GroupActivityScheduler(BaseScheduler):
             slot: i for i, slot in enumerate(cls.config["GROUP_TIMESLOT_MAPPING"])
         }
 
+        if not isinstance(fixedTimeSlots, str) or not fixedTimeSlots.strip():
+            raise ValueError(f"Invalid group time slots: {fixedTimeSlots!r}")
+
         fixedTimeArr = fixedTimeSlots.split(",")
         validTimeSlots = []
         for entry in fixedTimeArr:
-            day_str, slot_str = entry.split("-")
-            key = (int(day_str), int(slot_str))
+            parts = entry.split("-")
+            if len(parts) != 2 or not all(p.strip().isdigit() for p in parts):
+                raise ValueError(f"Invalid group time slots: {entry!r}")
+            key = (int(parts[0]), int(parts[1]))
             if key not in timeSlotMappingReverse:
-                raise ValueError(f"Invalid group time slots")
+                raise ValueError(f"Invalid group time slots: {entry!r}")
             validTimeSlots.append(timeSlotMappingReverse[key])
 
         return validTimeSlots
