@@ -1,9 +1,11 @@
 from collections import Counter
+import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from pear_schedule.api.utils import activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, getPatientWellnessPlan, getTablesDF, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, prepareMedicationSchedule, recommendedActivitiesPatientTest, routinesPatientTest
+from pear_schedule.api.utils import activitiesExcludedPatientTest, allCompulsoryActivitiesAtCorrectSlotSystemTest, checkWeeklyScheduleCorrectness, clashInFixedTimeSlotWarning, fixedActivitiesScheduledCorrectlySystemTest, generateStatistics, getPatientWellnessPlan, getTablesDF, groupActivitiesCorrectTimeslotSystemTest, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, prepareMedicationSchedule, recommendedActivitiesPatientTest, routinesPatientTest
 
 class TestPatientTestUtils:
     # =======================================================================
@@ -706,4 +708,107 @@ class TestPatientTestUtils:
         }
         assert json_response[1]['Group Activities Count'] == 15
         assert json_response[1]['Solo Activities Count'] == 25
+
+
+def _fake_request(config):
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(config=config)))
+
+
+DAY_OF_WEEK_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+class TestSystemTestTimeslotLabels:
+    """Tests the remaining system test timeslot label usages."""
+
+    def test_compulsory_activity_out_of_range_of_patient_schedule_raises_indexerror(self):
+        """Out-of-range timeslot crashes before the fallback can run."""
+        
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        compulsoryActivitiesDF = pd.DataFrame({
+            "ActivityTitle": ["Meds"],
+            "FixedTimeSlots": ["0-3"],  # Monday, slot index 3 - patient's Monday only has 1 slot
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        with pytest.raises(IndexError):
+            allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request)
+
+    def test_fixed_activity_mismatch_never_needs_the_fallback_label(self):
+        """timeslot comes from enumerate(), so it cannot be out of range."""
+        
+        activitiesDF = pd.DataFrame({
+            "IsFixed": [True], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+        })
+        validRoutinesDF = pd.DataFrame({
+            "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+        })
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_group_activity_mismatch_never_needs_the_fallback_label(self):
+        """timeslot comes from enumerate(), so the fallback cannot be reached."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "GROUP_TIMESLOT_MAPPING": [(0, 5)], 
+        })
+
+        result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_clash_in_fixed_time_slot_warning_uses_real_hours(self):
+        """Checks that clash warnings use the actual centre hours."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": [True, True],
+            "ActivityTitle": ["A", "B"],
+            "FixedTimeSlots": ["0-2", "0-2"],  # same day/slot - a real clash
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert result["warningRemarks"] == ["These activities have clashing fixed timeslots on Monday 10:00-10:30: A(normal), B(normal)"]
+
+    def test_clash_warning_has_no_trailing_comma(self):
+        """Checks that clash warnings do not end with a trailing comma."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": [True, True, True],
+            "ActivityTitle": ["A", "B", "C"],
+            "FixedTimeSlots": ["0-2", "0-2", "0-2"],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert not result["warningRemarks"][0].endswith(",")
     

@@ -6,6 +6,7 @@ from colorama import Fore
 from fastapi.encoders import jsonable_encoder
 from dateutil.parser import parse
 import datetime
+from pear_schedule.db_utils.utils import day_timeslot_label
 from pear_schedule.db_utils.views import WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView
 import pandas as pd
 import re
@@ -706,7 +707,7 @@ def allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compuls
             for day, timeslot in fixedTimeSlots:
                 if compActivityName not in patientSchedule[day][timeslot]:
                     allCompulsoryScheduled = False
-                    timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else request.app.state.config['DAY_TIMESLOTS'][timeslot]
+                    timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
                     testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
     testResult = "Pass" if allCompulsoryScheduled else "Fail"
     # if not allCompulsoryScheduled:
@@ -803,7 +804,7 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
                 activityTitle = activity.split(" |")[0]
                 if activityTitle in fixedActivityMap and (day, timeslot) not in fixedActivityMap[activityTitle] and activityTitle in routineActivityMap and (day, timeslot) not in routineActivityMap[activityTitle]:
                     result = False
-                    timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else request.app.state.config['DAY_TIMESLOTS'][timeslot]
+                    timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
                     testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of its fixed time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
 
     if not result:
@@ -868,7 +869,7 @@ def groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleVi
                 if activityTitle in groupActivitySet:
                     if (day, timeslot) not in timeSlotSet:
                         result = False
-                        timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else request.app.state.config['DAY_TIMESLOTS'][timeslot]
+                        timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
                         testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of the fixed group time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
 
     if not result:
@@ -941,11 +942,12 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
     for timeslot, activityList in timeSlotMap.items():
         warningStatement = ""
         if len(activityList) > 1:
-            warningStatement += f"These activities have clashing fixed timeslots on {request.app.state.config['DAY_OF_WEEK_ORDER'][timeslot[0]]} {request.app.state.config['DAY_TIMESLOTS'][timeslot[1]]}: "
-            for activity in activityList:
-                warningStatement += f"{activity}, "
+            dayName = request.app.state.config['DAY_OF_WEEK_ORDER'][timeslot[0]]
+            timeslotLabel = day_timeslot_label(dayName, timeslot[1], request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
+            warningStatement += f"These activities have clashing fixed timeslots on {dayName} {timeslotLabel}: "
+            warningStatement += ", ".join(activityList)
 
         if warningStatement:
-            warningRemarks.append(warningStatement[:-1])
+            warningRemarks.append(warningStatement)
 
     return {"warningName": warningName, "warningRemarks": warningRemarks}
