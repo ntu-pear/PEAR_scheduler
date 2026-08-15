@@ -7,20 +7,31 @@ spec:
   # Every Monday at 00:00
   schedule: "0 0 * * 1"
   timeZone: "Asia/Singapore"
+  # don't start a new run if the previous one is still going
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
+      # after job completion, keep for 5 minutes, then cleanup to prevent accumulation of old job records
       ttlSecondsAfterFinished: 300
+      backoffLimit: 3
       template:
         spec:
+          # create a container based on curl image to make a HTTP GET request
           containers:
           - name: curl-job
             image: curlimages/curl:8.9.0
+            env:
+              # injected by Kubernetes - proves which environment the job ran in
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
             args:
               - /bin/sh
               - -c
               - |
-                echo "Triggering scheduler-service-dev /schedule/generate/..."
-                curl -X GET http://scheduler-service-dev.default.svc.cluster.local:8080/schedule/generate/ || exit 1
+                echo "Triggering /schedule/generate/ in namespace ${POD_NAMESPACE}"
+                curl -fsS -X GET http://scheduler-service:8080/schedule/generate/ || exit 1
           restartPolicy: OnFailure
 ---
 apiVersion: batch/v1
@@ -31,20 +42,25 @@ spec:
   # Everyday, except Mondays, at 00:00
   schedule: "0 0 * * 0,2-6"
   timeZone: "Asia/Singapore"
+  concurrencyPolicy: Forbid
   jobTemplate:
     spec:
-      # after job completion, keep for 5 minutes, then cleanup to prevent accumulation of old job records
       ttlSecondsAfterFinished: 300
+      backoffLimit: 3
       template:
         spec:
-          # create a container based on curl image to make a HTTP GET request
           containers:
           - name: curl-job
             image: curlimages/curl:8.9.0
+            env:
+              - name: POD_NAMESPACE
+                valueFrom:
+                  fieldRef:
+                    fieldPath: metadata.namespace
             args:
               - /bin/sh
               - -c
               - |
-                echo "Triggering scheduler-service-dev /schedule/regenerate/..."
-                curl -X GET http://scheduler-service-dev.default.svc.cluster.local:8080/schedule/regenerate/ || exit 1
+                echo "Triggering /schedule/regenerate/ in namespace ${POD_NAMESPACE}"
+                curl -fsS -X GET http://scheduler-service:8080/schedule/regenerate/ || exit 1
           restartPolicy: OnFailure
