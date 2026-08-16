@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler-service-stg
+  namespace: staging
+  labels:
+    app: scheduler-service-stg
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler-service-stg
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: scheduler-service-stg
+    spec:
+      containers:
+        - name: scheduler-service
+          image: host.minikube.internal:5000/scheduler_service_stg:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: scheduler-service-stg-env
+          env:
+            - name: TZ
+              value: "Asia/Singapore"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scheduler-service
+  namespace: staging
+spec:
+  selector:
+    app: scheduler-service-stg
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      nodePort: 30090
+  type: NodePort

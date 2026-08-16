@@ -1,4 +1,4 @@
-name: CD
+name: CD-Prod
 
 on:
   push:
@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   precheck:
+    if: github.ref == 'refs/heads/scheduler_prod'
     runs-on: [self-hosted, Linux, X64, scheduler]
     steps:
       - name: Check kubectl permissions
@@ -22,6 +23,7 @@ jobs:
           docker info || (echo "Docker not accessible" && exit 1)
 
   deploy:
+    if: github.ref == 'refs/heads/scheduler_prod'
     needs: precheck
     runs-on: [self-hosted, Linux, X64, scheduler]
 
