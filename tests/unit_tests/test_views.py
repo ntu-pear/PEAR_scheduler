@@ -6,12 +6,13 @@ Just build_query() / compile_query() here, no live DB.
 from datetime import date, datetime
 
 import pytest
-from sqlalchemy import MetaData, Table, Column, Integer, String, Boolean, Date, create_engine, insert
+from sqlalchemy import MetaData, Table, Column, Integer, String, Boolean, Date, DateTime, create_engine, insert
 
 from pear_schedule.db_utils import views
 from pear_schedule.db_utils.views import (
     ActivitiesView,
     CompulsoryActivitiesOnlyView,
+    GroupActivitiesExclusionView,
     GroupActivitiesOnlyView,
     GroupActivitiesPreferenceView,
     GroupActivitiesRecommendationView,
@@ -83,6 +84,15 @@ def _make_fake_schema() -> MetaData:
         Column("DoctorRecommendation", Integer),
         Column("IsDeleted", Boolean),
     )
+    Table(
+        "REF_ACTIVITY_EXCLUSION", schema,
+        Column("ActivityExclusionID", Integer, primary_key=True),
+        Column("PatientID", Integer),
+        Column("CentreActivityID", Integer),
+        Column("StartDateTime", DateTime),
+        Column("EndDateTime", DateTime),
+        Column("IsDeleted", Boolean),
+    )
     return schema
 
 
@@ -95,6 +105,7 @@ def fake_view_config(monkeypatch):
     for view_cls in (
         ActivitiesView,
         CompulsoryActivitiesOnlyView,
+        GroupActivitiesExclusionView,
         GroupActivitiesOnlyView,
         GroupActivitiesPreferenceView,
         GroupActivitiesRecommendationView,
@@ -122,6 +133,26 @@ class TestActivityDateRangeFiltering:
 
         assert f'"REF_CENTRE_ACTIVITY"."StartDate" <= \'{FIXED_SUNDAY}\'' in sql
         assert f'"REF_CENTRE_ACTIVITY"."EndDate" >= \'{FIXED_MONDAY}\'' in sql
+
+
+class TestGroupActivitiesExclusionViewWeekBoundary:
+    """GroupActivitiesExclusionView.build_query() computes its own week boundary inline
+    (not via get_monday()/get_next_sunday()) and used to roll over to next week's dates
+    whenever run on a Sunday, unlike every other week-boundary computation in the codebase."""
+
+    def test_sunday_uses_current_week_not_next_week(self, monkeypatch):
+        # Sunday 2024-03-24 is the last day of the week starting Monday 2024-03-18 (FIXED_MONDAY).
+        class FixedSundayDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2024, 3, 24, 10, 0, 0)
+
+        monkeypatch.setattr(views, "datetime", FixedSundayDatetime)
+
+        params = GroupActivitiesExclusionView.build_query().compile().params
+
+        assert params["EndDateTime_1"] == datetime(2024, 3, 18, 0, 0, 0)  # start_of_week
+        assert params["StartDateTime_1"] == datetime(2024, 3, 24, 23, 59, 59)  # end_of_week
 
 
 # 4 fake activities, one per date-range shape. All three of SPANS_WEEK, STARTS_MIDWEEK and

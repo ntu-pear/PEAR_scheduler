@@ -308,14 +308,9 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
 
 
         today = datetime.now()
-        if today.weekday() == 6: #sunday and generate for next week
-            start_of_week = today + timedelta(days=1, hours=0, minutes=0, seconds=0, microseconds=0)
-            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)
-        else: # other weekday and generate for current week
-            start_of_week = today - timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
-            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+        start_of_week = today - timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
         query: Select = select(
             centre_activity.c["CentreActivityID"],
