@@ -221,9 +221,8 @@ class TestRecommendedRoutineFillSchedule:
 
         assert schedules[1][0][1] == "Physiotherapy"
 
-    def test_expired_activity_end_date_is_still_scheduled(self, monkeypatch):
-        """(BUG) the expiry filter is commented out, so this still gets scheduled even
-        though ActivityEndDate is in the past."""
+    def test_expired_activity_end_date_is_not_scheduled(self, monkeypatch):
+        """An explicit ActivityEndDate in the past should exclude the activity."""
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
 
         monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
@@ -239,7 +238,26 @@ class TestRecommendedRoutineFillSchedule:
         with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
             RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
 
-        assert schedules[1][0][1] == "Expired Activity"
+        assert schedules[1][0][1] == ""
+
+    def test_null_activity_end_date_is_indefinite_and_still_scheduled(self, monkeypatch):
+        """A null ActivityEndDate means the activity never expires."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": [1], "IsFixed": [1], "MinDuration": [30],
+            "ActivityTitle": ["Indefinite Activity"], "FixedTimeSlots": ["0-1"],
+            "PatientID": [1], "ActivityEndDate": [pd.NaT],
+        })
+        patients_df = pd.DataFrame({"PatientID": [1], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
+        schedules = {1: [["", "", "", ""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][1] == "Indefinite Activity"
 
     def test_all_flexible_recommended_activities_are_scheduled(self, monkeypatch):
         """No fixed activities means no time-slot sets to union; __fillByFixedTimeSlots

@@ -97,8 +97,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
         week_start = week_start or datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
-        today = datetime.datetime.now()
-        week_end = today - datetime.timedelta(days=today.weekday()) + datetime.timedelta(days=6)
+        week_end = week_start + datetime.timedelta(days=6)
         week_end = week_end.replace(hour=23, minute=59, second=59)
 
         with DB.get_engine().begin() as conn:
@@ -115,7 +114,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             recommendations["ActivityEndDate"] = recommendations["ActivityEndDate"].apply(pd.Timestamp)
  
             # filter out activities that are not available this week, i.e. only consider activities that run past week_end
-            # recommendations = recommendations[(recommendations["ActivityEndDate"] > week_end)] #| (recommendations["ActivityEndDate"].isna())]
+            # null ActivityEndDate means indefinite (never expires), so it always passes
+            recommendations = recommendations[recommendations["ActivityEndDate"].isna() | (recommendations["ActivityEndDate"] > week_end)]
 
             # add an extra row at end for easier handling of final patient
             dummy_row = recommendations.iloc[0:1].copy(deep=True)
