@@ -100,8 +100,8 @@ def _make_fake_schema() -> MetaData:
 def fake_view_config(monkeypatch):
     """Point every affected view at an in-memory schema + fixed week boundaries, no DB connection involved."""
     monkeypatch.setattr(views.DB, "schema", _make_fake_schema(), raising=False)
-    monkeypatch.setattr(views, "get_monday", lambda: FIXED_MONDAY)
-    monkeypatch.setattr(views, "get_next_sunday", lambda: FIXED_SUNDAY)
+    monkeypatch.setattr(views, "get_week_start", lambda: FIXED_MONDAY)
+    monkeypatch.setattr(views, "get_week_end", lambda: FIXED_SUNDAY)
     for view_cls in (
         ActivitiesView,
         CompulsoryActivitiesOnlyView,
@@ -137,7 +137,7 @@ class TestActivityDateRangeFiltering:
 
 class TestGroupActivitiesExclusionViewWeekBoundary:
     """GroupActivitiesExclusionView.build_query() computes its own week boundary inline
-    (not via get_monday()/get_next_sunday()) and used to roll over to next week's dates
+    (not via get_week_start()/get_week_end()) and used to roll over to next week's dates
     whenever run on a Sunday, unlike every other week-boundary computation in the codebase."""
 
     def test_sunday_uses_current_week_not_next_week(self, monkeypatch):
