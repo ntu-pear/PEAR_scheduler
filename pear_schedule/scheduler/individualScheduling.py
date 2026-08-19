@@ -162,7 +162,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         week_start = week_start or \
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
         series_timeslots = activities["ProcessedTimeSlots"]
-        timeslots_set = set.union(*series_timeslots)
+        timeslots_set = set.union(*series_timeslots) if len(series_timeslots) else set()
 
         scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
         
@@ -370,14 +370,17 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                         # min slot duration for replacement with Free and Easy
                         new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
 
-                        if not new_activity:
+                        num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
+                        
+                        if not new_activity or j-i+1 < num_slots:
                             new_activity = "Free and Easy"
+                            num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
                         
                         curr_day_activities.add(new_activity)
-                        num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
-                        if j-i+1 >= num_slots:
-                            for k in range(num_slots):
-                                day_sched[i+k] = new_activity
+                    
+                        for k in range(num_slots):
+                            day_sched[i+k] = new_activity
+                
                     else:
                         # potentially prevent the same activity from being scheduled again in the same day
                         curr_day_activities.add(day_sched[i])

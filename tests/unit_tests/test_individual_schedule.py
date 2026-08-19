@@ -241,9 +241,9 @@ class TestRecommendedRoutineFillSchedule:
 
         assert schedules[1][0][1] == "Expired Activity"
 
-    def test_all_flexible_recommended_activities_raises_typeerror(self, monkeypatch):
-        """(BUG) no fixed activities means no time-slot sets to union, and set.union()
-        blows up on an empty sequence."""
+    def test_all_flexible_recommended_activities_are_scheduled(self, monkeypatch):
+        """No fixed activities means no time-slot sets to union; __fillByFixedTimeSlots
+        should just no-op and let __fillFlexibleActivities schedule the flexible activity."""
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
 
         monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
@@ -257,11 +257,9 @@ class TestRecommendedRoutineFillSchedule:
         week_start = datetime.datetime(2024, 3, 18)
 
         with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
-            try:
-                RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
-                assert False, "expected TypeError from set.union() on an empty sequence"
-            except TypeError:
-                pass
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][0] == "Flexible Activity"
 
     def test_excluded_activity_is_not_scheduled(self, monkeypatch):
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
@@ -376,9 +374,9 @@ class TestPreferredScheduling:
 
         assert schedules[1][0][0] == "Board Games"
 
-    def test_activity_exceeding_gap_left_unfilled_not_free_and_easy(self, monkeypatch):
-        """an activity too long for the gap can still get picked - when it doesn't fit,
-        the gap just stays empty instead of falling back to Free and Easy"""
+    def test_activity_exceeding_gap_falls_back_to_free_and_easy(self, monkeypatch):
+        '''Fixed the bug where a preferred activity too long for the gap can still get picked.
+        Now it should fall back to "Free and Easy" directly.'''
         from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 
         self._neutralize_shuffle(monkeypatch)
@@ -394,7 +392,7 @@ class TestPreferredScheduling:
         with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
             PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
 
-        assert schedules[1][0][0] == ""
+        assert schedules[1][0][0] == "Free and Easy"
         assert schedules[1][0][1] == "Pre-Existing"
 
     def test_falls_back_to_neutral_activity_when_nothing_preferred(self, monkeypatch):

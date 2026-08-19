@@ -4,9 +4,8 @@ End-to-end build_schedules() with all 6 stages mocked together
 
 2 patients, 3 OPEN_DAYS. Patient 1 goes through every stage; patient 2 only gets
 compulsory + group + preferred-fallback, just to prove stages don't touch each
-other's patients. Patient 2 gets no recommended activity at all rather than a
-flexible-only one - flexible-only crashes the whole batch (see
-test_individual_schedule.py) and that's not what this test is checking.
+other's patients. Patient 2 gets no recommended activity at all, since that's not
+what this test is checking.
 """
 
 import datetime
@@ -127,7 +126,7 @@ def _patch_all_views():
     })
     empty_caregiver = pd.DataFrame({
         "patientId": pd.Series([], dtype="int64"), "caregiverId": pd.Series([], dtype="object"),
-        "tempCaregiverId": pd.Series([], dtype="object"),
+        "tempCaregiverId": pd.Series([], dtype="object"), "supervisorId": pd.Series([], dtype="object"),
     })
 
     with ExitStack() as stack:

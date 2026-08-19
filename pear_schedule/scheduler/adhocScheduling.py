@@ -31,7 +31,7 @@ class AdhocScheduler(BaseScheduler):
 
         today = datetime.datetime.now()
         week_start = (today - datetime.timedelta(days=today.weekday())).date()
-        week_end = week_start + datetime.timedelta(days=cls.config["DAYS"] - 1)
+        week_end = week_start + datetime.timedelta(days=len(cls.config["OPEN_DAYS"]) - 1)
         replacements_applied = 0
 
         for _, row in adhoc_df.iterrows():

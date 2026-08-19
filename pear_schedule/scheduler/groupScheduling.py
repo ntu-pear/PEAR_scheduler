@@ -350,22 +350,23 @@ class GroupActivityScheduler(BaseScheduler):
     """
     @classmethod
     def getFixedTimeArr(cls, fixedTimeSlots):
+        timeSlotMappingReverse = {
+            slot: i for i, slot in enumerate(cls.config["GROUP_TIMESLOT_MAPPING"])
+        }
+
+        if not isinstance(fixedTimeSlots, str) or not fixedTimeSlots.strip():
+            raise ValueError(f"Invalid group time slots: {fixedTimeSlots!r}")
+
         fixedTimeArr = fixedTimeSlots.split(",")
-        validTimeSlots = [x for x in fixedTimeArr if x in cls.config["GROUP_TIMESLOT_MAPPING"]]
-        if len(validTimeSlots):
-            raise ValueError(f"Invalid group time slots")
-
-        timeSlotMappingReverse = {}
-        for i , slot in enumerate(cls.config["GROUP_TIMESLOT_MAPPING"]):
-            timeSlotMappingReverse[slot] = i
-
-        # Reformat data
-        for i in range(len(validTimeSlots)):
-            value = validTimeSlots[i]
-            valueArr = value.split("-")
-            day = int(valueArr[0])
-            slot = int(valueArr[1])
-            validTimeSlots[i] = timeSlotMappingReverse[(day,slot)]
+        validTimeSlots = []
+        for entry in fixedTimeArr:
+            parts = entry.split("-")
+            if len(parts) != 2 or not all(p.strip().isdigit() for p in parts):
+                raise ValueError(f"Invalid group time slots: {entry!r}")
+            key = (int(parts[0]), int(parts[1]))
+            if key not in timeSlotMappingReverse:
+                raise ValueError(f"Invalid group time slots: {entry!r}")
+            validTimeSlots.append(timeSlotMappingReverse[key])
 
         return validTimeSlots
 

@@ -1,15 +1,35 @@
 from collections import defaultdict
 import copy
+import json
 from typing import List
 from colorama import Fore
 from fastapi.encoders import jsonable_encoder
 from dateutil.parser import parse
 import datetime
+from pear_schedule.db_utils.utils import day_timeslot_label
 from pear_schedule.db_utils.views import WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView
 import pandas as pd
 import re
 
 from pydantic import BaseModel, field_validator, model_validator
+
+
+def getScheduleDayActivities(dayValue) -> List[str]:
+    """Each day is stored as a JSON string like {"09:00-09:30": "Morning Walk", ...}.
+    Turns it back into a plain list of activities in slot order, so we can
+    index by timeslot like the old "--"-delimited format used to allow."""
+    if not dayValue:
+        return []
+    return list(json.loads(dayValue).values())
+
+
+def getScheduleDayTimeslotLabels(dayValue) -> List[str]:
+    """Same as getScheduleDayActivities but returns the JSON keys
+    (e.g. "09:00-09:30") instead of the values, so we can get the time label
+    straight from the schedule data instead of config['DAY_TIMESLOTS']."""
+    if not dayValue:
+        return []
+    return list(json.loads(dayValue).keys())
 
 class AdHocRequest(BaseModel):
     OldActivityID: int
@@ -289,7 +309,7 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
         print(f"{DAY_OF_WEEK_ORDER[day-mondayIndex]}: {patientInfo.iloc[day]}")
         json_response[patientID][f"{DAY_OF_WEEK_ORDER[day-mondayIndex]} Activities"] = patientInfo.iloc[day]
         
-        activities_in_a_day = patientInfo.iloc[day].split("--") # get a list of all the activities in a day. Example: ["String beads", "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses" , "Cup Stacking Game", "Lunch"] 
+        activities_in_a_day = getScheduleDayActivities(patientInfo.iloc[day]) # get a list of all the activities in a day. Example: ["String beads", "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses" , "Cup Stacking Game", "Lunch"]
         
         medications_to_give = [] # prepare a list of all the medications that should be given in the day
         if (day-mondayIndex) in medication_schedule:
@@ -675,7 +695,8 @@ def allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compuls
     testResult = "Pass"
     allCompulsoryScheduled = True
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
-        patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
+        patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
+        patientScheduleLabels = [getScheduleDayTimeslotLabels(scheduleRecord["Monday"]),getScheduleDayTimeslotLabels(scheduleRecord["Tuesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Wednesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Thursday"]),getScheduleDayTimeslotLabels(scheduleRecord["Friday"]),getScheduleDayTimeslotLabels(scheduleRecord["Saturday"])]
 
         for _, compActivityRecord, in compulsoryActivitiesDF.iterrows():
             fixedTimeSlots = compActivityRecord["FixedTimeSlots"].split(",")
@@ -686,7 +707,8 @@ def allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compuls
             for day, timeslot in fixedTimeSlots:
                 if compActivityName not in patientSchedule[day][timeslot]:
                     allCompulsoryScheduled = False
-                    testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
+                    timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
+                    testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
     testResult = "Pass" if allCompulsoryScheduled else "Fail"
     # if not allCompulsoryScheduled:
     #     testResult = "Fail"
@@ -711,12 +733,12 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
     startScheduleDate = weeklyScheduleViewDF["StartDate"].iloc[0]
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
         patientSchedule = [
-            scheduleRecord["Monday"].split("--"),
-            scheduleRecord["Tuesday"].split("--"),
-            scheduleRecord["Wednesday"].split("--"),
-            scheduleRecord["Thursday"].split("--"),
-            scheduleRecord["Friday"].split("--"),
-            scheduleRecord["Saturday"].split("--")
+            getScheduleDayActivities(scheduleRecord["Monday"]),
+            getScheduleDayActivities(scheduleRecord["Tuesday"]),
+            getScheduleDayActivities(scheduleRecord["Wednesday"]),
+            getScheduleDayActivities(scheduleRecord["Thursday"]),
+            getScheduleDayActivities(scheduleRecord["Friday"]),
+            getScheduleDayActivities(scheduleRecord["Saturday"])
         ]
         addDays = 0
         for daySchedule in patientSchedule:
@@ -773,7 +795,8 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
 
     result = True
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
-        patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
+        patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
+        patientScheduleLabels = [getScheduleDayTimeslotLabels(scheduleRecord["Monday"]),getScheduleDayTimeslotLabels(scheduleRecord["Tuesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Wednesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Thursday"]),getScheduleDayTimeslotLabels(scheduleRecord["Friday"]),getScheduleDayTimeslotLabels(scheduleRecord["Saturday"])]
         for day, daySchedule in enumerate(patientSchedule):
             if len(daySchedule) <= 1:
                 continue
@@ -781,7 +804,8 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
                 activityTitle = activity.split(" |")[0]
                 if activityTitle in fixedActivityMap and (day, timeslot) not in fixedActivityMap[activityTitle] and activityTitle in routineActivityMap and (day, timeslot) not in routineActivityMap[activityTitle]:
                     result = False
-                    testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of its fixed time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
+                    timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
+                    testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of its fixed time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
 
     if not result:
         testResult = "Fail"
@@ -800,7 +824,7 @@ def groupActivitiesMinSizeSystemTest(groupActivitiesDF,weeklyScheduleViewDF):
         minSizeMap[grpActivityRecord["ActivityTitle"]] = [grpActivityRecord["MinPeopleReq"],grpActivityRecord["MinPeopleReq"]]
 
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
-        patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
+        patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
         for _, daySchedule in enumerate(patientSchedule):
             if len(daySchedule) <= 1:
                 continue
@@ -835,16 +859,18 @@ def groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleVi
     timeSlotSet = set(request.app.state.config["GROUP_TIMESLOT_MAPPING"])
 
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
-        patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
+        patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
+        patientScheduleLabels = [getScheduleDayTimeslotLabels(scheduleRecord["Monday"]),getScheduleDayTimeslotLabels(scheduleRecord["Tuesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Wednesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Thursday"]),getScheduleDayTimeslotLabels(scheduleRecord["Friday"]),getScheduleDayTimeslotLabels(scheduleRecord["Saturday"])]
         for day, daySchedule in enumerate(patientSchedule):
             if len(daySchedule) <= 1:
                 continue
             for timeslot, activity in enumerate(daySchedule):
-                activityTitle = activity.split(" |")[0] 
+                activityTitle = activity.split(" |")[0]
                 if activityTitle in groupActivitySet:
                     if (day, timeslot) not in timeSlotSet:
                         result = False
-                        testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of the fixed group time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {request.app.state.config['DAY_TIMESLOTS'][timeslot]}")
+                        timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
+                        testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of the fixed group time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
 
     if not result:
         testResult = "Fail"
@@ -859,7 +885,7 @@ def systemLevelStatistics(activitiesDF, weeklyScheduleViewDF):
         activityCountMap[activityRecord["ActivityTitle"]] = 0
 
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
-        patientSchedule = [scheduleRecord["Monday"].split("--"),scheduleRecord["Tuesday"].split("--"),scheduleRecord["Wednesday"].split("--"),scheduleRecord["Thursday"].split("--"),scheduleRecord["Friday"].split("--"),scheduleRecord["Saturday"].split("--")]
+        patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
         for _, daySchedule in enumerate(patientSchedule):
             if len(daySchedule) <= 1:
                 continue
@@ -916,11 +942,12 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
     for timeslot, activityList in timeSlotMap.items():
         warningStatement = ""
         if len(activityList) > 1:
-            warningStatement += f"These activities have clashing fixed timeslots on {request.app.state.config['DAY_OF_WEEK_ORDER'][timeslot[0]]} {request.app.state.config['DAY_TIMESLOTS'][timeslot[1]]}: "
-            for activity in activityList:
-                warningStatement += f"{activity}, "
+            dayName = request.app.state.config['DAY_OF_WEEK_ORDER'][timeslot[0]]
+            timeslotLabel = day_timeslot_label(dayName, timeslot[1], request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
+            warningStatement += f"These activities have clashing fixed timeslots on {dayName} {timeslotLabel}: "
+            warningStatement += ", ".join(activityList)
 
         if warningStatement:
-            warningRemarks.append(warningStatement[:-1])
+            warningRemarks.append(warningStatement)
 
     return {"warningName": warningName, "warningRemarks": warningRemarks}

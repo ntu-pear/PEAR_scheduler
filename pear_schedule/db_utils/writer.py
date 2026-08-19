@@ -7,6 +7,7 @@ from typing import Mapping, List, Dict
 
 from sqlalchemy import Connection, column, delete, select, func, literal_column, column
 from pear_schedule.db import DB
+from pear_schedule.db_utils.utils import day_timeslot_labels
 from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView, WeeklyScheduleView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
@@ -67,26 +68,12 @@ class ScheduleWriter(ConfigDependant):
 
                 for i, day in enumerate(days):
                     activities = {}
-                    # skip_ahead = 0
+                    day_labels = day_timeslot_labels(
+                        day, len(slots[i]), cls.config["WORKING_HOURS"], cls.config["MIN_ACTIVITY_DURATION"]
+                    )
                     for j, activity in enumerate(slots[i]):
-                        # if skip_ahead:
-                        #    skip_ahead -= 1
-                        #    continue
-
-                        # if activities share the same title, assume that they are the same and combine.
-                        key = cls.config["DAY_TIMESLOTS"][j]
-                        # k = j
-                        # # find longest consecutive sequence of same activity
-                        # merged = key.split("-")
-                        # while k + 1 < len(slots[i]) and slots[i][k] == slots[i][k+1]:
-                        #    k+=1
-                        #    merged+=cls.config["DAY_TIMESLOTS"][k].split("-")
-                        
-                        # # storing json as VARCHAR(max) is still ok; VARCHAR for non-unicode, NVARCHAR for unicode
-                        # key = f"{merged[0]}-{merged[-1]}" if k > j else key
+                        key = day_labels[j]
                         activities[key] = 'Free and Easy' if not activity else activity
-                        # if k > j: skip_ahead = k - j
-                    # activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
                     converted_schedule[day] = json.dumps(activities)
                 
                 schedule_data = {

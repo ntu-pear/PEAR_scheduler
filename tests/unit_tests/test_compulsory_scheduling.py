@@ -64,9 +64,9 @@ class TestCompulsoryScheduling:
         assert patient_schedules[1][0][1] == "Physiotherapy"
         assert patient_schedules[1][0][2] == ""  # second slot NOT claimed, despite 45 min needing 2 slots
 
-    def test_second_same_day_activity_is_incorrectly_skipped(self, monkeypatch):
-        """(BUG) conflict guard scans from index 0, not the target hour, 
-        so a second same-day activity gets skipped even though its slot doesn't actually overlap."""
+    def test_second_same_day_activity_is_scheduled_when_target_slot_is_free(self, monkeypatch):
+        """Conflict guard checks the actual target range, not just index 0,
+        so a second same-day activity is scheduled when its slot doesn't overlap."""
         cfg = _config()
         monkeypatch.setattr(CompulsoryActivityScheduler, "config", cfg, raising=False)
         df = pd.DataFrame({
@@ -83,7 +83,7 @@ class TestCompulsoryScheduling:
             CompulsoryActivityScheduler.fillSchedule(patient_schedules)
 
         assert patient_schedules[1][0][0] == "Activity A"
-        assert patient_schedules[1][0][2] == ""  # Activity B incorrectly never scheduled
+        assert patient_schedules[1][0][2] == "Activity B"
 
     def test_out_of_range_day_and_hour_silently_skipped(self, monkeypatch):
         cfg = _config()
@@ -104,9 +104,9 @@ class TestCompulsoryScheduling:
 
         assert patient_schedules[1] == [["", "", "", ""]]
 
-    def test_overwrites_pre_occupied_target_slot(self, monkeypatch):
-        """(BUG) no check that the target hour is actually free before writing, 
-        so it can overwrite whatever's already there."""
+    def test_does_not_overwrite_pre_occupied_target_slot(self, monkeypatch):
+        """Guard checks the target hour is actually free before writing,
+        so it does not overwrite whatever's already there."""
         cfg = _config()
         monkeypatch.setattr(CompulsoryActivityScheduler, "config", cfg, raising=False)
         df = pd.DataFrame({
@@ -123,4 +123,26 @@ class TestCompulsoryScheduling:
         ):
             CompulsoryActivityScheduler.fillSchedule(patient_schedules)
 
-        assert patient_schedules[1][0][3] == "Compulsory Activity"  # overwrote "Pre-Existing Activity"
+        assert patient_schedules[1][0][3] == "Pre-Existing Activity"  # not overwritten
+
+    def test_multi_slot_activity_near_day_end_does_not_overflow(self, monkeypatch):
+        """Out-of-bounds guard checks the full range a multi-slot activity occupies
+        (`hour + num_slots`), not just the starting hour, so it's skipped instead of
+        overflowing past the end of the day."""
+        cfg = _config()
+        monkeypatch.setattr(CompulsoryActivityScheduler, "config", cfg, raising=False)
+        df = pd.DataFrame({
+            "ActivityTitle": ["Physiotherapy"],
+            "FixedTimeSlots": ["0-3"],  # last valid index in a 4-slot day
+            "MinDuration": [60],  # 60 // 30 = 2 slots needed, but only 1 slot remains from hour 3
+        })
+        patient_schedules = _empty_schedule()
+
+        with patch(
+            "pear_schedule.scheduler.compulsoryScheduling.CompulsoryActivitiesOnlyView.get_data",
+            return_value=df,
+        ):
+            # should not raise IndexError
+            CompulsoryActivityScheduler.fillSchedule(patient_schedules)
+
+        assert patient_schedules[1] == [["", "", "", ""]]  # skipped entirely, no partial write

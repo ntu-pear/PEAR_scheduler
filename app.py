@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.db_utils.views import CareCentreView
+from pear_schedule.db_utils.utils import timeslot_index
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -76,6 +77,25 @@ logger = logging.getLogger(__name__)
 # Global consumer manager instance
 consumer_manager = None
 shutdown_event = threading.Event()
+
+def validate_group_timeslot_mapping(config: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Validate and convert each GROUP_TIMESLOT_MAPPING entry (e.g. "Monday 09:30") into a
+    (day_index, slot_index) tuple.
+    """
+    for i, timeslot_str in enumerate(config["GROUP_TIMESLOT_MAPPING"]):
+        qualified_day = timeslot_str.split(" ")[0]
+        if qualified_day not in config["OPEN_DAYS"]:
+            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because centre is not open on {qualified_day}.")
+        day = config["OPEN_DAYS"].index(qualified_day)
+
+        time_obj = datetime.datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
+        opening_time_obj = datetime.datetime.strptime(config["WORKING_HOURS"].get(qualified_day.lower()).get("open"), "%H:%M")
+        slot = timeslot_index(time_obj - opening_time_obj, config["MIN_ACTIVITY_DURATION"])
+        if slot < 0 or slot >= config["SLOTS_PER_DAY"].get(qualified_day):
+            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because timing is out of bounds for center's working hours.")
+        config["GROUP_TIMESLOT_MAPPING"][i] = (day, slot)
+
+    return config
 
 def create_app():
     from pear_schedule.api import (
@@ -141,20 +161,7 @@ def create_app():
     app.state.config["WORKING_HOURS"] = workingHours
     app.state.config["SLOTS_PER_DAY"] = num_slots_per_day
 
-    for i, timeslot_str in enumerate(app.state.config["GROUP_TIMESLOT_MAPPING"]):
-        qualified_day = timeslot_str.split(" ")[0]
-        if qualified_day not in app.state.config["OPEN_DAYS"]:
-            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because centre is not open on {qualified_day}.")
-        day = app.state.config["OPEN_DAYS"].index(qualified_day)
-        
-        time_obj = datetime.datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
-        opening_time_obj = datetime.datetime.strptime(app.state.config["WORKING_HOURS"].get(qualified_day.lower()).get("open"), "%H:%M")
-        slot = (time_obj - opening_time_obj) // -datetime.timedelta(minutes=app.state.config["MIN_ACTIVITY_DURATION"]-1) * -1
-        slot = 0 if not slot else slot-1
-        if slot < 0 or slot >= app.state.config["SLOTS_PER_DAY"].get(qualified_day):
-            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because timing is out of bounds for center's working hours.")
-        app.state.config["GROUP_TIMESLOT_MAPPING"][i] = (day, slot)
-    
+    validate_group_timeslot_mapping(app.state.config)
     logger.info(f"check group timeslot mapping: {app.state.config['GROUP_TIMESLOT_MAPPING']}")
     loadConfigs(app.state.config) # then load config for the rest of the classes
 
