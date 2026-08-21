@@ -24,6 +24,41 @@ logger = logging.getLogger(__name__)
 # TODO: REPLACE THIS FOR AUDIT / LOGGING
 SYSTEM_USER_ID = "SYSTEM"
 
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _past_day_columns(start_of_week: datetime.datetime, today: datetime.datetime) -> set:
+    """Day columns already in the past, shouldn't be overwritten."""
+    return {
+        day for i, day in enumerate(WEEKDAYS)
+        if (start_of_week.date() + datetime.timedelta(days=i)) < today.date()
+    }
+
+
+def _past_medication_dates(start_of_week: datetime.datetime, today: datetime.datetime, date_format: str) -> set:
+    """Medication dates already in the past, shouldn't be overwritten."""
+    return {
+        (start_of_week.date() + datetime.timedelta(days=i)).strftime(date_format)
+        for i in range(7)
+        if (start_of_week.date() + datetime.timedelta(days=i)) < today.date()
+    }
+
+
+def _merge_medication_schedule(existing_json: str, new_data: Dict, past_dates: set) -> str:
+    """Keeps past dates from existing_json, uses new_data for the rest."""
+    try:
+        existing = json.loads(existing_json) if existing_json else {}
+    except (TypeError, ValueError):
+        existing = {}
+
+    merged = dict(new_data)
+    for date_str in past_dates:
+        if date_str in existing:
+            merged[date_str] = existing[date_str]
+        else:
+            merged.pop(date_str, None)
+    return json.dumps(merged)
+
 class ScheduleWriter(ConfigDependant):
     @classmethod
     def write(
@@ -56,6 +91,8 @@ class ScheduleWriter(ConfigDependant):
         start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+        past_days = _past_day_columns(start_of_week, today)
+        past_medication_dates = _past_medication_dates(start_of_week, today, cls.config["STD_DATE_FORMAT"])
 
         medication_schedule: Mapping[int, Dict[datetime.date, List[Dict]]] = medicationScheduleRef.reformatMedicationScheduleData(cls)
 
@@ -75,7 +112,15 @@ class ScheduleWriter(ConfigDependant):
                         key = day_labels[j]
                         activities[key] = 'Free and Easy' if not activity else activity
                     converted_schedule[day] = json.dumps(activities)
-                
+
+                existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
+                existing_medication_schedule = (
+                    existingScheduleDF.iloc[0]["MedicationSchedule"] if len(existingScheduleDF) > 0 else None
+                )
+                medication_schedule_json = _merge_medication_schedule(
+                    existing_medication_schedule, medication_schedule.get(int(p), {}), past_medication_dates
+                )
+
                 schedule_data = {
                     ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
                     "PatientID": p,
@@ -88,18 +133,17 @@ class ScheduleWriter(ConfigDependant):
                     "Friday": converted_schedule.get("Friday", ""),
                     "Saturday": converted_schedule.get("Saturday", ""),
                     "Sunday": converted_schedule.get("Sunday", ""),
-                    "MedicationSchedule": json.dumps(medication_schedule.get(int(p), {})),
+                    "MedicationSchedule": medication_schedule_json,
                     # "MedicationLog": "",
-                    "IsDeleted": 0, ## Mandatory Field 
-                    "UpdatedDateTime": today, ## Mandatory Field 
+                    "IsDeleted": 0, ## Mandatory Field
+                    "UpdatedDateTime": today, ## Mandatory Field
                     "CreatedById": SYSTEM_USER_ID,
                     "ModifiedById": SYSTEM_USER_ID
                 }
 
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
-                    existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
-                    schedule_data["CreatedDateTime"] = today ## Mandatory Field 
+                    schedule_data["CreatedDateTime"] = today ## Mandatory Field
                     if len(existingScheduleDF) > 0:
                         null_schedule = False
                         for day in cls.config["OPEN_DAYS"]:
@@ -108,7 +152,8 @@ class ScheduleWriter(ConfigDependant):
                               break
                         if not null_schedule:
                            continue
-                        schedule_instance = schedule_table.update().values(schedule_data).where(
+                        update_data = {k: v for k, v in schedule_data.items() if k not in past_days}
+                        schedule_instance = schedule_table.update().values(update_data).where(
                             schedule_table.c["ScheduleID"] == int(existingScheduleDF.iloc[0]["ScheduleID"])
                         )
                     else:
@@ -129,7 +174,8 @@ class ScheduleWriter(ConfigDependant):
 
                         schedule_data.update(schedule_meta[p])
                         schedule_data.pop("ScheduleID")
-                        schedule_instance = schedule_table.update().values(schedule_data).where(
+                        update_data = {k: v for k, v in schedule_data.items() if k not in past_days}
+                        schedule_instance = schedule_table.update().values(update_data).where(
                             schedule_table.c["ScheduleID"] == schedule_meta[p]["ScheduleID"]
                         )
                 conn.execute(schedule_instance)

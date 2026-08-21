@@ -2,6 +2,7 @@
 Tests for writer.py schedule labels.
 """
 
+import datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -47,6 +48,112 @@ def _write(patientSchedules, config, monkeypatch):
 
 def _inserted_schedule_data(schedule_table):
     return schedule_table.insert.return_value.values.call_args[0][0]
+
+
+def _freeze_today(monkeypatch, fixed_now):
+    class FixedDatetime(datetime.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    fake_datetime_module = SimpleNamespace(
+        datetime=FixedDatetime, timedelta=datetime.timedelta, date=datetime.date
+    )
+    monkeypatch.setattr(writer_module, "datetime", fake_datetime_module)
+
+
+class TestPastDayProtection:
+    """Past days shouldn't get overwritten on regenerate."""
+
+    def test_regenerate_does_not_overwrite_past_days(self, monkeypatch):
+        config = _config(
+            OPEN_DAYS=["Monday", "Tuesday", "Wednesday"],
+            SLOTS_PER_DAY={"Monday": 1, "Tuesday": 1, "Wednesday": 1},
+            WORKING_HOURS={
+                "monday": {"open": "09:00", "close": "09:30"},
+                "tuesday": {"open": "09:00", "close": "09:30"},
+                "wednesday": {"open": "09:00", "close": "09:30"},
+            },
+        )
+        # Wednesday 2024-03-20, same week as Monday 2024-03-18.
+        _freeze_today(monkeypatch, datetime.datetime(2024, 3, 20, 10, 0, 0))
+
+        schedule_table = MagicMock()
+        fake_schema = MagicMock()
+        fake_schema.tables = {"SCHEDULE": schedule_table}
+        monkeypatch.setattr(writer_module.DB, "schema", fake_schema, raising=False)
+        monkeypatch.setattr(ScheduleWriter, "config", config, raising=False)
+
+        with patch.object(writer_module.ExistingScheduleView, "get_data", return_value=pd.DataFrame()):
+            conn = MagicMock()
+            result = ScheduleWriter.write(
+                patientSchedules={"1": [["MonAct"], ["TueAct"], ["WedAct"]]},
+                medicationScheduleRef=_FakeMedicationScheduleRef(),
+                conn=conn,
+                overwriteExisting=True,
+                schedule_meta={"1": {"ScheduleID": 42}},
+            )
+
+        assert result is True
+        updated_data = schedule_table.update.return_value.values.call_args[0][0]
+        assert "Monday" not in updated_data
+        assert "Tuesday" not in updated_data
+        assert "Wednesday" in updated_data
+
+    def test_regenerate_does_not_overwrite_past_medication_dates(self, monkeypatch):
+        config = _config(
+            OPEN_DAYS=["Monday", "Tuesday", "Wednesday"],
+            SLOTS_PER_DAY={"Monday": 1, "Tuesday": 1, "Wednesday": 1},
+            WORKING_HOURS={
+                "monday": {"open": "09:00", "close": "09:30"},
+                "tuesday": {"open": "09:00", "close": "09:30"},
+                "wednesday": {"open": "09:00", "close": "09:30"},
+            },
+        )
+        _freeze_today(monkeypatch, datetime.datetime(2024, 3, 20, 10, 0, 0))
+
+        schedule_table = MagicMock()
+        fake_schema = MagicMock()
+        fake_schema.tables = {"SCHEDULE": schedule_table}
+        monkeypatch.setattr(writer_module.DB, "schema", fake_schema, raising=False)
+        monkeypatch.setattr(ScheduleWriter, "config", config, raising=False)
+
+        existing_medication_schedule = json.dumps({
+            "2024-03-18": [{"MedicationID": 1, "Status": 1}],
+            "2024-03-19": [{"MedicationID": 2, "Status": 1}],
+        })
+        existing_row = pd.DataFrame([{
+            "ScheduleID": 42,
+            "MedicationSchedule": existing_medication_schedule,
+            "Monday": "{}", "Tuesday": "{}", "Wednesday": "{}",
+        }])
+
+        fresh_medication_schedule = {
+            "2024-03-18": [{"MedicationID": 1, "Status": 0}],
+            "2024-03-19": [{"MedicationID": 2, "Status": 0}],
+            "2024-03-20": [{"MedicationID": 3, "Status": 0}],
+        }
+
+        class _FakeMedicationScheduleRefWithData:
+            def reformatMedicationScheduleData(self, _cls):
+                return {1: fresh_medication_schedule}
+
+        with patch.object(writer_module.ExistingScheduleView, "get_data", return_value=existing_row):
+            conn = MagicMock()
+            result = ScheduleWriter.write(
+                patientSchedules={"1": [["MonAct"], ["TueAct"], ["WedAct"]]},
+                medicationScheduleRef=_FakeMedicationScheduleRefWithData(),
+                conn=conn,
+                overwriteExisting=True,
+                schedule_meta={"1": {"ScheduleID": 42}},
+            )
+
+        assert result is True
+        updated_data = schedule_table.update.return_value.values.call_args[0][0]
+        merged = json.loads(updated_data["MedicationSchedule"])
+        assert merged["2024-03-18"] == [{"MedicationID": 1, "Status": 1}]
+        assert merged["2024-03-19"] == [{"MedicationID": 2, "Status": 1}]
+        assert merged["2024-03-20"] == [{"MedicationID": 3, "Status": 0}]
 
 
 class TestScheduleLabeling:

@@ -5,7 +5,7 @@ import pandas as pd
 
 from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
-from pear_schedule.db_utils.utils import compile_query, get_next_sunday, get_monday
+from pear_schedule.db_utils.utils import compile_query, get_week_end, get_week_start
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from sqlalchemy import literal_column
 import logging
@@ -73,7 +73,7 @@ class AllActivitiesView(BaseView):
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
             #centre_activity.c["IsDeleted"] == False,
-            #centre_activity.c["StartDate"] < get_monday(),
+            #centre_activity.c["StartDate"] < get_week_start(),
         )
 
         return query
@@ -103,8 +103,8 @@ class ActivitiesView(BaseView):
         ).where(
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["IsDeleted"] == False,
-            centre_activity.c["StartDate"] <= get_next_sunday(),
-            centre_activity.c["EndDate"] >= get_monday(),
+            centre_activity.c["StartDate"] <= get_week_end(),
+            centre_activity.c["EndDate"] >= get_week_start(),
             centre_activity.c["IsCompulsory"] == False
         )
 
@@ -134,7 +134,7 @@ class PatientsView(BaseView):
             centre_activity_preference.c["IsLike"] > 0,
             centre_activity_preference.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
-            centre_activity.c["StartDate"] <= get_next_sunday(),
+            centre_activity.c["StartDate"] <= get_week_end(),
         ).cte()
 
         query: Select = select(
@@ -175,7 +175,7 @@ class PatientsUnpreferredView(BaseView):
             centre_activity_preference.c["IsLike"] == 0,
             centre_activity_preference.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
-            centre_activity.c["StartDate"] <= get_next_sunday(),
+            centre_activity.c["StartDate"] <= get_week_end(),
         ).cte()
 
         query: Select = select(
@@ -230,8 +230,8 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
         ).where(centre_activity.c["IsCompulsory"] == False
         ).where(centre_activity.c["IsDeleted"] == False
         ).where(
-        centre_activity.c["EndDate"] >= get_monday(),
-        ).where(centre_activity.c["StartDate"] <= get_next_sunday(),
+        centre_activity.c["EndDate"] >= get_week_start(),
+        ).where(centre_activity.c["StartDate"] <= get_week_end(),
         ) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
@@ -259,8 +259,8 @@ class GroupActivitiesPreferenceView(BaseView): # Just group activities preferenc
             centre_activity_preference.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
         ).where(
-            centre_activity.c["StartDate"] <= get_next_sunday(),
-            centre_activity.c["EndDate"] >= get_monday(),
+            centre_activity.c["StartDate"] <= get_week_end(),
+            centre_activity.c["EndDate"] >= get_week_start(),
         )
 
 
@@ -289,8 +289,8 @@ class GroupActivitiesRecommendationView(BaseView): # Just group activities prefe
             centre_activity_recommendation.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
         ).where(
-            centre_activity.c["StartDate"] <= get_next_sunday(),
-            centre_activity.c["EndDate"] >= get_monday(),
+            centre_activity.c["StartDate"] <= get_week_end(),
+            centre_activity.c["EndDate"] >= get_week_start(),
         )
 
 
@@ -308,14 +308,9 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
 
 
         today = datetime.now()
-        if today.weekday() == 6: #sunday and generate for next week
-            start_of_week = today + timedelta(days=1, hours=0, minutes=0, seconds=0, microseconds=0)
-            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)
-        else: # other weekday and generate for current week
-            start_of_week = today - timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
-            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+        start_of_week = today - timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
 
         query: Select = select(
             centre_activity.c["CentreActivityID"],
@@ -354,8 +349,8 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
             centre_activity.c["IsCompulsory"] == True,
             centre_activity.c["IsDeleted"] == False,
             centre_activity.c["IsFixed"] == True,
-            centre_activity.c["EndDate"] >= get_monday(),
-            centre_activity.c["StartDate"] <= get_next_sunday(),
+            centre_activity.c["EndDate"] >= get_week_start(),
+            centre_activity.c["StartDate"] <= get_week_end(),
         ) #EndDate has been moved from ActivityTable to CentreActivity Table
 
         return query
@@ -387,8 +382,8 @@ class RecommendedActivitiesView(BaseView):
             recommendations.c["IsDeleted"] == False,
             recommendations.c["DoctorRecommendation"] > 0,
             centre_activity.c["IsGroup"] == False,
-            centre_activity.c["StartDate"] <= get_next_sunday(),
-            centre_activity.c["EndDate"] >= get_monday(),
+            centre_activity.c["StartDate"] <= get_week_end(),
+            centre_activity.c["EndDate"] >= get_week_start(),
             centre_activity.c["IsCompulsory"] == False
         )
 

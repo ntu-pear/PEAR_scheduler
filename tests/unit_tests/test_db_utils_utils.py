@@ -1,6 +1,33 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+from pear_schedule.db_utils import utils
 from pear_schedule.db_utils.utils import day_timeslot_label, day_timeslot_labels, timeslot_index
+
+
+class TestGetWeekStartAndGetWeekEnd:
+    """get_week_end() used to skip to next Sunday on Sundays instead of today."""
+
+    def _freeze(self, monkeypatch, fixed_now: datetime):
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        monkeypatch.setattr(utils, "datetime", FixedDatetime)
+
+    def test_sunday_uses_current_week_sunday_not_next_week(self, monkeypatch):
+        # Sunday 2024-03-24 is the last day of the week starting Monday 2024-03-18.
+        self._freeze(monkeypatch, datetime(2024, 3, 24, 10, 0, 0))
+
+        assert utils.get_week_start() == "2024-03-18"
+        assert utils.get_week_end() == datetime(2024, 3, 24, 23, 59, 59)
+
+    def test_midweek_day_still_returns_current_week_sunday(self, monkeypatch):
+        # Wednesday 2024-03-20, same week as above.
+        self._freeze(monkeypatch, datetime(2024, 3, 20, 10, 0, 0))
+
+        assert utils.get_week_start() == "2024-03-18"
+        assert utils.get_week_end() == datetime(2024, 3, 24, 23, 59, 59)
 
 
 class TestTimeslotIndex:
