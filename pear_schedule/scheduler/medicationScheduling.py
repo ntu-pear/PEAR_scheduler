@@ -34,7 +34,7 @@ class medicationScheduleData:
             today = datetime.datetime.now()
             start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
             start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_week = start_of_week + datetime.timedelta(days=4, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+            end_of_week = start_of_week + datetime.timedelta(days=len(cls.config["OPEN_DAYS"]) - 1, hours=23, minutes=59, seconds=59, microseconds=0)  # last open day -> 23:59:59
             
             if startDateTime <= start_of_week: # Medication starts either before or start of this week
                 pass

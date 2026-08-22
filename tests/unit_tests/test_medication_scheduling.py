@@ -33,10 +33,6 @@ def _freeze_now(monkeypatch, fixed_now=FIXED_NOW):
     monkeypatch.setattr("pear_schedule.scheduler.medicationScheduling.datetime", fake_ns)
     yield
 
-# __getMedicationSchedulingData hardcodes end_of_week assuming exactly 5 OPEN_DAYS
-# (medicationScheduling.py ~36) - sticking to 5 OPEN_DAYS everywhere here so we don't
-# trip over that separate issue
-
 OPEN_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
 
 
@@ -234,6 +230,53 @@ class TestMedicationSchedulerFillSchedule:
             medicationScheduler.fillSchedule(patient_schedules)
 
         assert "**Take with food" in patient_schedules[1][0][0]
+
+    def test_medication_ending_mid_week_stops_on_correct_day_with_six_open_days(self, monkeypatch):
+        """end_of_week was hardcoded to Friday, drifting the cutoff into Thursday on a 6-open-day week."""
+        six_day_open_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        six_day_config = make_scheduler_config(
+            OPEN_DAYS=six_day_open_days,
+            SLOTS_PER_DAY={day: 8 for day in six_day_open_days},
+            WORKING_HOURS={day.lower(): {"open": "09:00", "close": "13:00"} for day in six_day_open_days},
+        )
+        monkeypatch.setattr(medicationScheduler, "config", six_day_config, raising=False)
+        patient_schedules = {1: [["" for _ in range(8)] for _ in range(6)]}
+
+        row = _medication_row(
+            end_datetime=START_OF_WEEK + datetime.timedelta(days=2, hours=23, minutes=59, seconds=59)  # end of Wednesday
+        )
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=row), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()):
+            medicationScheduler.fillSchedule(patient_schedules)
+
+        assert "Give Medication" in patient_schedules[1][0][0]  # Monday
+        assert "Give Medication" in patient_schedules[1][1][0]  # Tuesday
+        assert "Give Medication" in patient_schedules[1][2][0]  # Wednesday
+        assert patient_schedules[1][3][0] == ""  # Thursday - after end, untouched
+        assert patient_schedules[1][4][0] == ""  # Friday - after end, untouched
+        assert patient_schedules[1][5][0] == ""  # Saturday - after end, untouched
+
+    def test_medication_starting_on_last_open_day_with_six_open_days(self, monkeypatch):
+        """Same wrong end_of_week also skipped medications starting on the 6th open day, Saturday."""
+        six_day_open_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        six_day_config = make_scheduler_config(
+            OPEN_DAYS=six_day_open_days,
+            SLOTS_PER_DAY={day: 8 for day in six_day_open_days},
+            WORKING_HOURS={day.lower(): {"open": "09:00", "close": "13:00"} for day in six_day_open_days},
+        )
+        monkeypatch.setattr(medicationScheduler, "config", six_day_config, raising=False)
+        patient_schedules = {1: [["" for _ in range(8)] for _ in range(6)]}
+
+        row = _medication_row(start_datetime=START_OF_WEEK + datetime.timedelta(days=5))  # Saturday
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=row), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()):
+            medicationScheduler.fillSchedule(patient_schedules)
+
+        assert "Give Medication" in patient_schedules[1][5][0]  # Saturday - should not be skipped
 
     def test_out_of_bounds_slot_skipped_without_error(self, monkeypatch):
         monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
