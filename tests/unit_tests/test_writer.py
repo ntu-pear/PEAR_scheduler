@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 
 from configprod import DAY_TIMESLOTS
+from pear_schedule.db_utils import utils as db_utils_module
 from pear_schedule.db_utils import writer as writer_module
 from pear_schedule.db_utils.writer import ScheduleWriter
 from tests.utils.scheduler_config import make_scheduler_config
@@ -60,6 +61,8 @@ def _freeze_today(monkeypatch, fixed_now):
         datetime=FixedDatetime, timedelta=datetime.timedelta, date=datetime.date
     )
     monkeypatch.setattr(writer_module, "datetime", fake_datetime_module)
+    # get_week_start()/get_week_end() live in db_utils.utils, freeze its datetime too
+    monkeypatch.setattr(db_utils_module, "datetime", FixedDatetime)
 
 
 class TestPastDayProtection:
@@ -154,6 +157,23 @@ class TestPastDayProtection:
         assert merged["2024-03-18"] == [{"MedicationID": 1, "Status": 1}]
         assert merged["2024-03-19"] == [{"MedicationID": 2, "Status": 1}]
         assert merged["2024-03-20"] == [{"MedicationID": 3, "Status": 0}]
+
+
+class TestWeekBoundaries:
+    """__writeToDB's StartDate/EndDate come from the shared get_week_start()/get_week_end()."""
+
+    def test_start_and_end_date_match_shared_week_helpers(self, monkeypatch):
+        config = _config()
+        # Wednesday 2024-03-20, week of Monday 2024-03-18 - Sunday 2024-03-24.
+        _freeze_today(monkeypatch, datetime.datetime(2024, 3, 20, 10, 0, 0))
+
+        patientSchedules = {"1": [["MonAct"], ["TueAct"]]}
+        result, schedule_table = _write(patientSchedules, config, monkeypatch)
+
+        assert result is True
+        schedule_data = _inserted_schedule_data(schedule_table)
+        assert schedule_data["StartDate"] == datetime.datetime(2024, 3, 18, 0, 0, 0)
+        assert schedule_data["EndDate"] == datetime.datetime(2024, 3, 24, 23, 59, 59)
 
 
 class TestScheduleLabeling:

@@ -19,14 +19,14 @@ class TestGetWeekStartAndGetWeekEnd:
         # Sunday 2024-03-24 is the last day of the week starting Monday 2024-03-18.
         self._freeze(monkeypatch, datetime(2024, 3, 24, 10, 0, 0))
 
-        assert utils.get_week_start() == "2024-03-18"
+        assert utils.get_week_start() == datetime(2024, 3, 18, 0, 0, 0)
         assert utils.get_week_end() == datetime(2024, 3, 24, 23, 59, 59)
 
     def test_midweek_day_still_returns_current_week_sunday(self, monkeypatch):
         # Wednesday 2024-03-20, same week as above.
         self._freeze(monkeypatch, datetime(2024, 3, 20, 10, 0, 0))
 
-        assert utils.get_week_start() == "2024-03-18"
+        assert utils.get_week_start() == datetime(2024, 3, 18, 0, 0, 0)
         assert utils.get_week_end() == datetime(2024, 3, 24, 23, 59, 59)
 
 

@@ -6,17 +6,16 @@ def compile_query(query: Select) -> str:
     # literal binds might cause errors if datetime is ever used
     return query.compile(compile_kwargs={"literal_binds": True})
 
-def get_week_start():
+def get_week_start() -> datetime:
     today = datetime.now()
-    monday = (today - timedelta(days=today.weekday())).strftime("%Y-%m-%d")
-    return monday
+    monday = today - timedelta(days=today.weekday())
+    return monday.replace(hour=0, minute=0, second=0, microsecond=0)
 
-def get_week_end():
+def get_week_end() -> datetime:
     today = datetime.now()
     days_until_sunday = 6 - today.weekday()
     sunday = today + timedelta(days=days_until_sunday)
-    sunday = sunday.replace(hour=23, minute=59, second=59)
-    return sunday
+    return sunday.replace(hour=23, minute=59, second=59, microsecond=0)
 
 def timeslot_index(offset: timedelta, duration_minutes: int) -> int:
     """Floor-divide a clock-time offset by a slot duration to get a 0-based slot index.

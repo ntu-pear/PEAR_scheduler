@@ -7,7 +7,7 @@ from typing import Mapping, List, Dict
 
 from sqlalchemy import Connection, column, delete, select, func, literal_column, column
 from pear_schedule.db import DB
-from pear_schedule.db_utils.utils import day_timeslot_labels
+from pear_schedule.db_utils.utils import day_timeslot_labels, get_week_start, get_week_end
 from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView, WeeklyScheduleView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
@@ -88,9 +88,8 @@ class ScheduleWriter(ConfigDependant):
         schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
 
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
-        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+        start_of_week = get_week_start()
+        end_of_week = get_week_end()
         past_days = _past_day_columns(start_of_week, today)
         past_medication_dates = _past_medication_dates(start_of_week, today, cls.config["STD_DATE_FORMAT"])
 
@@ -299,7 +298,7 @@ class MedicationScheduleWrite(ConfigDependant):
 
         # Need to get the ScheduleID, retrieve existing schedule
         today = datetime.datetime.now()
-        start_of_week = datetime.datetime.combine(today.date() - datetime.timedelta(days=today.weekday()), datetime.datetime.min.time()) # Monday 00:00:00
+        start_of_week = get_week_start()
         # get existing schedules for the week for all patients, pid should be unique in this df
         existingSchedules: pd.DataFrame = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week)
 
@@ -340,10 +339,9 @@ class MedicationScheduleWrite(ConfigDependant):
     @classmethod
     def __writeRecordsUsingSchedules(cls, conn: Connection, schedules: Mapping[int, List[int]]) -> bool:
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
-        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
-        
+        start_of_week = get_week_start()
+        end_of_week = get_week_end()
+
         schedule_table = DB.schema.tables[cls.config["DB_TABLES"].SCHEDULE_TABLE]
         for patient_id, meds in schedules.items():
           if len(meds) == 0: continue
