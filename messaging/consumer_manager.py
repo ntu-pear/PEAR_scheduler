@@ -197,8 +197,7 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     manager.register_consumer("activity_preference", ActivityPreferenceConsumer)
     manager.register_consumer("activity_recommendation", ActivityRecommendationConsumer)
     manager.register_consumer("centre_activity", CentreActivityConsumer)
-    # TODO: register adhoc consumer when ready
-    # manager.register_consumer("adhoc", AdhocConsumer)
+    manager.register_consumer("adhoc", AdhocConsumer)
     
     return manager
 
