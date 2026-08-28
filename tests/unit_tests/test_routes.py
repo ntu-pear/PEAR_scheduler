@@ -741,17 +741,17 @@ class TestSystemTestTimeslotLabels:
         """timeslot comes from enumerate(), so it cannot be out of range."""
 
         activitiesDF = pd.DataFrame({
-            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
         })
         validRoutinesDF = pd.DataFrame({
-            "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+            "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
         })
         weeklyScheduleViewDF = pd.DataFrame({
             "PatientID": [1],
             "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
             "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
         })
-        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
 
         result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
 
@@ -782,8 +782,9 @@ class TestSystemTestTimeslotLabels:
             "IsFixed": ["1", "1"],
             "ActivityTitle": ["A", "B"],
             "FixedTimeSlots": ["0-2", "0-2"],  # same day/slot - a real clash
+            "MinDuration": [30, 30],
         })
-        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
         request = _fake_request({
             "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
             "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
@@ -800,8 +801,9 @@ class TestSystemTestTimeslotLabels:
             "IsFixed": ["1", "1", "1"],
             "ActivityTitle": ["A", "B", "C"],
             "FixedTimeSlots": ["0-2", "0-2", "0-2"],
+            "MinDuration": [30, 30, 30],
         })
-        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
         request = _fake_request({
             "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
             "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
@@ -815,15 +817,15 @@ class TestSystemTestTimeslotLabels:
     def test_is_fixed_string_column_is_matched_not_python_bool(self):
         """IsFixed is '0'/'1' text, not a Python bool, so the query must match the string."""
         activitiesDF = pd.DataFrame({
-            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
         })
-        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
         weeklyScheduleViewDF = pd.DataFrame({
             "PatientID": [1],
             "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
             "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
         })
-        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
 
         result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
 
@@ -833,20 +835,58 @@ class TestSystemTestTimeslotLabels:
     def test_fixed_only_activity_is_caught_without_a_routine_counterpart(self):
         """A fixed-only activity (no routine counterpart) must still be checked."""
         activitiesDF = pd.DataFrame({
-            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
         })
-        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})  # no routines at all
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})  # no routines at all
         weeklyScheduleViewDF = pd.DataFrame({
             "PatientID": [1],
             "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
             "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
         })
-        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
 
         result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
 
         assert result["testResult"] == "Fail"
         assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_multi_slot_fixed_activity_second_slot_is_not_a_violation(self):
+        """A 60-min activity's anchor+1 slot is part of the activity, not a mismatch."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [60],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Yoga", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+        assert result["testRemarks"] == []
+
+    def test_clash_warning_catches_overlap_from_different_anchors(self):
+        """Vital Check AM (slot 4, 60min) and tablet game (slot 5, 60min) don't share
+        an anchor but both occupy slot 5, so this must still be flagged as a clash."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1", "1"],
+            "ActivityTitle": ["Vital Check AM", "tablet game"],
+            "FixedTimeSlots": ["0-4", "0-5"],
+            "MinDuration": [60, 60],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert result["warningRemarks"] == ["These activities have clashing fixed timeslots on Monday 11:30-12:00: Vital Check AM(normal), tablet game(normal)"]
 
     def test_compulsory_activity_missing_from_expected_slot_wording(self):
         """The remark must describe the expected slot, not read as 'found at X'."""
