@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from pear_schedule.api.utils import activitiesExcludedPatientTest, allCompulsoryActivitiesAtCorrectSlotSystemTest, checkWeeklyScheduleCorrectness, clashInFixedTimeSlotWarning, fixedActivitiesScheduledCorrectlySystemTest, generateStatistics, getPatientWellnessPlan, getTablesDF, groupActivitiesCorrectTimeslotSystemTest, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, prepareMedicationSchedule, recommendedActivitiesPatientTest, routinesPatientTest
+from pear_schedule.api.utils import activitiesExcludedPatientTest, allCompulsoryActivitiesAtCorrectSlotSystemTest, checkWeeklyScheduleCorrectness, clashInFixedTimeSlotWarning, fixedActivitiesScheduledCorrectlySystemTest, generateStatistics, getPatientWellnessPlan, getTablesDF, groupActivitiesCorrectTimeslotSystemTest, groupActivitiesMinSizeSystemTest, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, prepareMedicationSchedule, recommendedActivitiesPatientTest, routinesPatientTest
 
 class TestPatientTestUtils:
     # =======================================================================
@@ -739,9 +739,9 @@ class TestSystemTestTimeslotLabels:
 
     def test_fixed_activity_mismatch_never_needs_the_fallback_label(self):
         """timeslot comes from enumerate(), so it cannot be out of range."""
-        
+
         activitiesDF = pd.DataFrame({
-            "IsFixed": [True], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
         })
         validRoutinesDF = pd.DataFrame({
             "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
@@ -779,7 +779,7 @@ class TestSystemTestTimeslotLabels:
     def test_clash_in_fixed_time_slot_warning_uses_real_hours(self):
         """Checks that clash warnings use the actual centre hours."""
         activitiesDF = pd.DataFrame({
-            "IsFixed": [True, True],
+            "IsFixed": ["1", "1"],
             "ActivityTitle": ["A", "B"],
             "FixedTimeSlots": ["0-2", "0-2"],  # same day/slot - a real clash
         })
@@ -797,7 +797,7 @@ class TestSystemTestTimeslotLabels:
     def test_clash_warning_has_no_trailing_comma(self):
         """Checks that clash warnings do not end with a trailing comma."""
         activitiesDF = pd.DataFrame({
-            "IsFixed": [True, True, True],
+            "IsFixed": ["1", "1", "1"],
             "ActivityTitle": ["A", "B", "C"],
             "FixedTimeSlots": ["0-2", "0-2", "0-2"],
         })
@@ -811,4 +811,129 @@ class TestSystemTestTimeslotLabels:
         result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
 
         assert not result["warningRemarks"][0].endswith(",")
-    
+
+    def test_is_fixed_string_column_is_matched_not_python_bool(self):
+        """IsFixed is '0'/'1' text, not a Python bool, so the query must match the string."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_fixed_only_activity_is_caught_without_a_routine_counterpart(self):
+        """A fixed-only activity (no routine counterpart) must still be checked."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": []})  # no routines at all
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_compulsory_activity_missing_from_expected_slot_wording(self):
+        """The remark must describe the expected slot, not read as 'found at X'."""
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": ""})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        compulsoryActivitiesDF = pd.DataFrame({
+            "ActivityTitle": ["Meds"],
+            "FixedTimeSlots": ["0-1"],  # Monday, slot index 1 - Meds is not there
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert result["testRemarks"] == [
+            "Meds is missing from its expected time slot (Monday 09:30-10:00) for patient ID 1"
+        ]
+
+
+class TestGroupActivitiesMinSize:
+    """Tests groupActivitiesMinSizeSystemTest's per-session attendance check."""
+
+    def test_session_below_minimum_fails_with_actual_count(self):
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert result["testRemarks"] == [
+            "Bingo on Monday 09:30-10:00 has 1 patient(s) scheduled, below the minimum of 2"
+        ]
+
+    def test_session_meeting_minimum_passes(self):
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1, 2],
+            "Monday": [
+                json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"}),
+                json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"}),
+            ],
+            "Tuesday": ["", ""], "Wednesday": ["", ""], "Thursday": ["", ""], "Friday": ["", ""], "Saturday": ["", ""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+        assert result["testRemarks"] == []
+
+    def test_meeting_minimum_only_when_summed_across_different_days_still_fails(self):
+        """Summing one patient's occurrences across two days must not satisfy MinPeopleReq=2."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Tuesday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert len(result["testRemarks"]) == 2  # Monday session and Tuesday session both short
+
+    def test_activity_never_scheduled_is_still_flagged(self):
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Something else"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert result["testRemarks"] == [
+            "Bingo was not scheduled for any patients this week (requires minimum 2)"
+        ]
+
