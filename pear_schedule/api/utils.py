@@ -668,7 +668,7 @@ def replaceActivitiesInSchedule(filteredAdHocDF, oldActivityName, newActivityNam
 
 
 def allPatientScheduleGeneratedSystemTest(weeklyScheduleViewDF, patientsDF):
-    testName = "All patient weekly schedule is generated"
+    testName = "Every patient has a weekly schedule"
     testRemarks = []
     testResult = "Pass"
 
@@ -703,21 +703,18 @@ def allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compuls
             fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
             compActivityName = compActivityRecord["ActivityTitle"]
 
-            # allCompulsoryScheduled = True
             for day, timeslot in fixedTimeSlots:
                 if compActivityName not in patientSchedule[day][timeslot]:
                     allCompulsoryScheduled = False
                     timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
-                    testRemarks.append(f"{compActivityName} not scheduled at correct time slot for patient ID {scheduleRecord['PatientID']}. Scheduled timeslot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
+                    testRemarks.append(f"{compActivityName} is missing from its expected time slot ({request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}) for patient ID {scheduleRecord['PatientID']}")
     testResult = "Pass" if allCompulsoryScheduled else "Fail"
-    # if not allCompulsoryScheduled:
-    #     testResult = "Fail"
 
     return {"testName": testName, "testResult": testResult, "testRemarks": testRemarks}
 
 
 def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
-    testName = "Only centre activities 'not expired' are scheduled"
+    testName = "No expired centre activities are scheduled"
     testRemarks = []
     testResult = "Pass"
 
@@ -775,11 +772,12 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
 
 
 def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request):
-    testName = "Fixed time centre activities are scheduled in the correct timeslot (fixed and routine activities)"
+    testName = "Fixed-time and routine activities are scheduled in their designated slot"
     testRemarks = []
     testResult = "Pass"
 
-    fixedActivitiesDF = activitiesDF.query("IsFixed == True")
+    # IsFixed is stored as '0'/'1' text, not a real bool.
+    fixedActivitiesDF = activitiesDF.query("IsFixed == '1'")
     fixedActivityMap = {} #activityTitle: set(fixedTimeSlots)
     for _, activityRecord in fixedActivitiesDF.iterrows():
         fixedTimeSlots = activityRecord["FixedTimeSlots"].split(",")
@@ -802,7 +800,9 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
                 continue
             for timeslot, activity in enumerate(daySchedule):
                 activityTitle = activity.split(" |")[0]
-                if activityTitle in fixedActivityMap and (day, timeslot) not in fixedActivityMap[activityTitle] and activityTitle in routineActivityMap and (day, timeslot) not in routineActivityMap[activityTitle]:
+                isFixedViolation = activityTitle in fixedActivityMap and (day, timeslot) not in fixedActivityMap[activityTitle]
+                isRoutineViolation = activityTitle in routineActivityMap and (day, timeslot) not in routineActivityMap[activityTitle]
+                if isFixedViolation or isRoutineViolation:
                     result = False
                     timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
                     testRemarks.append(f"{activityTitle} for patient ID {scheduleRecord['PatientID']} is not scheduled in one of its fixed time slots. Scheduled Time Slot is {request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}")
@@ -813,37 +813,52 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
     return {"testName": testName, "testResult": testResult, "testRemarks": testRemarks}
 
 
-def groupActivitiesMinSizeSystemTest(groupActivitiesDF,weeklyScheduleViewDF):
-    testName = "Group activities meet the minimum number of people"
+def groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request):
+    testName = "Group activities reach minimum attendance"
     testRemarks = []
     testResult = "Pass"
     minSizeMap = {} #activityTitle: min size req
 
-    result = True
     for _, grpActivityRecord in groupActivitiesDF.iterrows():
-        minSizeMap[grpActivityRecord["ActivityTitle"]] = [grpActivityRecord["MinPeopleReq"],grpActivityRecord["MinPeopleReq"]]
+        minSizeMap[grpActivityRecord["ActivityTitle"]] = grpActivityRecord["MinPeopleReq"]
+
+    # Counted per (activityTitle, day, timeslot) session, not summed across the whole week.
+    sessionCounts = defaultdict(int)
+    sessionLabels = {}
+    scheduledActivities = set()
 
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
         patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
-        for _, daySchedule in enumerate(patientSchedule):
+        patientScheduleLabels = [getScheduleDayTimeslotLabels(scheduleRecord["Monday"]),getScheduleDayTimeslotLabels(scheduleRecord["Tuesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Wednesday"]),getScheduleDayTimeslotLabels(scheduleRecord["Thursday"]),getScheduleDayTimeslotLabels(scheduleRecord["Friday"]),getScheduleDayTimeslotLabels(scheduleRecord["Saturday"])]
+        for day, daySchedule in enumerate(patientSchedule):
             if len(daySchedule) <= 1:
                 continue
-    
-            for _, activity in enumerate(daySchedule):
+
+            for timeslot, activity in enumerate(daySchedule):
                 activityTitle = activity.split(" |")[0]
                 if activityTitle in minSizeMap:
-                    minSizeMap[activityTitle][0] -= 1
-                    if minSizeMap[activityTitle][0] == 0:
-                        minSizeMap.pop(activityTitle)
+                    scheduledActivities.add(activityTitle)
+                    key = (activityTitle, day, timeslot)
+                    sessionCounts[key] += 1
+                    if key not in sessionLabels:
+                        timeslotLabel = patientScheduleLabels[day][timeslot] if timeslot < len(patientScheduleLabels[day]) else day_timeslot_label(request.app.state.config['DAY_OF_WEEK_ORDER'][day], timeslot, request.app.state.config['WORKING_HOURS'], request.app.state.config['MIN_ACTIVITY_DURATION'])
+                        sessionLabels[key] = f"{request.app.state.config['DAY_OF_WEEK_ORDER'][day]} {timeslotLabel}"
 
+    result = True
+    for (activityTitle, day, timeslot), count in sessionCounts.items():
+        required = minSizeMap[activityTitle]
+        if count < required:
+            result = False
+            testRemarks.append(f"{activityTitle} on {sessionLabels[(activityTitle, day, timeslot)]} has {count} patient(s) scheduled, below the minimum of {required}")
 
-    for activityTitle, sizeList in minSizeMap.items():
-        result = False
-        testRemarks.append(f"{activityTitle} did not hit minumum size of {sizeList[1]}")
+    for activityTitle, required in minSizeMap.items():
+        if activityTitle not in scheduledActivities:
+            result = False
+            testRemarks.append(f"{activityTitle} was not scheduled for any patients this week (requires minimum {required})")
 
     if not result:
         testResult = "Fail"
-            
+
     return {"testName": testName, "testResult": testResult, "testRemarks": testRemarks}
 
 def groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request):
@@ -917,7 +932,8 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
     warningRemarks = []
 
     timeSlotMap = {} # map fixed time slots to activity
-    fixedActivitiesDF = activitiesDF.query("IsFixed == True")
+    # IsFixed is stored as '0'/'1' text, not a real bool.
+    fixedActivitiesDF = activitiesDF.query("IsFixed == '1'")
 
     for _, activityRecord in fixedActivitiesDF.iterrows():
         fixedTimeSlots = activityRecord["FixedTimeSlots"].split(",")

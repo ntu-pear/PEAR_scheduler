@@ -355,20 +355,20 @@ async def system_report(request: Request):
         return JSONResponse(jsonable_encoder(responseData))
     
 
-    # 1. All patient weekly schedule is generated"
+    # 1. Every patient has a weekly schedule
     systemTestArray.append(allPatientScheduleGeneratedSystemTest(weeklyScheduleViewDF, patientsDF))
 
-    # 2. All compulsory activities are scheduled at correct time slots  
+    # 2. All compulsory activities are scheduled at correct time slots
     systemTestArray.append(allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request))
 
-    # 3. Only centre activities "not expired" are scheduled
+    # 3. No expired centre activities are scheduled
     systemTestArray.append(nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF))
 
-    # 4. Fixed time centre activities are scheduled in the correct timeslot (fixed and routine activities)
+    # 4. Fixed-time and routine activities are scheduled in their designated slot
     systemTestArray.append(fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request))
 
-    # 5. Group activities meet the minimum number of people   
-    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF))
+    # 5. Group activities reach minimum attendance per session
+    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))
 
     # 6. Group activities are scheduled in the correct timeslot
     systemTestArray.append(groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))
