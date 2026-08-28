@@ -31,6 +31,12 @@ def getScheduleDayTimeslotLabels(dayValue) -> List[str]:
         return []
     return list(json.loads(dayValue).keys())
 
+
+def expandFixedTimeSlots(fixedTimeSlots, minDuration, minActivityDuration) -> set:
+    # FixedTimeSlots only stores the anchor slot, expand to the full span the activity occupies.
+    numSlots = max(int(minDuration) // int(minActivityDuration), 1)
+    return {(day, anchor + offset) for day, anchor in fixedTimeSlots for offset in range(numSlots)}
+
 class AdHocRequest(BaseModel):
     OldActivityID: int
     NewActivityID: int
@@ -776,20 +782,22 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
     testRemarks = []
     testResult = "Pass"
 
+    minActivityDuration = request.app.state.config['MIN_ACTIVITY_DURATION']
+
     # IsFixed is stored as '0'/'1' text, not a real bool.
     fixedActivitiesDF = activitiesDF.query("IsFixed == '1'")
     fixedActivityMap = {} #activityTitle: set(fixedTimeSlots)
     for _, activityRecord in fixedActivitiesDF.iterrows():
         fixedTimeSlots = activityRecord["FixedTimeSlots"].split(",")
-        fixedTimeSlots = set([(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots])
-        fixedActivityMap[activityRecord["ActivityTitle"]] = fixedTimeSlots
+        fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
+        fixedActivityMap[activityRecord["ActivityTitle"]] = expandFixedTimeSlots(fixedTimeSlots, activityRecord["MinDuration"], minActivityDuration)
 
     routineActivityMap = {} #routine activityTitle: set(fixedTimeSlots)
     for _, routineRecord in validRoutinesDF.iterrows():
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
-        fixedTimeSlots = set([(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots])
-        routineActivityMap[routineRecord["ActivityTitle"]] = fixedTimeSlots
-    
+        fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
+        routineActivityMap[routineRecord["ActivityTitle"]] = expandFixedTimeSlots(fixedTimeSlots, routineRecord["MinDuration"], minActivityDuration)
+
 
     result = True
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
@@ -931,6 +939,8 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
     warningName = "Clash in Fixed Time Slots"
     warningRemarks = []
 
+    minActivityDuration = request.app.state.config['MIN_ACTIVITY_DURATION']
+
     timeSlotMap = {} # map fixed time slots to activity
     # IsFixed is stored as '0'/'1' text, not a real bool.
     fixedActivitiesDF = activitiesDF.query("IsFixed == '1'")
@@ -939,7 +949,7 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
         fixedTimeSlots = activityRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
         activityTitle = activityRecord["ActivityTitle"] + "(normal)"
-        for ts in fixedTimeSlots:
+        for ts in expandFixedTimeSlots(fixedTimeSlots, activityRecord["MinDuration"], minActivityDuration):
             if ts not in timeSlotMap:
                 timeSlotMap[ts] = [activityTitle]
             else:
@@ -949,7 +959,7 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
         activityTitle = routineRecord["ActivityTitle"] + "(routine)"
-        for ts in fixedTimeSlots:
+        for ts in expandFixedTimeSlots(fixedTimeSlots, routineRecord["MinDuration"], minActivityDuration):
             if ts not in timeSlotMap:
                 timeSlotMap[ts] = [activityTitle]
             else:
