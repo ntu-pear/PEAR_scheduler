@@ -243,7 +243,7 @@ class AdhocConsumer:
         try:
             correlation_id = message_data["correlation_id"]
             adhoc_id = message_data["adhoc_id"]
-            adhoc_data = message_data.get("activity_data", {})
+            adhoc_data = message_data.get("adhoc_data", {})
             created_by = message_data.get("created_by", "activity_service")
 
             logger.info(f"Handling adhoc creation for adhoc {adhoc_id}")
@@ -302,7 +302,7 @@ class AdhocConsumer:
             modified_by = message_data.get("modified_by", "activity_service")
             is_sync_event = message_data.get("is_sync_event", False)
 
-            logger.info(f"Handling adhoc creation for adhoc {adhoc_id}")
+            logger.info(f"Handling adhoc update for adhoc {adhoc_id}")
             logger.debug(f"Adhoc data: {adhoc_data}")
 
             # Convert new adhoc data to scheduler's RefAdhoc format
