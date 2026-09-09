@@ -13,6 +13,7 @@ from .centre_activity_consumer import CentreActivityConsumer
 from .patient_allocation_consumer import PatientAllocationConsumer
 from .patient_consumer import PatientConsumer
 from .patient_medication_consumer import PatientMedicationConsumer
+from .routine_consumer import RoutineConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,7 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     manager.register_consumer("activity_preference", ActivityPreferenceConsumer)
     manager.register_consumer("activity_recommendation", ActivityRecommendationConsumer)
     manager.register_consumer("centre_activity", CentreActivityConsumer)
+    manager.register_consumer("routine", RoutineConsumer)
     manager.register_consumer("adhoc", AdhocConsumer)
     
     return manager
