@@ -560,13 +560,13 @@ This function calculates and returns the number of slots that an activity can be
 Returns float("inf") if activity cannot be scheduled at the given slot. 1000 if the activity has no fixed time slots.
 """
 def calculate_activity_availabillity(cls: RecommendedRoutineActivityScheduler, day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
-    # first check whether activity can be scheduled at all at this slot
-    if (day,slot) not in processedTimeSlots:
-        return float("inf")
-
-    # give priority to activities that have fixed time slots
+    # no fixed time slots at all -> deprioritize but still eligible, not unschedulable
     if not processedTimeSlots:
         return 1000
+
+    # activity can't be scheduled at this slot
+    if (day,slot) not in processedTimeSlots:
+        return float("inf")
     
     # do not count time slots that are invalid, i.e. exceed opening days and available time slots
     o = cls.config["OPEN_DAYS"]

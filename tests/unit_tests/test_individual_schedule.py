@@ -35,11 +35,9 @@ class TestFixedRecommendedScheduling:
     def test_slot_present_in_single_element_set_returns_tally_of_one(self):
         assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, {(0, 2)}) == 1
 
-    def test_empty_processed_time_slots_returns_inf_not_1000(self):
-        """(BUG) no fixed time slots -> should hit the "return 1000" branch per the code,
-        but it actually returns inf because the check above it catches first. That branch
-        is dead."""
-        assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, set()) == float("inf")
+    def test_empty_processed_time_slots_returns_1000(self):
+        """No fixed time slots -> deprioritized but still eligible, not unschedulable."""
+        assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, set()) == 1000
 
     def test_slot_not_in_nonempty_set_returns_inf(self):
         assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, {(1, 3)}) == float("inf")
