@@ -366,7 +366,26 @@ class RoutineConsumer:
 
             logger.info(f"Handling routine deletion for {routine_id}")
 
-            deleted_datetime = message_data['timestamp']
+            # Extract timestamp from 'timestamp'
+            deleted_datetime = message_data.get('timestamp')
+
+            # Parse datetime string if needed
+            if deleted_datetime and isinstance(deleted_datetime, str):
+                from datetime import datetime
+
+                try:
+                    deleted_datetime = datetime.fromisoformat(deleted_datetime.replace('Z', '+00:00'))
+                except ValueError:
+                    logger.warning(f"Failed to parse timestamp: {deleted_datetime}, using current time")
+                    deleted_datetime = datetime.now()
+            elif not deleted_datetime:
+                # Fallback to current time if no timestamp provided
+                from datetime import datetime
+
+                deleted_datetime = datetime.now()
+                logger.warning(f"No timestamp in delete message for routine {routine_id}, using current time")
+
+            logger.debug(f"Using deletion timestamp: {deleted_datetime}")
 
             from pear_schedule.schemas.ref_activity_routine import RefActivityRoutineDelete
 
