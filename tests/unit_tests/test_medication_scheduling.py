@@ -166,6 +166,26 @@ class TestMedicationSchedulerFillSchedule:
         assert " | Give Medication@0900" in text  # first uses " | "
         assert ", Give Medication@0900" in text  # second uses ", "
 
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1's schedule is broken (None instead of a slot list), so it raises.
+        Patient 2 should still get scheduled."""
+        monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
+        patient_schedules = _patient_schedule()
+        patient_schedules[1][0] = None  # broken on purpose
+        patient_schedules[2] = [["" for _ in range(8)] for _ in range(5)]
+
+        two_patients = pd.concat([
+            _medication_row(patient_id=1),
+            _medication_row(patient_id=2),
+        ]).reset_index(drop=True)
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=two_patients), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()):
+            medicationScheduler.fillSchedule(patient_schedules)
+
+        assert "Give Medication" in patient_schedules[2][0][0]
+
     def test_caregiver_id_used_when_present(self, monkeypatch):
         monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
         caregiver_df = pd.DataFrame({"patientId": [1], "caregiverId": ["CG1"], "tempCaregiverId": [""], "supervisorId": ["SUP1"]})
