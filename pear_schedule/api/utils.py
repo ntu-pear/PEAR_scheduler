@@ -879,7 +879,12 @@ def groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleVi
     for _, grpActivityRecord in groupActivitiesDF.iterrows():
         groupActivitySet.add(grpActivityRecord["ActivityTitle"])
 
-    timeSlotSet = set(request.app.state.config["GROUP_TIMESLOT_MAPPING"])
+    # Anchor slots are 2-slot bins (groupScheduling.py), not single slots.
+    timeSlotSet = expandFixedTimeSlots(
+        request.app.state.config["GROUP_TIMESLOT_MAPPING"],
+        request.app.state.config["MAX_ACTIVITY_DURATION"],
+        request.app.state.config["MIN_ACTIVITY_DURATION"],
+    )
 
     for _, scheduleRecord in weeklyScheduleViewDF.iterrows():
         patientSchedule = [getScheduleDayActivities(scheduleRecord["Monday"]),getScheduleDayActivities(scheduleRecord["Tuesday"]),getScheduleDayActivities(scheduleRecord["Wednesday"]),getScheduleDayActivities(scheduleRecord["Thursday"]),getScheduleDayActivities(scheduleRecord["Friday"]),getScheduleDayActivities(scheduleRecord["Saturday"])]
