@@ -361,6 +361,47 @@ class MapperUtil:
                 },
                 'ignored_fields': []
             },
+            # Activity Service → Scheduler Service (Activity Routines)
+            'routine_service_to_scheduler': {
+                'source_service': 'activity-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'routine',
+                'required_fields': ['id', 'patient_id', 'activity_id'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field)
+                    'id': 'RoutineID',
+                    'patient_id': 'PatientID',
+                    'activity_id': 'ActivityID',
+                    'is_deleted': 'IsDeleted',
+                    'created_date': 'CreatedDateTime',
+                    'modified_date': 'UpdatedDateTime',
+                    'created_by_id': 'CreatedById',
+                    'modified_by_id': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
+                    'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'IncludeInSchedule': '1',  # no source field for this yet - default to included
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
+                    'CreatedById': 'activity_service',
+                    'ModifiedById': 'activity_service'
+                },
+                'ignored_fields': [
+                    # REF_ACTIVITY_ROUTINE has no columns for these yet.
+                    # Add mappings here once the schedule columns are agreed on.
+                    'name', 'day_of_week', 'start_time', 'end_time',
+                    'start_date', 'end_date', 'activity_title'
+                ]
+            },
+
             # Activity Service → Scheduler Service (Adhoc Activities)
             "adhoc_service_to_scheduler": {
                 "source_service": "activity-service",
@@ -850,6 +891,29 @@ def update_activity_exclusion_field_mapping(source_field: str, target_field: str
 def add_activity_exclusion_ignored_field(field_name: str):
     """Add field to activity exclusion ignore list"""
     mapper.add_ignored_field("activity_exclusion_service_to_scheduler", field_name)
+
+
+# Convenience functions for activity routine mapper
+def map_routine_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity routine data for create operation"""
+    return mapper.map_data(source_data, 'routine_service_to_scheduler', 'create')
+
+def map_routine_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity routine data for update operation"""
+    return mapper.map_data(source_data, 'routine_service_to_scheduler', 'update')
+
+def get_routine_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get activity routine mapping information"""
+    return mapper.get_mapping_info('routine_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_routine_field_mapping(source_field: str, target_field: str):
+    """Update activity routine field mapping when columns change"""
+    mapper.update_field_mapping('routine_service_to_scheduler', source_field, target_field)
+
+def add_routine_ignored_field(field_name: str):
+    """Add field to activity routine ignore list"""
+    mapper.add_ignored_field('routine_service_to_scheduler', field_name)
 
 
 # Convenience functions for adhoc mapper
