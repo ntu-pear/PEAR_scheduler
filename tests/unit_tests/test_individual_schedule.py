@@ -299,6 +299,27 @@ class TestRecommendedRoutineFillSchedule:
 
         assert schedules[1][0][1] == ""
 
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1 has no data in PatientsView, so it raises a KeyError. Patient 2 should still get scheduled."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": [1, 2], "IsFixed": [1, 1], "MinDuration": [30, 30],
+            "ActivityTitle": ["Broken Patient Activity", "Physiotherapy"], "FixedTimeSlots": ["0-1", "0-1"],
+            "PatientID": [1, 2], "ActivityEndDate": [pd.Timestamp("2099-12-31"), pd.Timestamp("2099-12-31")],
+        })
+        # patient 1 missing on purpose
+        patients_df = pd.DataFrame({"PatientID": [2], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
+        schedules = {1: [["", "", "", ""]], 2: [["", "", "", ""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][1] == ""  # patient 1 never got scheduled
+        assert schedules[2][0][1] == "Physiotherapy"  # patient 2 still did
+
     def test_multi_slot_activity_at_day_end_is_not_scheduled(self, monkeypatch):
         """Unlike compulsory's version of this check, this one actually works - confirms
         the day-bounds check at individualScheduling.py ~196 stops the overflow."""

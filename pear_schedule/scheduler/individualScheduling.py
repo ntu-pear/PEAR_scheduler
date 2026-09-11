@@ -138,15 +138,18 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 end = curr
 
                 patient_id = recommendations["PatientID"][start]
-                curr_df: pd.DataFrame = recommendations.iloc[start: end]
-                patient_schedule = schedules[patient_id]
+                try:
+                    curr_df: pd.DataFrame = recommendations.iloc[start: end]
+                    patient_schedule = schedules[patient_id]
 
-                fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
-                #patient_routine = routines[routines["PatientID"] == patient_id]
+                    fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
+                    #patient_routine = routines[routines["PatientID"] == patient_id]
 
-                cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
-               # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
-                cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
+                   # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
+                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+                except Exception:
+                    logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")
 
                 start = end
     
