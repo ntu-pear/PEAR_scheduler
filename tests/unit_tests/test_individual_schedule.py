@@ -486,6 +486,29 @@ class TestPreferredScheduling:
 
         assert schedules[1][0][0] == "Free and Easy"
 
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1's entry is missing "exclusions", so it raises a KeyError.
+        Patient 2 should still get scheduled."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+
+        activities_df = pd.DataFrame({
+            "ActivityID": [1], "ActivityTitle": ["Board Games"],
+            "FixedTimeSlots": [""], "MinDuration": [30], "MaxDuration": [30],
+        })
+        schedules = {1: [["", "", "", ""]], 2: [["", "", "", ""]]}
+        patients = {
+            1: {"preferences": {1}, "dispreferences": set()},  # missing "exclusions" on purpose
+            2: {"exclusions": set(), "preferences": {1}, "dispreferences": set()},
+        }
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
+
+        assert schedules[2][0][0] == "Board Games"
+
 
 class TestFindActivityBySlot:
     """PreferredActivityScheduler.__findActivityBySlot (name-mangled, hence the odd call syntax)."""
