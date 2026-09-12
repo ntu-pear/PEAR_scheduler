@@ -78,8 +78,8 @@ class TestFixedRecommendedScheduling:
 
 
 class TestRoutineScheduling:
-    """This whole path is dead in production - ValidRoutineActivitiesView always returns
-    empty - so these call __fillRoutines directly just to pin down what it currently does."""
+    """__fillRoutines itself, called directly. See TestRecommendedRoutineFillSchedule's
+    routine tests below for the end-to-end path through fillSchedule()."""
 
     def _make_patient_schedule(self):
         return [["", "", "", ""]]  # 1 day, 4 empty slots
@@ -181,11 +181,20 @@ def _empty_disrecommended_df():
     })
 
 
+def _empty_routines_df():
+    return pd.DataFrame({
+        "PatientID": pd.Series([], dtype="int64"),
+        "ActivityID": pd.Series([], dtype="int64"),
+        "ActivityTitle": pd.Series([], dtype="object"),
+        "FixedTimeSlots": pd.Series([], dtype="object"),
+    })
+
+
 from contextlib import ExitStack, contextmanager
 
 
 @contextmanager
-def _patch_recommended_stage(recommendations_df, patients_df=None, unpreferred_df=None, excluded_df=None, disrecommended_df=None):
+def _patch_recommended_stage(recommendations_df, patients_df=None, unpreferred_df=None, excluded_df=None, disrecommended_df=None, routines_df=None):
     """Swaps out the views recommended-activity scheduling reads for fake DataFrames."""
     with ExitStack() as stack:
         stack.enter_context(patch(
@@ -206,6 +215,10 @@ def _patch_recommended_stage(recommendations_df, patients_df=None, unpreferred_d
         stack.enter_context(patch(
             "pear_schedule.db_utils.views.DisrecommendedActivitiesView.get_data",
             return_value=disrecommended_df if disrecommended_df is not None else _empty_disrecommended_df(),
+        ))
+        stack.enter_context(patch(
+            "pear_schedule.db_utils.views.ValidRoutineActivitiesView.get_data",
+            return_value=routines_df if routines_df is not None else _empty_routines_df(),
         ))
         stack.enter_context(patch(
             "pear_schedule.scheduler.individualScheduling.DB.get_engine", return_value=MagicMock()
@@ -360,6 +373,31 @@ class TestRecommendedRoutineFillSchedule:
             RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
 
         assert schedules[1][0][3] == ""
+
+    def test_routine_activity_is_scheduled_end_to_end(self, monkeypatch):
+        """Fixed bug: __fillRoutines was never called, so routines never got scheduled
+        no matter what data was there. Goes through fillSchedule(), not __fillRoutines directly."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": [1], "IsFixed": [1], "MinDuration": [30],
+            "ActivityTitle": ["Physiotherapy"], "FixedTimeSlots": ["0-1"],
+            "PatientID": [1], "ActivityEndDate": [pd.Timestamp("2099-12-31")],
+        })
+        patients_df = pd.DataFrame({"PatientID": [1], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
+        routines_df = pd.DataFrame({
+            "PatientID": [1], "ActivityID": [2],
+            "ActivityTitle": ["Morning Walk"], "FixedTimeSlots": ["0-2"],
+        })
+        schedules = {1: [["", "", "", ""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        with _patch_recommended_stage(recommendations_df, patients_df=patients_df, routines_df=routines_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][1] == "Physiotherapy"
+        assert schedules[1][0][2] == "Morning Walk"
 
 
 class TestFillFlexibleActivities:

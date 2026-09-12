@@ -128,6 +128,10 @@ def _patch_all_views():
         "patientId": pd.Series([], dtype="int64"), "caregiverId": pd.Series([], dtype="object"),
         "tempCaregiverId": pd.Series([], dtype="object"), "supervisorId": pd.Series([], dtype="object"),
     })
+    empty_routines = pd.DataFrame({
+        "PatientID": pd.Series([], dtype="int64"), "ActivityID": pd.Series([], dtype="int64"),
+        "ActivityTitle": pd.Series([], dtype="object"), "FixedTimeSlots": pd.Series([], dtype="object"),
+    })
 
     with ExitStack() as stack:
         p = lambda target, value: stack.enter_context(patch(target, return_value=value))
@@ -146,6 +150,7 @@ def _patch_all_views():
         p("pear_schedule.db_utils.views.AdhocActivityView.get_data", adhoc_df)
         p("pear_schedule.db_utils.views.MedicationView.get_data", medication_df)
         p("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", empty_caregiver)
+        p("pear_schedule.db_utils.views.ValidRoutineActivitiesView.get_data", empty_routines)
         stack.enter_context(patch("pear_schedule.scheduler.individualScheduling.DB.get_engine", return_value=MagicMock()))
         yield
 

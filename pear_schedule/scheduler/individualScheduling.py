@@ -129,7 +129,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             patients = cls._get_patient_data(conn=conn)
 
             # get routine data
-#            routines = ValidRoutineActivitiesView.get_data(conn=conn)
+            routines = ValidRoutineActivitiesView.get_data(conn=conn)
 
             start = 0
 
@@ -146,10 +146,10 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     patient_schedule = schedules[patient_id]
 
                     fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
-                    #patient_routine = routines[routines["PatientID"] == patient_id]
+                    patient_routine = routines[routines["PatientID"] == patient_id]
 
                     cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
-                   # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
+                    cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
                     cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
                 except Exception:
                     logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")

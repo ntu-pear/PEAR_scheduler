@@ -444,43 +444,35 @@ class MedicationView(BaseView): # Just medication table view
                 medication.c["EndDateTime"] >= curDateTime
             )
         return query
-#ROUTINETable Not Ready, add in once ready.
-class ValidRoutineActivitiesView(BaseView): # 
+class ValidRoutineActivitiesView(BaseView):
     @classmethod
-    def build_query(cls) -> select:
-        logger.warning(
-            "ValidRoutineActivitiesView.build_query is stubbed — returning empty result"
+    def build_query(cls) -> Select:
+        logger.info("Building valid routine activities query")
+        schema = DB.schema
+
+        activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
+        routine = schema.tables["REF_ACTIVITY_ROUTINE"]
+
+        # one table now, not the old routine + routine_activity split
+        # RoutineTimeSlots aliased to FixedTimeSlots, that's what __fillRoutines expects
+        query: Select = select(
+            routine.c["PatientID"],
+            activity.c["ActivityID"],
+            activity.c["ActivityTitle"],
+            routine.c["RoutineTimeSlots"].label("FixedTimeSlots"),
+        ).join(
+            activity, activity.c["ActivityID"] == routine.c["ActivityID"]
+        ).where(
+            routine.c["IncludeInSchedule"] == True,
+            routine.c["IsDeleted"] == False,
+            activity.c["IsDeleted"] == False,
+            # unmapped RoutineTimeSlots would crash parseFixedTimeArr downstream
+            routine.c["RoutineTimeSlots"].isnot(None),
+            routine.c["RoutineTimeSlots"] != "",
         )
-        
-        # Return a SELECT with the expected columns, but no rows
-        return select(
-            literal_column("'TEMP_TITLE'").label("ActivityTitle"),
-            literal_column("0").label("ActivityID"),
-            literal_column("'{}'").label("FixedTimeSlots"),
-            literal_column("0").label("PatientID"),
-        ).where(literal_column("1=0"))  # ensures empty result
-    
-    # def build_query(cls) -> Select:
-    #     logger.info("Building valid routine activities query")
-    #     schema = DB.schema
 
-    #     activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
-    #     routine_activity = schema.tables[cls.db_tables.ROUTINE_ACTIVITY_TABLE]
-    #     routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
+        return query
 
-    #     query: Select = select(
-    #         activity.c["ActivityTitle"],
-    #         activity.c["ActivityID"],
-    #         routine_activity.c["FixedTimeSlots"],
-    #         routine.c["PatientID"]
-    #     ).join(
-    #         activity, activity.c["ActivityID"] == routine.c["ActivityID"]
-    #     ).join(
-    #         routine_activity, routine.c["RoutineID"] == routine_activity.c["RoutineID"]
-    #     ).where(routine.c["IncludeInSchedule"] == True)
-
-    #     return query
-    
 
 class ActivityNameView(BaseView): # get activity name from activityID
     @classmethod
