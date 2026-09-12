@@ -1,5 +1,6 @@
 import datetime
 from functools import partial
+import json
 import logging
 from typing import Dict, List, Mapping, Optional, Set, NamedTuple
 from pandas import Timestamp
@@ -7,9 +8,11 @@ import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
+from pear_schedule.db_utils.utils import day_timeslot_labels
 from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, DisrecommendedActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
 from pear_schedule.utils import DBTABLES
 
@@ -524,12 +527,23 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 activityTitle = activityTitle.strip()
                 return activities_title_lookup.get(activityTitle, None) in patient_data[pid]["exclusions"]
 
+            def parse_day_cell(day: str, cell: str) -> List[str]:
+                # day columns are JSON now, not the old '--' format
+                slots_per_day = cls.config["SLOTS_PER_DAY"].get(day, 0)
+                if not cell or not slots_per_day:
+                    return []
+                day_data = json.loads(cell)
+                labels = day_timeslot_labels(
+                    day, slots_per_day, cls.config["WORKING_HOURS"], cls.config["MIN_ACTIVITY_DURATION"]
+                )
+                return [day_data.get(label, "") for label in labels]
+
             formatted_schedules = {}
             schedule_meta = {}
             for _, row in latest_schedules.iterrows():
                 formatted_schedules[row["PatientID"]] = [
-                    [i if not check_excluded(row["PatientID"], i.split("|")[0]) else "" 
-                        for i in row[day].split("-")
+                    [i if not check_excluded(row["PatientID"], i.split("|")[0]) else ""
+                        for i in parse_day_cell(day, row[day])
                     ]
                     for day in cls.config["DAY_OF_WEEK_ORDER"]
                 ]
@@ -543,19 +557,11 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             cls.fillPreferences(formatted_schedules, conn, patient_data)
 
-            # recombine the updated and original schedules
-            for _, row in latest_schedules.iterrows():
-                new_schedule = formatted_schedules[row["PatientID"]]
-                for d, day in enumerate(cls.config["DAY_OF_WEEK_ORDER"]):
-                    old_schedule = row[day].split("-")
-                    # put medication back into the schedule
-                    new_schedule[d] = [
-                        "|".join((new_activity, *old_activity.split("|")[1:2]))
-                        for (new_activity, old_activity) in zip(new_schedule[d], old_schedule)
-                    ]
+            # same medication step the main pipeline uses, not the old manual copy
+            medicationSchedule_ref = medicationScheduler.fillSchedule(formatted_schedules)
 
             write_result = ScheduleWriter.write(
-                formatted_schedules, overwriteExisting=True, conn=conn, schedule_meta=schedule_meta,
+                formatted_schedules, medicationSchedule_ref, overwriteExisting=True, conn=conn, schedule_meta=schedule_meta,
             )
             if not write_result:
                 logger.error("Schedule updating failed")

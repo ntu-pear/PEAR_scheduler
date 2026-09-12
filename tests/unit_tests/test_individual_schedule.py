@@ -5,6 +5,7 @@ exclusions, multi-slot fits, and the neutral/Free-and-Easy fallbacks.
 
 
 import datetime
+import json
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
@@ -713,13 +714,15 @@ class TestUpdateSchedules:
     def _config(self):
         return make_scheduler_config(OPEN_DAYS=["Monday"], DB_TABLES=DB_TABLES)
 
-    def test_crashes_missing_medication_schedule_ref(self, monkeypatch):
-        """BUG: calls ScheduleWriter.write() without medicationScheduleRef, a required arg
-        every other call site passes. Crashes every time. Characterizing, not fixed yet."""
+    def test_writes_with_medication_schedule_ref(self, monkeypatch):
+        """Fixed bug: used to crash every run, missing medicationScheduleRef. Also fixed:
+        day cells are JSON now, not the old '--' format this used to assume."""
         from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
         import pear_schedule.scheduler.individualScheduling as individualScheduling
+        from pear_schedule.db_utils.utils import day_timeslot_labels
 
-        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+        cfg = self._config()
+        monkeypatch.setattr(PreferredActivityScheduler, "config", cfg, raising=False)
 
         fake_schema = MetaData()
         Table("REF_PATIENT", fake_schema, Column("PatientID", Integer, primary_key=True))
@@ -731,12 +734,16 @@ class TestUpdateSchedules:
         mock_engine.begin.return_value.__exit__.return_value = False
         monkeypatch.setattr(individualScheduling.DB, "get_engine", lambda: mock_engine, raising=False)
 
+        labels = day_timeslot_labels("Monday", 8, cfg["WORKING_HOURS"], cfg["MIN_ACTIVITY_DURATION"])
+        monday_cell = json.dumps({labels[0]: "Free and Easy"})
+
         latest_schedules = pd.DataFrame({
             "PatientID": [1], "ScheduleID": [10],
             "CreatedDateTime": [datetime.datetime(2024, 3, 18)],
             "StartDate": [datetime.datetime(2024, 3, 18)],
             "EndDate": [datetime.datetime(2024, 3, 24, 23, 59, 59)],
-            **{day: ["Free and Easy|None"] for day in DAY_COLUMNS},
+            "Monday": [monday_cell],
+            **{day: [""] for day in DAY_COLUMNS if day != "Monday"},
         })
         monkeypatch.setattr(
             PreferredActivityScheduler, "getMostUpdatedSchedules",
@@ -756,8 +763,22 @@ class TestUpdateSchedules:
             "EndDate": [pd.Timestamp("2099-12-31")],
         })
 
+        fake_med_ref = MagicMock()
+        mock_fill_medication = MagicMock(return_value=fake_med_ref)
+        monkeypatch.setattr(individualScheduling.medicationScheduler, "fillSchedule", mock_fill_medication)
+
+        mock_write = MagicMock(return_value=True)
+        monkeypatch.setattr(individualScheduling.ScheduleWriter, "write", mock_write)
+
         with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
-            with pytest.raises(TypeError, match="medicationScheduleRef"):
-                PreferredActivityScheduler.update_schedules(
-                    patientIDs=[1], update_date=datetime.date(2024, 3, 18)
-                )
+            PreferredActivityScheduler.update_schedules(
+                patientIDs=[1], update_date=datetime.date(2024, 3, 18)
+            )
+
+        mock_fill_medication.assert_called_once()
+        mock_write.assert_called_once()
+        # medicationScheduleRef is no longer missing
+        assert mock_write.call_args.args[1] is fake_med_ref
+        # JSON day cell was parsed correctly, not shredded by the old '-' split
+        written_schedules = mock_write.call_args.args[0]
+        assert written_schedules[1][0][0] == "Free and Easy"
