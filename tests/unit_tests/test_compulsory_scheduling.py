@@ -43,6 +43,27 @@ class TestCompulsoryScheduling:
         assert patient_schedules[1][0][1] == "Breathing+Vital Check"
         assert patient_schedules[2][0][1] == "Breathing+Vital Check"
 
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1's schedule is broken (None instead of a slot list), so it raises.
+        Patient 2 should still get scheduled."""
+        cfg = _config()
+        monkeypatch.setattr(CompulsoryActivityScheduler, "config", cfg, raising=False)
+        df = pd.DataFrame({
+            "ActivityTitle": ["Breathing+Vital Check"],
+            "FixedTimeSlots": ["0-1"],
+            "MinDuration": [30],
+        })
+        patient_schedules = _empty_schedule(num_patients=2)
+        patient_schedules[1][0] = None  # broken on purpose
+
+        with patch(
+            "pear_schedule.scheduler.compulsoryScheduling.CompulsoryActivitiesOnlyView.get_data",
+            return_value=df,
+        ):
+            CompulsoryActivityScheduler.fillSchedule(patient_schedules)
+
+        assert patient_schedules[2][0][1] == "Breathing+Vital Check"
+
     def test_min_duration_not_divisible_truncates_slot_count(self, monkeypatch):
         """MinDuration=45 with MIN_ACTIVITY_DURATION=30 -> 45 // 30 = 1 slot, not 2.
         Documents the floor-division truncation, not a bug fix."""

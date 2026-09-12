@@ -21,18 +21,21 @@ class CompulsoryActivityScheduler(BaseScheduler):
                 num_slots = row["MinDuration"] // cls.config["MIN_ACTIVITY_DURATION"]
 
                 for pid in patientSchedules.keys():
-                    # skip over time slots that are out of bounds
-                    if day >= len(patientSchedules[pid]) or hour + num_slots > len(patientSchedules[pid][day]):
-                        continue
+                    try:
+                        # skip over time slots that are out of bounds
+                        if day >= len(patientSchedules[pid]) or hour + num_slots > len(patientSchedules[pid][day]):
+                            continue
 
-                    # handling for accidental conflicting compulsory activities:
-                    # only write if every slot this activity would occupy is currently free
-                    targetSlots = patientSchedules[pid][day][hour:hour + num_slots]
-                    if all(not slot for slot in targetSlots):
-                        for d in range(num_slots):
-                            patientSchedules[pid][day][hour + d] = row["ActivityTitle"]
-                    else:
-                        logger.warning(
-                            f"Skipping compulsory activity {row['ActivityTitle']!r} for patient {pid} "
-                            f"on day {day} at hour {hour}: target slot(s) already occupied"
-                        )
+                        # handling for accidental conflicting compulsory activities:
+                        # only write if every slot this activity would occupy is currently free
+                        targetSlots = patientSchedules[pid][day][hour:hour + num_slots]
+                        if all(not slot for slot in targetSlots):
+                            for d in range(num_slots):
+                                patientSchedules[pid][day][hour + d] = row["ActivityTitle"]
+                        else:
+                            logger.warning(
+                                f"Skipping compulsory activity {row['ActivityTitle']!r} for patient {pid} "
+                                f"on day {day} at hour {hour}: target slot(s) already occupied"
+                            )
+                    except Exception:
+                        logger.exception(f"Compulsory scheduling failed for patient {pid}, skipping")

@@ -35,11 +35,9 @@ class TestFixedRecommendedScheduling:
     def test_slot_present_in_single_element_set_returns_tally_of_one(self):
         assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, {(0, 2)}) == 1
 
-    def test_empty_processed_time_slots_returns_inf_not_1000(self):
-        """(BUG) no fixed time slots -> should hit the "return 1000" branch per the code,
-        but it actually returns inf because the check above it catches first. That branch
-        is dead."""
-        assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, set()) == float("inf")
+    def test_empty_processed_time_slots_returns_1000(self):
+        """No fixed time slots -> deprioritized but still eligible, not unschedulable."""
+        assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, set()) == 1000
 
     def test_slot_not_in_nonempty_set_returns_inf(self):
         assert calculate_activity_availabillity(FakeSchedulerCls, 0, 2, {(1, 3)}) == float("inf")
@@ -301,6 +299,27 @@ class TestRecommendedRoutineFillSchedule:
 
         assert schedules[1][0][1] == ""
 
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1 has no data in PatientsView, so it raises a KeyError. Patient 2 should still get scheduled."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": [1, 2], "IsFixed": [1, 1], "MinDuration": [30, 30],
+            "ActivityTitle": ["Broken Patient Activity", "Physiotherapy"], "FixedTimeSlots": ["0-1", "0-1"],
+            "PatientID": [1, 2], "ActivityEndDate": [pd.Timestamp("2099-12-31"), pd.Timestamp("2099-12-31")],
+        })
+        # patient 1 missing on purpose
+        patients_df = pd.DataFrame({"PatientID": [2], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
+        schedules = {1: [["", "", "", ""]], 2: [["", "", "", ""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][1] == ""  # patient 1 never got scheduled
+        assert schedules[2][0][1] == "Physiotherapy"  # patient 2 still did
+
     def test_multi_slot_activity_at_day_end_is_not_scheduled(self, monkeypatch):
         """Unlike compulsory's version of this check, this one actually works - confirms
         the day-bounds check at individualScheduling.py ~196 stops the overflow."""
@@ -466,6 +485,29 @@ class TestPreferredScheduling:
             PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
 
         assert schedules[1][0][0] == "Free and Easy"
+
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1's entry is missing "exclusions", so it raises a KeyError.
+        Patient 2 should still get scheduled."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+
+        activities_df = pd.DataFrame({
+            "ActivityID": [1], "ActivityTitle": ["Board Games"],
+            "FixedTimeSlots": [""], "MinDuration": [30], "MaxDuration": [30],
+        })
+        schedules = {1: [["", "", "", ""]], 2: [["", "", "", ""]]}
+        patients = {
+            1: {"preferences": {1}, "dispreferences": set()},  # missing "exclusions" on purpose
+            2: {"exclusions": set(), "preferences": {1}, "dispreferences": set()},
+        }
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
+
+        assert schedules[2][0][0] == "Board Games"
 
 
 class TestFindActivityBySlot:

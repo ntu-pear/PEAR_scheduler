@@ -768,13 +768,58 @@ class TestSystemTestTimeslotLabels:
         })
         request = _fake_request({
             "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
-            "GROUP_TIMESLOT_MAPPING": [(0, 5)], 
+            "GROUP_TIMESLOT_MAPPING": [(0, 5)],
+            "MAX_ACTIVITY_DURATION": 60,
+            "MIN_ACTIVITY_DURATION": 30,
         })
 
         result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
 
         assert result["testResult"] == "Fail"
         assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_multi_slot_group_activity_second_slot_is_not_a_violation(self):
+        """A 60-min group activity's anchor+1 slot is part of its bin, not a mismatch."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Bingo", "09:30-10:00": "Bingo"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "GROUP_TIMESLOT_MAPPING": [(0, 0)],
+            "MAX_ACTIVITY_DURATION": 60,
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+        assert result["testRemarks"] == []
+
+    def test_group_activity_two_bins_away_from_anchor_still_fails(self):
+        """The bin expansion must not over-match slots outside any anchor's span."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({
+                "09:00-09:30": "Bingo", "09:30-10:00": "Bingo",
+                "10:00-10:30": "Bingo", "10:30-11:00": "Bingo",
+            })],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "GROUP_TIMESLOT_MAPPING": [(0, 0)],
+            "MAX_ACTIVITY_DURATION": 60,
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert len(result["testRemarks"]) == 2
 
     def test_clash_in_fixed_time_slot_warning_uses_real_hours(self):
         """Checks that clash warnings use the actual centre hours."""

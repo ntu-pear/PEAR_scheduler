@@ -138,15 +138,18 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 end = curr
 
                 patient_id = recommendations["PatientID"][start]
-                curr_df: pd.DataFrame = recommendations.iloc[start: end]
-                patient_schedule = schedules[patient_id]
+                try:
+                    curr_df: pd.DataFrame = recommendations.iloc[start: end]
+                    patient_schedule = schedules[patient_id]
 
-                fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
-                #patient_routine = routines[routines["PatientID"] == patient_id]
+                    fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
+                    #patient_routine = routines[routines["PatientID"] == patient_id]
 
-                cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
-               # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
-                cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
+                   # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
+                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+                except Exception:
+                    logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")
 
                 start = end
     
@@ -336,56 +339,59 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             if pid not in patients:
                 logger.error(f"unknown patientID {pid} found in schedules")
                 continue
-            patient = patients[pid]
+            try:
+                patient = patients[pid]
 
-            exclusions: Set[int] = patient["exclusions"]
-            preferences: Set[int] = patient["preferences"]
-            dispreferences: Set[int] = patient["dispreferences"]
+                exclusions: Set[int] = patient["exclusions"]
+                preferences: Set[int] = patient["preferences"]
+                dispreferences: Set[int] = patient["dispreferences"]
 
-            patient_activities = avail_activities[~avail_activities["ActivityID"].isin(exclusions)]
+                patient_activities = avail_activities[~avail_activities["ActivityID"].isin(exclusions)]
 
-            preference_idx = patient_activities["ActivityID"].isin(preferences)
-            non_preference_idx = (~patient_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
-            preferred_activities = patient_activities[preference_idx]
-            non_preferred_activites = patient_activities[non_preference_idx]
+                preference_idx = patient_activities["ActivityID"].isin(preferences)
+                non_preference_idx = (~patient_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
+                preferred_activities = patient_activities[preference_idx]
+                non_preferred_activites = patient_activities[non_preference_idx]
 
-            for day, day_sched in enumerate(sched):
-                curr_day_activities = set()
+                for day, day_sched in enumerate(sched):
+                    curr_day_activities = set()
 
-                i = 0
-                while i < len(day_sched):
-                    if not day_sched[i]:
-                        # find the longest stretch of empty slots
-                        j = i + 1
-                        while (j < len(day_sched) and not day_sched[j]):
-                            j += 1
-                        j -= 1 # j is incremented by 1 before the last check fails
-                        if i >= len(day_sched):
-                            break
+                    i = 0
+                    while i < len(day_sched):
+                        if not day_sched[i]:
+                            # find the longest stretch of empty slots
+                            j = i + 1
+                            while (j < len(day_sched) and not day_sched[j]):
+                                j += 1
+                            j -= 1 # j is incremented by 1 before the last check fails
+                            if i >= len(day_sched):
+                                break
 
-                        find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
-                        new_activity: str = \
-                            find_activity(preferred_activities, curr_day_activities) or \
-                            find_activity(non_preferred_activites, curr_day_activities)
-                        # min slot duration for replacement with Free and Easy
-                        new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
+                            find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
+                            new_activity: str = \
+                                find_activity(preferred_activities, curr_day_activities) or \
+                                find_activity(non_preferred_activites, curr_day_activities)
+                            # min slot duration for replacement with Free and Easy
+                            new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
 
-                        num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
-                        
-                        if not new_activity or j-i+1 < num_slots:
-                            new_activity = "Free and Easy"
-                            num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
-                        
-                        curr_day_activities.add(new_activity)
-                    
-                        for k in range(num_slots):
-                            day_sched[i+k] = new_activity
-                
-                    else:
-                        # potentially prevent the same activity from being scheduled again in the same day
-                        curr_day_activities.add(day_sched[i])
-                        
-                    i += 1
+                            num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
+
+                            if not new_activity or j-i+1 < num_slots:
+                                new_activity = "Free and Easy"
+                                num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
+
+                            curr_day_activities.add(new_activity)
+
+                            for k in range(num_slots):
+                                day_sched[i+k] = new_activity
+
+                        else:
+                            # potentially prevent the same activity from being scheduled again in the same day
+                            curr_day_activities.add(day_sched[i])
+
+                        i += 1
+            except Exception:
+                logger.exception(f"Preferred activity scheduling failed for patient {pid}, skipping")
 
     @classmethod
     def __findActivityBySlot(
@@ -560,13 +566,13 @@ This function calculates and returns the number of slots that an activity can be
 Returns float("inf") if activity cannot be scheduled at the given slot. 1000 if the activity has no fixed time slots.
 """
 def calculate_activity_availabillity(cls: RecommendedRoutineActivityScheduler, day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
-    # first check whether activity can be scheduled at all at this slot
-    if (day,slot) not in processedTimeSlots:
-        return float("inf")
-
-    # give priority to activities that have fixed time slots
+    # no fixed time slots at all -> deprioritize but still eligible, not unschedulable
     if not processedTimeSlots:
         return 1000
+
+    # activity can't be scheduled at this slot
+    if (day,slot) not in processedTimeSlots:
+        return float("inf")
     
     # do not count time slots that are invalid, i.e. exceed opening days and available time slots
     o = cls.config["OPEN_DAYS"]

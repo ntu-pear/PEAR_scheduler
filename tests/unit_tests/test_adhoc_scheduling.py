@@ -178,3 +178,25 @@ class TestAdhocScheduling:
 
         assert schedules[1][0][0] == "New Activity"
         assert schedules[1][0][1] == "Unrelated Activity"  # untouched, no expansion
+
+    def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
+        """Patient 1's schedule is broken (None instead of a slot list), so it raises.
+        Patient 2 should still get its replacement applied."""
+        cfg = _config()
+        monkeypatch.setattr(AdhocScheduler, "config", cfg, raising=False)
+        schedules = _schedule()
+        schedules[1][0] = None  # broken on purpose
+        schedules[2] = [["" for _ in range(4)] for _ in range(5)]
+        schedules[2][0][0] = "Old Activity"
+
+        adhoc_df = pd.concat([
+            _adhoc_row(patient_id=1),
+            _adhoc_row(patient_id=2),
+        ]).reset_index(drop=True)
+
+        with _freeze_now(monkeypatch), patch(
+            "pear_schedule.db_utils.views.AdhocActivityView.get_data", return_value=adhoc_df
+        ):
+            AdhocScheduler.fillSchedule(schedules)
+
+        assert schedules[2][0][0] == "New Activity"

@@ -39,29 +39,32 @@ class AdhocScheduler(BaseScheduler):
             if patient_id not in schedules:
                 continue
 
-            old_activity = row.get("OldActivityTitle")
-            new_activity = row.get("NewActivityTitle")
-            if not old_activity or not new_activity:
-                continue
+            try:
+                old_activity = row.get("OldActivityTitle")
+                new_activity = row.get("NewActivityTitle")
+                if not old_activity or not new_activity:
+                    continue
 
-            start_date = _to_date(row.get("StartDate"))
-            end_date = _to_date(row.get("EndDate"))
+                start_date = _to_date(row.get("StartDate"))
+                end_date = _to_date(row.get("EndDate"))
 
-            if start_date is None or end_date is None:
-                continue
+                if start_date is None or end_date is None:
+                    continue
 
-            if start_date > week_end or end_date < week_start:
-                continue
+                if start_date > week_end or end_date < week_start:
+                    continue
 
-            overlap_start = max(start_date, week_start)
-            overlap_end = min(end_date, week_end)
-            start_idx = (overlap_start - week_start).days
-            end_idx = (overlap_end - week_start).days
+                overlap_start = max(start_date, week_start)
+                overlap_end = min(end_date, week_end)
+                start_idx = (overlap_start - week_start).days
+                end_idx = (overlap_end - week_start).days
 
-            for day_idx in range(start_idx, end_idx + 1):
-                for slot_idx, activity in enumerate(schedules[patient_id][day_idx]):
-                    if activity == old_activity:
-                        schedules[patient_id][day_idx][slot_idx] = new_activity
-                        replacements_applied += 1
+                for day_idx in range(start_idx, end_idx + 1):
+                    for slot_idx, activity in enumerate(schedules[patient_id][day_idx]):
+                        if activity == old_activity:
+                            schedules[patient_id][day_idx][slot_idx] = new_activity
+                            replacements_applied += 1
+            except Exception:
+                logger.exception(f"Adhoc scheduling failed for patient {patient_id}, skipping")
         if replacements_applied:
             logger.info(f"Applied {replacements_applied} adhoc slot replacements")

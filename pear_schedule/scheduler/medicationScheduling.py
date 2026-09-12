@@ -115,28 +115,31 @@ class medicationScheduler(BaseScheduler):
         medicationSchedule_ref = medicationScheduleData(cls)
         medicationSchedules: Mapping[int, List[Dict]] = medicationSchedule_ref.medicationSchedules
         for pid, med in medicationSchedules.items():
-            for med_info in med:
-              # unpack
-              day, hour, slot, prescription, dosage, instruction = (
-                  med_info['day'],
-                  med_info['hour'],
-                  med_info['administerTime'],
-                  med_info['prescription'],
-                  med_info['dosage'],
-                  med_info['instruction']
-              )
+            try:
+                for med_info in med:
+                  # unpack
+                  day, hour, slot, prescription, dosage, instruction = (
+                      med_info['day'],
+                      med_info['hour'],
+                      med_info['administerTime'],
+                      med_info['prescription'],
+                      med_info['dosage'],
+                      med_info['instruction']
+                  )
 
-              # fill schedule
-              s = "{begin}@{slot}: {prescription}({dosage}){end}"
-              s = s.format(
-                begin = " | Give Medication" if "Give Medication" not in patientSchedules[pid][day][hour] else ", Give Medication",
-                slot = slot,
-                prescription = prescription,
-                dosage = dosage,
-                end = "" if instruction is None or not instruction.strip() or instruction.lower() in ["nil", "-"] else f"**{instruction}"
-              )
-                            
-              patientSchedules[pid][day][hour] += s
+                  # fill schedule
+                  s = "{begin}@{slot}: {prescription}({dosage}){end}"
+                  s = s.format(
+                    begin = " | Give Medication" if "Give Medication" not in patientSchedules[pid][day][hour] else ", Give Medication",
+                    slot = slot,
+                    prescription = prescription,
+                    dosage = dosage,
+                    end = "" if instruction is None or not instruction.strip() or instruction.lower() in ["nil", "-"] else f"**{instruction}"
+                  )
+
+                  patientSchedules[pid][day][hour] += s
+            except Exception:
+                logger.exception(f"Medication scheduling failed for patient {pid}, skipping")
         
         return medicationSchedule_ref
     
