@@ -20,6 +20,7 @@ from pear_schedule.db_utils.views import (
     PatientsUnpreferredView,
     PatientsView,
     RecommendedActivitiesView,
+    ValidRoutineActivitiesView,
 )
 from pear_schedule.utils import DBTABLES
 
@@ -96,6 +97,15 @@ def _make_fake_schema() -> MetaData:
         Column("EndDateTime", DateTime),
         Column("IsDeleted", Boolean),
     )
+    Table(
+        "REF_ACTIVITY_ROUTINE", schema,
+        Column("RoutineID", Integer, primary_key=True),
+        Column("PatientID", Integer),
+        Column("ActivityID", Integer),
+        Column("IncludeInSchedule", Boolean),
+        Column("IsDeleted", Boolean),
+        Column("RoutineTimeSlots", String),
+    )
     return schema
 
 
@@ -116,6 +126,7 @@ def fake_view_config(monkeypatch):
         PatientsView,
         PatientsUnpreferredView,
         PatientsOnlyView,
+        ValidRoutineActivitiesView,
     ):
         view_cls.init_app({"DB_TABLES": DB_TABLES})
 
@@ -349,3 +360,89 @@ class TestPatientsOnlyViewStatusFiltering:
             rows = conn.execute(PatientsOnlyView.build_query()).mappings().all()
 
         assert {row["PatientID"] for row in rows} == {1}
+
+
+class TestValidRoutineActivitiesView:
+    """Was stubbed to always return 0 rows. Real query now, checked against real data."""
+
+    def _seed(self, engine, schema, *, include_in_schedule=True, routine_deleted=False, activity_deleted=False, routine_time_slots="0-2"):
+        activity = schema.tables["REF_ACTIVITY"]
+        routine = schema.tables["REF_ACTIVITY_ROUTINE"]
+        with engine.begin() as conn:
+            conn.execute(insert(activity).values(ActivityID=1, ActivityTitle="Morning Walk", IsDeleted=activity_deleted))
+            conn.execute(insert(routine).values(
+                RoutineID=1, PatientID=1, ActivityID=1,
+                IncludeInSchedule=include_in_schedule, IsDeleted=routine_deleted,
+                RoutineTimeSlots=routine_time_slots,
+            ))
+
+    def test_returns_routine_with_activity_title_and_slots(self):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        self._seed(engine, schema)
+
+        with engine.connect() as conn:
+            rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
+
+        assert len(rows) == 1
+        assert rows[0]["PatientID"] == 1
+        assert rows[0]["ActivityID"] == 1
+        assert rows[0]["ActivityTitle"] == "Morning Walk"
+        assert rows[0]["FixedTimeSlots"] == "0-2"
+
+    def test_excludes_routine_not_marked_include_in_schedule(self):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        self._seed(engine, schema, include_in_schedule=False)
+
+        with engine.connect() as conn:
+            rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
+
+        assert len(rows) == 0
+
+    def test_excludes_deleted_routine(self):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        self._seed(engine, schema, routine_deleted=True)
+
+        with engine.connect() as conn:
+            rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
+
+        assert len(rows) == 0
+
+    def test_excludes_deleted_activity(self):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        self._seed(engine, schema, activity_deleted=True)
+
+        with engine.connect() as conn:
+            rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
+
+        assert len(rows) == 0
+
+    def test_excludes_null_routine_time_slots(self):
+        """Unmapped RoutineTimeSlots would crash parseFixedTimeArr downstream."""
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        self._seed(engine, schema, routine_time_slots=None)
+
+        with engine.connect() as conn:
+            rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
+
+        assert len(rows) == 0
+
+    def test_excludes_empty_string_routine_time_slots(self):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        self._seed(engine, schema, routine_time_slots="")
+
+        with engine.connect() as conn:
+            rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
+
+        assert len(rows) == 0

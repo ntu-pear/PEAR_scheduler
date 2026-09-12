@@ -1,7 +1,13 @@
 from datetime import datetime, timedelta
 
 from pear_schedule.db_utils import utils
-from pear_schedule.db_utils.utils import day_timeslot_label, day_timeslot_labels, timeslot_index
+from pear_schedule.db_utils.utils import (
+    day_timeslot_label,
+    day_timeslot_labels,
+    decode_day_of_week_bitmask,
+    routine_time_slots,
+    timeslot_index,
+)
 
 
 class TestGetWeekStartAndGetWeekEnd:
@@ -86,3 +92,58 @@ class TestDayTimeslotLabel:
         """Checks that a single label only depends on its slot index."""
         working_hours = {"monday": {"open": "09:00", "close": "17:00"}}
         assert day_timeslot_label("Monday", 5, working_hours, 30) == PROD_DAY_TIMESLOTS[5]
+
+
+DAY_OF_WEEK_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+OPEN_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+WORKING_HOURS = {day.lower(): {"open": "09:00", "close": "17:00"} for day in OPEN_DAYS}
+
+
+class TestDecodeDayOfWeekBitmask:
+    def test_single_day(self):
+        assert decode_day_of_week_bitmask(1, DAY_OF_WEEK_ORDER) == ["Monday"]
+
+    def test_monday_plus_tuesday_is_1_plus_2(self):
+        assert decode_day_of_week_bitmask(3, DAY_OF_WEEK_ORDER) == ["Monday", "Tuesday"]
+
+    def test_matches_test_routine_consumer_fixture(self):
+        # test_routine_consumer.py's routine_data() fixture uses day_of_week=5 (Mon+Wed)
+        assert decode_day_of_week_bitmask(5, DAY_OF_WEEK_ORDER) == ["Monday", "Wednesday"]
+
+    def test_zero_returns_empty(self):
+        assert decode_day_of_week_bitmask(0, DAY_OF_WEEK_ORDER) == []
+
+    def test_none_returns_empty(self):
+        assert decode_day_of_week_bitmask(None, DAY_OF_WEEK_ORDER) == []
+
+
+class TestRoutineTimeSlots:
+    def test_single_day_single_slot(self):
+        result = routine_time_slots(1, "09:00:00", "09:30:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result == "0-0"
+
+    def test_monday_plus_tuesday_is_1_plus_2(self):
+        result = routine_time_slots(3, "09:00:00", "09:30:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result == "0-0,1-0"
+
+    def test_multi_slot_span_expands_to_consecutive_slots(self):
+        # 09:00-10:00 is two 30min slots, __fillRoutines has no duration logic of its own
+        result = routine_time_slots(1, "09:00:00", "10:00:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result == "0-0,0-1"
+
+    def test_bit_on_a_closed_day_is_dropped(self):
+        # Monday (1) + Saturday (32), centre isn't open Saturday
+        result = routine_time_slots(1 + 32, "09:00:00", "09:30:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result == "0-0"
+
+    def test_all_bits_on_closed_days_returns_none(self):
+        result = routine_time_slots(32, "09:00:00", "09:30:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result is None
+
+    def test_zero_day_of_week_returns_none(self):
+        result = routine_time_slots(0, "09:00:00", "09:30:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result is None
+
+    def test_end_not_after_start_defaults_to_one_slot(self):
+        result = routine_time_slots(1, "09:30:00", "09:00:00", DAY_OF_WEEK_ORDER, OPEN_DAYS, WORKING_HOURS, 30)
+        assert result == "0-1"

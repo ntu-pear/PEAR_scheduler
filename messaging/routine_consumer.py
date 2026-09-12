@@ -5,10 +5,12 @@ from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.utils import ConfigDependant
+from pear_schedule.db_utils.utils import routine_time_slots
 
 logger = logging.getLogger(__name__)
 
-class RoutineConsumer:
+class RoutineConsumer(ConfigDependant):
     """
     Consumer for activity routine events with separated CRUD operations.
 
@@ -228,6 +230,22 @@ class RoutineConsumer:
             logger.error(f"Failed to parse message: {str(e)}")
             return None
 
+    def _compute_routine_time_slots(self, routine_data: Dict[str, Any]) -> Optional[str]:
+        """day_of_week/start_time/end_time aren't in field_mappings, read them straight from source."""
+        try:
+            return routine_time_slots(
+                routine_data.get('day_of_week'),
+                routine_data.get('start_time'),
+                routine_data.get('end_time'),
+                self.config['DAY_OF_WEEK_ORDER'],
+                self.config['OPEN_DAYS'],
+                self.config['WORKING_HOURS'],
+                self.config['MIN_ACTIVITY_DURATION'],
+            )
+        except Exception as e:
+            logger.warning(f"Failed to compute RoutineTimeSlots: {str(e)}")
+            return None
+
     def _handle_routine_created(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
         """Handle activity routine creation events"""
         try:
@@ -244,6 +262,8 @@ class RoutineConsumer:
                 logger.error(f"Failed to map activity routine data for routine {routine_id}")
                 logger.debug(f"Source data: {routine_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
+
+            mapped_routine_data['RoutineTimeSlots'] = self._compute_routine_time_slots(routine_data)
 
             logger.debug(f"Mapped routine data: {mapped_routine_data}")
 
@@ -299,6 +319,8 @@ class RoutineConsumer:
                 logger.debug(f"Source update data: {routine_data}")
                 return MessageProcessingResult.FAILED_PERMANENT
 
+            mapped_update_data['RoutineTimeSlots'] = self._compute_routine_time_slots(routine_data)
+
             logger.debug(f"Mapped update data: {mapped_update_data}")
 
             from pear_schedule.schemas.ref_activity_routine import RefActivityRoutineUpdate
@@ -330,6 +352,7 @@ class RoutineConsumer:
                         from pear_schedule.schemas.ref_activity_routine import RefActivityRoutineCreate
                         mapped_routine_data = self.map_routine_create(routine_data)
                         if mapped_routine_data:
+                            mapped_routine_data['RoutineTimeSlots'] = self._compute_routine_time_slots(routine_data)
                             ref_routine_data = RefActivityRoutineCreate(**mapped_routine_data)
                             create_result, _ = self.create_ref_activity_routine(
                                 db=db,

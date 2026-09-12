@@ -11,6 +11,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from tests.utils.scheduler_config import make_scheduler_config
 
 
 TIMESTAMP = "2025-09-11T10:30:00"
@@ -31,6 +32,8 @@ def consumer():
     with patch("messaging.routine_consumer.RabbitMQClient"):
         from messaging.routine_consumer import RoutineConsumer
         consumer = RoutineConsumer()
+
+    consumer.config = make_scheduler_config()
 
     processed = FakeProcessedEvents()
     consumer.is_event_already_processed = processed
@@ -150,14 +153,13 @@ class TestRoutineCreated:
 
         assert consumer.create_ref_activity_routine.call_args.kwargs["created_by"] == "1"
 
-    def test_schedule_details_are_not_yet_mapped(self, consumer):
-        """REF_ACTIVITY_ROUTINE has no columns for day/time yet, so the mapper drops
-        them. This pins the known gap: RoutineTimeSlots stays NULL, which is why the
-        scheduler cannot place routines. Update this test when the columns land."""
+    def test_schedule_details_are_now_mapped(self, consumer):
+        """day_of_week is a bitmask. Fixture uses 5 = Monday+Wednesday (1+4),
+        09:00:00-10:00:00 is two 30min slots on each day."""
         consumer._process_routine_message(created_event())
 
         routine = consumer.create_ref_activity_routine.call_args.kwargs["routine"]
-        assert routine.RoutineTimeSlots is None
+        assert routine.RoutineTimeSlots == "0-0,0-1,2-0,2-1"
         assert routine.RoutineIssues is None
 
     def test_missing_required_identifier_is_permanent_failure(self, consumer):
