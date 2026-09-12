@@ -462,7 +462,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         # use datetime to avoid db side issues when comparing date and datetime
         curr_date = curr_date or datetime.date.today()
         curr_week_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
-        curr_week_start = curr_week_start - datetime.timedelta(days = datetime.datetime.now().weekday())
+        curr_week_start = curr_week_start - datetime.timedelta(days = curr_date.weekday())
         next_week_start = curr_week_start + datetime.timedelta(days=7)
 
         latest_sched_cte = select(

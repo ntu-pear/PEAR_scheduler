@@ -690,9 +690,10 @@ class TestGetMostUpdatedSchedules:
 
         assert list(result["PatientID"]) == [1]
 
-    def test_week_start_uses_real_todays_weekday_not_curr_dates_bug(self, monkeypatch):
-        """BUG: week start is offset by now().weekday(), not curr_date's. "now" here is
-        Saturday, curr_date is Wednesday - week gets anchored wrong, row falls out of range."""
+    def test_week_start_uses_curr_dates_weekday_regardless_of_real_today(self, monkeypatch):
+        """Fixed bug: week start used to be offset by now().weekday() instead of
+        curr_date's. "now" here is Saturday, curr_date is Wednesday - should still
+        anchor to curr_date's own week."""
         engine, scheduler, schedule_table = self._run(
             monkeypatch, _make_schedule_schema(), now=datetime.datetime(2024, 3, 23, 10, 0),
         )
@@ -703,7 +704,7 @@ class TestGetMostUpdatedSchedules:
         with engine.connect() as conn:
             result = scheduler.getMostUpdatedSchedules([1], conn, datetime.date(2024, 3, 20))
 
-        assert len(result) == 0  # should be 1
+        assert list(result["ScheduleID"]) == [1]
 
 
 class TestUpdateSchedules:
