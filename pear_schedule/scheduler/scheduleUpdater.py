@@ -14,6 +14,7 @@ class ScheduleRefresher(ConfigDependant):
         stmt: Select = select(patient_table).where(
             patient_table.c["UpdateBit"] == 1,
             patient_table.c["IsDeleted"] == False,
+            patient_table.c["IsActive"] == True,
         )
 
         with DB.get_engine().begin() as conn:

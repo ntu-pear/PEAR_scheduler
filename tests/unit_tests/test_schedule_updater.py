@@ -33,6 +33,7 @@ def _make_patient_schema() -> MetaData:
         Column("PatientID", Integer, primary_key=True),
         Column("UpdateBit", String(1)),
         Column("IsDeleted", String(1)),
+        Column("IsActive", String(1)),
     )
     return schema
 
@@ -52,9 +53,9 @@ class TestRefreshSchedules:
         schema.create_all(engine)
         patient_table = schema.tables["REF_PATIENT"]
         with engine.begin() as conn:
-            conn.execute(insert(patient_table).values(PatientID=1, UpdateBit="1", IsDeleted="0"))
-            conn.execute(insert(patient_table).values(PatientID=2, UpdateBit="0", IsDeleted="0"))
-            conn.execute(insert(patient_table).values(PatientID=3, UpdateBit="1", IsDeleted="1"))
+            conn.execute(insert(patient_table).values(PatientID=1, UpdateBit="1", IsDeleted="0", IsActive="1"))
+            conn.execute(insert(patient_table).values(PatientID=2, UpdateBit="0", IsDeleted="0", IsActive="1"))
+            conn.execute(insert(patient_table).values(PatientID=3, UpdateBit="1", IsDeleted="1", IsActive="1"))
 
         monkeypatch.setattr(scheduleUpdater.DB, "get_engine", lambda: engine, raising=False)
 
@@ -66,6 +67,31 @@ class TestRefreshSchedules:
         mock_update.assert_called_once()
         called_patient_ids = list(mock_update.call_args[0][0])
         assert called_patient_ids == [1]
+
+    def test_excludes_inactive_patients(self, monkeypatch):
+        """Same idea as the IsDeleted test above, but for IsActive - used to be missing."""
+        import pear_schedule.scheduler.scheduleUpdater as scheduleUpdater
+
+        monkeypatch.setattr(ScheduleRefresher, "config", self._config(), raising=False)
+        schema = _make_patient_schema()
+        monkeypatch.setattr(scheduleUpdater.DB, "schema", schema, raising=False)
+
+        engine = create_engine("sqlite:///:memory:")
+        schema.create_all(engine)
+        patient_table = schema.tables["REF_PATIENT"]
+        with engine.begin() as conn:
+            conn.execute(insert(patient_table).values(PatientID=1, UpdateBit="1", IsDeleted="0", IsActive="1"))
+            conn.execute(insert(patient_table).values(PatientID=2, UpdateBit="1", IsDeleted="0", IsActive="0"))
+
+        monkeypatch.setattr(scheduleUpdater.DB, "get_engine", lambda: engine, raising=False)
+
+        with patch(
+            "pear_schedule.scheduler.scheduleUpdater.PreferredActivityScheduler.update_schedules"
+        ) as mock_update:
+            ScheduleRefresher.refresh_schedules()
+
+        mock_update.assert_called_once()
+        assert list(mock_update.call_args[0][0]) == [1]
 
     def test_no_flagged_patients_still_calls_update_schedules_with_empty_series(self, monkeypatch):
         import pear_schedule.scheduler.scheduleUpdater as scheduleUpdater

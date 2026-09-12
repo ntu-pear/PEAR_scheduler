@@ -16,6 +16,7 @@ from pear_schedule.db_utils.views import (
     GroupActivitiesOnlyView,
     GroupActivitiesPreferenceView,
     GroupActivitiesRecommendationView,
+    PatientsOnlyView,
     PatientsUnpreferredView,
     PatientsView,
     RecommendedActivitiesView,
@@ -46,6 +47,8 @@ def _make_fake_schema() -> MetaData:
     Table(
         "REF_PATIENT", schema,
         Column("PatientID", Integer, primary_key=True),
+        Column("IsDeleted", Boolean),
+        Column("IsActive", Boolean),
     )
     Table(
         "REF_ACTIVITY", schema,
@@ -112,6 +115,7 @@ def fake_view_config(monkeypatch):
         RecommendedActivitiesView,
         PatientsView,
         PatientsUnpreferredView,
+        PatientsOnlyView,
     ):
         view_cls.init_app({"DB_TABLES": DB_TABLES})
 
@@ -324,3 +328,24 @@ class TestPatientPreferenceStartDateFiltering:
             f"{view_cls.__name__} returned {returned_labels}; expected everything up to and "
             "including this week, STARTS_AFTER_WEEK excluded."
         )
+
+
+class TestPatientsOnlyViewStatusFiltering:
+    """Deleted/inactive patients used to get a schedule generated just like anyone else,
+    since this view had no WHERE clause at all."""
+
+    def test_excludes_deleted_and_inactive_patients(self):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        patient = schema.tables["REF_PATIENT"]
+
+        with engine.begin() as conn:
+            conn.execute(insert(patient).values(PatientID=1, IsDeleted=False, IsActive=True))
+            conn.execute(insert(patient).values(PatientID=2, IsDeleted=True, IsActive=True))
+            conn.execute(insert(patient).values(PatientID=3, IsDeleted=False, IsActive=False))
+
+        with engine.connect() as conn:
+            rows = conn.execute(PatientsOnlyView.build_query()).mappings().all()
+
+        assert {row["PatientID"] for row in rows} == {1}

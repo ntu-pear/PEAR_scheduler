@@ -200,8 +200,12 @@ class PatientsOnlyView(BaseView): # Just patients only
 
         patient = schema.tables[cls.db_tables.PATIENT_TABLE]
 
+        # skip deleted/inactive patients - they shouldn't get a schedule generated
         query: Select = select(
             patient.c.PatientID
+        ).where(
+            patient.c["IsDeleted"] == False,
+            patient.c["IsActive"] == True,
         )
 
         return query
