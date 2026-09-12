@@ -6,9 +6,29 @@ exclusions, multi-slot fits, and the neutral/Free-and-Easy fallbacks.
 
 import datetime
 import pandas as pd
+import pytest
 from unittest.mock import patch, MagicMock
+from sqlalchemy import MetaData, Table, Column, Integer, String, DateTime, create_engine, insert
 from pear_schedule.scheduler.individualScheduling import _get_max_enddate, calculate_activity_availabillity
+from pear_schedule.utils import DBTABLES
 from tests.utils.scheduler_config import make_scheduler_config
+
+DAY_COLUMNS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+DB_TABLES = DBTABLES(
+    ACTIVITY_TABLE="REF_ACTIVITY",
+    ACTIVITY_EXCLUSION_TABLE="REF_ACTIVITY_EXCLUSION",
+    CENTRE_ACTIVITY_TABLE="REF_CENTRE_ACTIVITY",
+    CENTRE_ACTIVITY_PREFERENCE_TABLE="REF_ACTIVITY_PREFERENCE",
+    CENTRE_ACTIVITY_RECOMMENDATION_TABLE="REF_ACTIVITY_RECOMMENDATION",
+    PATIENT_TABLE="REF_PATIENT",
+    SCHEDULE_TABLE="SCHEDULE",
+    MEDICATION_SCHEDULE_TABLE="MEDICATION_SCHEDULE",
+    MEDICATION_TABLE="REF_PATIENT_MEDICATION",
+    ALLOCATION_TABLE="REF_PATIENT_ALLOCATION",
+    CARE_CENTRE_TABLE="REF_CARE_CENTRE",
+    ADHOC_TABLE="REF_ADHOC",
+)
 
 class TestUtils:
     def test_get_max_enddate(self):
@@ -553,3 +573,190 @@ class TestFindActivityBySlot:
 
         result = self._call(activities, set(), day=0, slot=0, slot_size=1)
         assert result == "First"
+
+
+def _make_schedule_schema() -> MetaData:
+    """Minimal SCHEDULE table, real column types, for real-SQLite tests below."""
+    schema = MetaData()
+    Table(
+        "SCHEDULE", schema,
+        Column("ScheduleID", Integer, primary_key=True),
+        Column("PatientID", Integer),
+        Column("StartDate", DateTime),
+        Column("EndDate", DateTime),
+        Column("IsDeleted", String(1)),
+        Column("CreatedDateTime", DateTime),
+        Column("UpdatedDateTime", DateTime),
+        *[Column(day, String) for day in DAY_COLUMNS],
+    )
+    return schema
+
+
+def _insert_schedule(conn, schedule_table, **overrides):
+    values = {
+        "ScheduleID": 1, "PatientID": 1,
+        "StartDate": datetime.datetime(2024, 3, 18),
+        "EndDate": datetime.datetime(2024, 3, 24, 23, 59, 59),
+        "IsDeleted": "0",
+        "CreatedDateTime": datetime.datetime(2024, 3, 18),
+        "UpdatedDateTime": datetime.datetime(2024, 3, 18),
+        **{day: "" for day in DAY_COLUMNS},
+    }
+    values.update(overrides)
+    conn.execute(insert(schedule_table).values(**values))
+
+
+class TestGetMostUpdatedSchedules:
+    """PreferredActivityScheduler.getMostUpdatedSchedules, real SQLite, no coverage before this."""
+
+    def _config(self):
+        return make_scheduler_config(DB_TABLES=DB_TABLES)
+
+    def _freeze_now(self, monkeypatch, individualScheduling, fixed_now):
+        # curr_week_start uses now().weekday(), not curr_date's - freeze it here so these
+        # tests don't depend on what day they're run. See the bug test below.
+        class FixedDateTime(datetime.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return fixed_now
+
+        monkeypatch.setattr(individualScheduling.datetime, "datetime", FixedDateTime)
+
+    def _run(self, monkeypatch, schema, now=None):
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+        import pear_schedule.scheduler.individualScheduling as individualScheduling
+
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+        monkeypatch.setattr(individualScheduling.DB, "schema", schema, raising=False)
+        # matches curr_date's weekday (Wed 2024-03-20) below, so it doesn't hit the bug test covers
+        self._freeze_now(monkeypatch, individualScheduling, now or datetime.datetime(2024, 3, 20, 10, 0))
+
+        engine = create_engine("sqlite:///:memory:")
+        schema.create_all(engine)
+        return engine, PreferredActivityScheduler, schema.tables["SCHEDULE"]
+
+    def test_returns_only_latest_updated_row_per_patient(self, monkeypatch):
+        engine, scheduler, schedule_table = self._run(monkeypatch, _make_schedule_schema())
+
+        with engine.begin() as conn:
+            _insert_schedule(conn, schedule_table, ScheduleID=1, UpdatedDateTime=datetime.datetime(2024, 3, 18, 9, 0))
+            _insert_schedule(conn, schedule_table, ScheduleID=2, UpdatedDateTime=datetime.datetime(2024, 3, 19, 15, 0))
+
+        with engine.connect() as conn:
+            result = scheduler.getMostUpdatedSchedules([1], conn, datetime.date(2024, 3, 20))
+
+        assert list(result["ScheduleID"]) == [2]
+
+    def test_excludes_rows_outside_current_week(self, monkeypatch):
+        engine, scheduler, schedule_table = self._run(monkeypatch, _make_schedule_schema())
+
+        with engine.begin() as conn:
+            # last week, later UpdatedDateTime, shouldn't count
+            _insert_schedule(
+                conn, schedule_table, ScheduleID=1,
+                StartDate=datetime.datetime(2024, 3, 11), EndDate=datetime.datetime(2024, 3, 17, 23, 59, 59),
+                UpdatedDateTime=datetime.datetime(2024, 3, 19, 15, 0),
+            )
+            _insert_schedule(conn, schedule_table, ScheduleID=2, UpdatedDateTime=datetime.datetime(2024, 3, 18, 9, 0))
+
+        with engine.connect() as conn:
+            result = scheduler.getMostUpdatedSchedules([1], conn, datetime.date(2024, 3, 20))
+
+        assert list(result["ScheduleID"]) == [2]
+
+    def test_excludes_soft_deleted_rows(self, monkeypatch):
+        engine, scheduler, schedule_table = self._run(monkeypatch, _make_schedule_schema())
+
+        with engine.begin() as conn:
+            _insert_schedule(
+                conn, schedule_table, ScheduleID=1, IsDeleted="1",
+                UpdatedDateTime=datetime.datetime(2024, 3, 19, 15, 0),
+            )
+
+        with engine.connect() as conn:
+            result = scheduler.getMostUpdatedSchedules([1], conn, datetime.date(2024, 3, 20))
+
+        assert len(result) == 0
+
+    def test_excludes_patients_not_requested(self, monkeypatch):
+        engine, scheduler, schedule_table = self._run(monkeypatch, _make_schedule_schema())
+
+        with engine.begin() as conn:
+            _insert_schedule(conn, schedule_table, ScheduleID=1, PatientID=1)
+            _insert_schedule(conn, schedule_table, ScheduleID=2, PatientID=2)
+
+        with engine.connect() as conn:
+            result = scheduler.getMostUpdatedSchedules([1], conn, datetime.date(2024, 3, 20))
+
+        assert list(result["PatientID"]) == [1]
+
+    def test_week_start_uses_real_todays_weekday_not_curr_dates_bug(self, monkeypatch):
+        """BUG: week start is offset by now().weekday(), not curr_date's. "now" here is
+        Saturday, curr_date is Wednesday - week gets anchored wrong, row falls out of range."""
+        engine, scheduler, schedule_table = self._run(
+            monkeypatch, _make_schedule_schema(), now=datetime.datetime(2024, 3, 23, 10, 0),
+        )
+
+        with engine.begin() as conn:
+            _insert_schedule(conn, schedule_table, ScheduleID=1)
+
+        with engine.connect() as conn:
+            result = scheduler.getMostUpdatedSchedules([1], conn, datetime.date(2024, 3, 20))
+
+        assert len(result) == 0  # should be 1
+
+
+class TestUpdateSchedules:
+    """PreferredActivityScheduler.update_schedules, the regenerate/patch path. No coverage before this."""
+
+    def _config(self):
+        return make_scheduler_config(OPEN_DAYS=["Monday"], DB_TABLES=DB_TABLES)
+
+    def test_crashes_missing_medication_schedule_ref(self, monkeypatch):
+        """BUG: calls ScheduleWriter.write() without medicationScheduleRef, a required arg
+        every other call site passes. Crashes every time. Characterizing, not fixed yet."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+        import pear_schedule.scheduler.individualScheduling as individualScheduling
+
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+
+        fake_schema = MetaData()
+        Table("REF_PATIENT", fake_schema, Column("PatientID", Integer, primary_key=True))
+        monkeypatch.setattr(individualScheduling.DB, "schema", fake_schema, raising=False)
+
+        mock_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.begin.return_value.__enter__.return_value = mock_conn
+        mock_engine.begin.return_value.__exit__.return_value = False
+        monkeypatch.setattr(individualScheduling.DB, "get_engine", lambda: mock_engine, raising=False)
+
+        latest_schedules = pd.DataFrame({
+            "PatientID": [1], "ScheduleID": [10],
+            "CreatedDateTime": [datetime.datetime(2024, 3, 18)],
+            "StartDate": [datetime.datetime(2024, 3, 18)],
+            "EndDate": [datetime.datetime(2024, 3, 24, 23, 59, 59)],
+            **{day: ["Free and Easy|None"] for day in DAY_COLUMNS},
+        })
+        monkeypatch.setattr(
+            PreferredActivityScheduler, "getMostUpdatedSchedules",
+            classmethod(lambda cls, patientIDs, conn, curr_date=None: latest_schedules),
+        )
+        monkeypatch.setattr(
+            PreferredActivityScheduler, "_get_patient_data",
+            classmethod(lambda cls, conn=None, week_end=None: {1: {"exclusions": set()}}),
+        )
+        monkeypatch.setattr(
+            PreferredActivityScheduler, "fillPreferences",
+            classmethod(lambda cls, schedules, conn=None, patients=None: None),
+        )
+
+        activities_df = pd.DataFrame({
+            "ActivityTitle": ["Free and Easy"], "ActivityID": [1],
+            "EndDate": [pd.Timestamp("2099-12-31")],
+        })
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            with pytest.raises(TypeError, match="medicationScheduleRef"):
+                PreferredActivityScheduler.update_schedules(
+                    patientIDs=[1], update_date=datetime.date(2024, 3, 18)
+                )
