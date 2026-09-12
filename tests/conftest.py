@@ -6,6 +6,7 @@ from tests.utils.mock_db import get_db_session_mock
 from tests.utils.scheduler_config import make_scheduler_config
 from pear_schedule.models.ref_patient_model import RefPatient
 from pear_schedule.models.ref_activity_model import RefActivity
+from pear_schedule.models.ref_adhoc_model import RefAdhoc
 from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
 from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
@@ -48,6 +49,25 @@ def sample_ref_activity():
         ActivityID=1,
         ActivityTitle="Morning Exercise",
         ActivityDesc="Light exercise for seniors",
+        IsDeleted="0",
+        CreatedDateTime=datetime.now(),
+        UpdatedDateTime=datetime.now(),
+        CreatedById="test_user",
+        ModifiedById="test_user"
+    )
+
+
+@pytest.fixture
+def sample_ref_adhoc():
+    """Create a sample RefAdhoc instance"""
+    return RefAdhoc(
+        AdhocID=1,
+        PatientID=1,
+        OldCentreActivityID=1,
+        NewCentreActivityID=2,
+        StartDate=datetime(2024, 1, 1).date(),
+        EndDate=datetime(2024, 1, 7).date(),
+        Status="Active",
         IsDeleted="0",
         CreatedDateTime=datetime.now(),
         UpdatedDateTime=datetime.now(),
