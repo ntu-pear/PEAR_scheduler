@@ -9,7 +9,7 @@ import json
 import pandas as pd
 import pytest
 from unittest.mock import patch, MagicMock
-from sqlalchemy import MetaData, Table, Column, Integer, String, DateTime, create_engine, insert
+from sqlalchemy import MetaData, Table, Column, Integer, String, Boolean, DateTime, create_engine, insert
 from pear_schedule.scheduler.individualScheduling import _get_max_enddate, calculate_activity_availabillity
 from pear_schedule.utils import DBTABLES
 from tests.utils.scheduler_config import make_scheduler_config
@@ -782,3 +782,62 @@ class TestUpdateSchedules:
         # JSON day cell was parsed correctly, not shredded by the old '-' split
         written_schedules = mock_write.call_args.args[0]
         assert written_schedules[1][0][0] == "Free and Easy"
+
+    def test_fallback_query_excludes_deleted_and_inactive_patients(self, monkeypatch):
+        """update_schedules's own patient-selection query (used when patientIDs isn't
+        given) used to filter IsDeleted but not IsActive."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+        import pear_schedule.scheduler.individualScheduling as individualScheduling
+
+        cfg = self._config()
+        monkeypatch.setattr(PreferredActivityScheduler, "config", cfg, raising=False)
+
+        fake_schema = MetaData()
+        Table(
+            "REF_PATIENT", fake_schema,
+            Column("PatientID", Integer, primary_key=True),
+            Column("IsDeleted", Boolean),
+            Column("IsActive", Boolean),
+        )
+        monkeypatch.setattr(individualScheduling.DB, "schema", fake_schema, raising=False)
+
+        engine = create_engine("sqlite:///:memory:")
+        fake_schema.create_all(engine)
+        patient_table = fake_schema.tables["REF_PATIENT"]
+        with engine.begin() as conn:
+            conn.execute(insert(patient_table).values(PatientID=1, IsDeleted=False, IsActive=True))
+            conn.execute(insert(patient_table).values(PatientID=2, IsDeleted=True, IsActive=True))
+            conn.execute(insert(patient_table).values(PatientID=3, IsDeleted=False, IsActive=False))
+        monkeypatch.setattr(individualScheduling.DB, "get_engine", lambda: engine, raising=False)
+
+        empty_schedules = pd.DataFrame({
+            "PatientID": [], "ScheduleID": [], "CreatedDateTime": [], "StartDate": [], "EndDate": [],
+            **{day: [] for day in DAY_COLUMNS},
+        })
+        captured = {}
+
+        def fake_get_most_updated(cls, patientIDs, conn, curr_date=None):
+            captured["patientIDs"] = patientIDs
+            return empty_schedules
+
+        monkeypatch.setattr(
+            PreferredActivityScheduler, "getMostUpdatedSchedules", classmethod(fake_get_most_updated)
+        )
+        monkeypatch.setattr(
+            PreferredActivityScheduler, "_get_patient_data",
+            classmethod(lambda cls, conn=None, week_end=None: {}),
+        )
+        monkeypatch.setattr(
+            PreferredActivityScheduler, "fillPreferences",
+            classmethod(lambda cls, schedules, conn=None, patients=None: None),
+        )
+        monkeypatch.setattr(
+            individualScheduling.medicationScheduler, "fillSchedule", MagicMock(return_value=MagicMock())
+        )
+        monkeypatch.setattr(individualScheduling.ScheduleWriter, "write", MagicMock(return_value=True))
+
+        activities_df = pd.DataFrame({"ActivityTitle": [], "ActivityID": [], "EndDate": []})
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.update_schedules(patientIDs=[])
+
+        assert captured["patientIDs"] == {1}

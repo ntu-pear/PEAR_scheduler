@@ -503,7 +503,10 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             if not len(patientIDs):
                 stmt: Select = select(
                     patient_table.c["PatientID"]
-                ).where(patient_table.c["IsDeleted"] == False)
+                ).where(
+                    patient_table.c["IsDeleted"] == False,
+                    patient_table.c["IsActive"] == True,
+                )
 
                 res: Result = conn.execute(stmt)
                 patientIDs = set(pid for (pid,) in res.all())
