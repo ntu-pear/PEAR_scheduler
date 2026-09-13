@@ -12,6 +12,7 @@ from pear_schedule.models.ref_activity_preference_model import RefActivityPrefer
 from pear_schedule.models.ref_activity_recommendation_model import RefActivityRecommendation
 from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
 from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
+from pear_schedule.models.ref_patient_allocation_model import RefPatientAllocation
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
 from pear_schedule.models.schedule_model import Schedule
 
@@ -73,6 +74,27 @@ def sample_ref_adhoc():
         UpdatedDateTime=datetime.now(),
         CreatedById="test_user",
         ModifiedById="test_user"
+    )
+
+
+@pytest.fixture
+def sample_ref_patient_allocation():
+    """Create a sample RefPatientAllocation instance"""
+    return RefPatientAllocation(
+        id=1,
+        active="Y",
+        isDeleted="0",
+        patientId=1,
+        doctorId="doctor_1",
+        gameTherapistId="therapist_1",
+        supervisorId="supervisor_1",
+        caregiverId="caregiver_1",
+        tempDoctorId=None,
+        tempCaregiverId=None,
+        created_date=datetime(2024, 1, 1),
+        modified_date=datetime(2024, 1, 1),
+        created_by_id="test_user",
+        modified_by_id="test_user"
     )
 
 
