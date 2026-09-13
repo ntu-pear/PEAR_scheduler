@@ -451,7 +451,7 @@ class ValidRoutineActivitiesView(BaseView):
         schema = DB.schema
 
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]
-        routine = schema.tables["REF_ACTIVITY_ROUTINE"]
+        routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
 
         # one table now, not the old routine + routine_activity split
         # RoutineTimeSlots aliased to FixedTimeSlots, that's what __fillRoutines expects
