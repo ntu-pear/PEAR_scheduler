@@ -314,17 +314,38 @@ def delete_ref_patient_allocation(
         db.flush()
         return db_allocation
     
-    # Use IdempotencyService for deduplication
+    # Use IdempotencyService for deduplication (unless skipped for sync events)
     try:
-        result, was_duplicate = IdempotencyService.process_idempotent(
-            db=db,
-            correlation_id=correlation_id,
-            event_type="PATIENT_ALLOCATION_DELETED",
-            aggregate_id=allocation_id,
-            processed_by=f"scheduler_service_{allocation_delete.modified_by_id}",
-            operation=delete_operation
-        )
-        
+        if skip_duplicate_check:
+            logger.info(
+                f"Skipping duplicate check for patient allocation {allocation_id} "
+                "(sync event)"
+            )
+            # Execute delete directly without idempotency check
+            result = delete_operation()
+            was_duplicate = False
+
+            # Still record the event for tracking, but don't check for duplicates
+            try:
+                IdempotencyService.record_processed_event(
+                    db=db,
+                    correlation_id=correlation_id,
+                    event_type="PATIENT_ALLOCATION_DELETED",
+                    aggregate_id=allocation_id,
+                    processed_by=f"scheduler_service_{allocation_delete.modified_by_id}_sync"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+        else:
+            result, was_duplicate = IdempotencyService.process_idempotent(
+                db=db,
+                correlation_id=correlation_id,
+                event_type="PATIENT_ALLOCATION_DELETED",
+                aggregate_id=allocation_id,
+                processed_by=f"scheduler_service_{allocation_delete.modified_by_id}",
+                operation=delete_operation
+            )
+
         if was_duplicate:
             # Return current state for duplicate events
             existing_allocation = db.query(RefPatientAllocation).filter(

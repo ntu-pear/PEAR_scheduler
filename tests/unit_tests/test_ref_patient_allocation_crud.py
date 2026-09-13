@@ -479,10 +479,9 @@ def test_delete_duplicate_event(mock_process_idempotent, db_session_mock, sample
 
 
 @mock.patch('pear_schedule.crud.ref_patient_allocation_crud.IdempotencyService.process_idempotent')
-def test_delete_skip_duplicate_check_has_no_effect(mock_process_idempotent, db_session_mock, sample_ref_patient_allocation, sample_deleted_data):
-    """Unlike create/update, delete doesn't branch on skip_duplicate_check - always goes through process_idempotent."""
+def test_delete_skip_duplicate_check(mock_process_idempotent, db_session_mock, sample_ref_patient_allocation, sample_deleted_data):
+    """Test delete when skipping duplicate idempotency check."""
     db_session_mock.query().filter().first.return_value = sample_ref_patient_allocation
-    mock_process_idempotent.side_effect = _passthrough_idempotent
 
     result, was_duplicate = delete_ref_patient_allocation(
         db=db_session_mock,
@@ -494,7 +493,8 @@ def test_delete_skip_duplicate_check_has_no_effect(mock_process_idempotent, db_s
 
     assert result == sample_ref_patient_allocation
     assert was_duplicate is False
-    mock_process_idempotent.assert_called_once()
+    mock_process_idempotent.assert_not_called()
+    db_session_mock.commit.assert_called_once()
 
 
 @mock.patch('pear_schedule.crud.ref_patient_allocation_crud.IdempotencyService.process_idempotent')
