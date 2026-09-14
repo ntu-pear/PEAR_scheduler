@@ -400,6 +400,31 @@ class TestRecommendedRoutineFillSchedule:
         assert schedules[1][0][1] == "Physiotherapy"
         assert schedules[1][0][2] == "Morning Walk"
 
+    def test_routine_only_patient_with_no_recommendations_is_still_scheduled(self, monkeypatch):
+        """Fixed bug: a patient with no recommendations never becomes a group boundary in
+        the recommendations loop, so their routine was never scheduled."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": pd.Series(dtype="int64"), "IsFixed": pd.Series(dtype="int64"),
+            "MinDuration": pd.Series(dtype="int64"), "ActivityTitle": pd.Series(dtype="object"),
+            "FixedTimeSlots": pd.Series(dtype="object"), "PatientID": pd.Series(dtype="int64"),
+            "ActivityEndDate": pd.Series(dtype="datetime64[ns]"),
+        })
+        patients_df = pd.DataFrame({"PatientID": [1], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
+        routines_df = pd.DataFrame({
+            "PatientID": [1], "ActivityID": [9],
+            "ActivityTitle": ["art & craft AM"], "FixedTimeSlots": ["0-1"],
+        })
+        schedules = {1: [["", "", "", ""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        with _patch_recommended_stage(recommendations_df, patients_df=patients_df, routines_df=routines_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][1] == "art & craft AM"
+
 
 class TestFillFlexibleActivities:
     """Calls __fillFlexibleActivities directly, skipping the rest of the stage."""

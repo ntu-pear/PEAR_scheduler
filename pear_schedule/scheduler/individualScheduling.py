@@ -155,7 +155,23 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")
 
                 start = end
-    
+
+            # patients with a routine but no recommendations never hit the loop above, so
+            # they need their own pass here
+            no_fixed_activities = pd.DataFrame(columns=["ActivityTitle", "FixedTimeSlots"])
+            recommended_patient_ids = set(recommendations["PatientID"].dropna().unique())
+            routine_only_patient_ids = set(routines["PatientID"].unique()) - recommended_patient_ids
+
+            for patient_id in routine_only_patient_ids:
+                try:
+                    patient_schedule = schedules[patient_id]
+                    patient_routine = routines[routines["PatientID"] == patient_id]
+                    patient_info = patients.get(patient_id, {"preferences": set(), "exclusions": dict(), "dispreferences": set()})
+
+                    cls.__fillRoutines(patient_schedule, no_fixed_activities, patient_routine, patient_info, week_start)
+                except Exception:
+                    logger.exception(f"Routine scheduling failed for patient {patient_id}, skipping")
+
     @classmethod
     def __fillByFixedTimeSlots(
         cls, 
