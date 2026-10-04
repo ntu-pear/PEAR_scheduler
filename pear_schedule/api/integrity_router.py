@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from pear_schedule.database import get_db
 from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
 from pear_schedule.models.ref_adhoc_model import RefAdhoc
+from pear_schedule.models.ref_activity_routine_model import RefActivityRoutine
 from pear_schedule.models.ref_activity_model import RefActivity
 from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
 from pear_schedule.models.ref_activity_recommendation_model import (
@@ -543,6 +544,56 @@ async def get_ref_adhoc_integrity(
         raise HTTPException(status_code=500, detail=f"Ref adhoc integrity check failed: {str(e)}")
 
 
+@router.get("/ref-activity-routine")
+async def get_ref_activity_routine_integrity(
+    hours_back: int = Query(1, ge=1, le=168),
+    limit: int = Query(1000, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns reference activity routine IDs and timestamps.
+    This data should match the authoritative Activity Service.
+    """
+    try:
+        cutoff_time = datetime.now() - timedelta(hours=hours_back)
+
+        ref_routines = db.query(RefActivityRoutine).filter(
+            RefActivityRoutine.UpdatedDateTime >= cutoff_time
+        ).order_by(RefActivityRoutine.RoutineID).limit(limit).offset(offset).all()
+
+        records = []
+        for routine in ref_routines:
+            records.append({
+                "RoutineID": routine.RoutineID,
+                "modified_date": routine.UpdatedDateTime.isoformat(),
+                "version_timestamp": int(routine.UpdatedDateTime.timestamp() * 1000),
+                "record_type": "ref_activity_routine"
+            })
+
+        total_count = db.query(RefActivityRoutine).filter(
+            RefActivityRoutine.UpdatedDateTime >= cutoff_time
+        ).count()
+
+        return {
+            "service": "scheduler",
+            "endpoint": "/integrity/ref-activity-routine",
+            "window_hours": hours_back,
+            "cutoff_time": cutoff_time.isoformat(),
+            "total_count": total_count,
+            "returned_count": len(records),
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + len(records)) < total_count,
+            "records": records,
+            "generated_at": datetime.now().isoformat(),
+            "note": "eventual_consistent_copy"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ref activity routine integrity check failed: {str(e)}")
+
+
 @router.get("/summary")
 async def get_ref_integrity_summary(
     hours_back: int = Query(1, ge=1, le=168),
@@ -592,9 +643,13 @@ async def get_ref_integrity_summary(
             RefAdhoc.UpdatedDateTime >= cutoff_time
         ).count()
 
+        routine_count = db.query(RefActivityRoutine).filter(
+            RefActivityRoutine.UpdatedDateTime >= cutoff_time
+        ).count()
+
         total = (activity_count + centre_activity_count + preference_count +
                 recommendation_count + exclusion_count + patient_count + medication_count + allocation_count +
-                adhoc_count)
+                adhoc_count + routine_count)
         
         return {
             "service": "scheduler",
@@ -611,6 +666,7 @@ async def get_ref_integrity_summary(
                 "ref_patient_medication": medication_count,
                 "ref_patient_allocation": allocation_count,
                 "ref_adhoc": adhoc_count,
+                "ref_activity_routine": routine_count,
                 "total": total
             },
             "generated_at": datetime.now().isoformat(),
