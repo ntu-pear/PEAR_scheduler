@@ -438,10 +438,11 @@ class MedicationView(BaseView): # Just medication table view
             medication.c["IsDeleted"] == False
         )
         if curDate:
-            # startDateTime <| curDateTime |> endDateTime
+            # active at any point today; NULL EndDateTime means no end date
+            start_of_today = curDateTime.replace(hour=0, minute=0, second=0, microsecond=0)
             query = query.where(
-                medication.c["StartDateTime"] <= curDateTime,
-                medication.c["EndDateTime"] >= curDateTime
+                medication.c["StartDateTime"] < start_of_today + timedelta(days=1),
+                medication.c["EndDateTime"].is_(None) | (medication.c["EndDateTime"] >= start_of_today)
             )
         return query
 class ValidRoutineActivitiesView(BaseView):
