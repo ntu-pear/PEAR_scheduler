@@ -2,12 +2,13 @@ import logging
 import traceback
 import datetime
 import pandas as pd
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 from pear_schedule.schemas.medication_schedule import MedicationScheduleUpdate
 from pear_schedule.db_utils.writer import MedicationScheduleWrite
 from pear_schedule.api.utils import MedicationAlreadyAdministeredException, MedicationScheduleNotFoundException
+from pear_schedule.api.auth_util import JWTPayload, get_current_user, is_supervisor
 
 from pear_schedule.db_utils.views import TodayMedicationScheduleView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
@@ -16,7 +17,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Medication Schedule"])
 
-@router.get("/get/")
+
+def require_supervisor(current_user: JWTPayload = Depends(get_current_user)) -> JWTPayload:
+    if not is_supervisor(current_user):
+        raise HTTPException(status_code=403, detail="Only supervisors can access the medication schedule")
+    return current_user
+
+
+@router.get("/get/", dependencies=[Depends(require_supervisor)])
 def get_medication_schedule(request: Request):
     try:
         medicationSchedules = medicationScheduler.generateTodayMedSchedule()
@@ -31,7 +39,7 @@ def get_medication_schedule(request: Request):
         logger.info(traceback.format_exc())
         raise HTTPException(status_code=400, detail=f"An error occurred while fetching medication schedules: {str(e)}")
 
-@router.put("/update/")
+@router.put("/update/", dependencies=[Depends(require_supervisor)])
 def update_medication_schedule(
     request: Request,
     medication_schedule: MedicationScheduleUpdate
