@@ -11,6 +11,7 @@ from sqlalchemy import MetaData, Table, Column, Integer, String, Boolean, Date, 
 from pear_schedule.db_utils import views
 from pear_schedule.db_utils.views import (
     ActivitiesView,
+    MedicationView,
     CompulsoryActivitiesOnlyView,
     GroupActivitiesExclusionView,
     GroupActivitiesOnlyView,
@@ -107,6 +108,14 @@ def _make_fake_schema() -> MetaData:
         Column("IsDeleted", Boolean),
         Column("RoutineTimeSlots", String),
     )
+    Table(
+        "REF_PATIENT_MEDICATION", schema,
+        Column("MedicationID", Integer, primary_key=True),
+        Column("PatientID", Integer),
+        Column("IsDeleted", Boolean),
+        Column("StartDateTime", DateTime),
+        Column("EndDateTime", DateTime),
+    )
     return schema
 
 
@@ -128,6 +137,7 @@ def fake_view_config(monkeypatch):
         PatientsUnpreferredView,
         PatientsOnlyView,
         ValidRoutineActivitiesView,
+        MedicationView,
     ):
         view_cls.init_app({"DB_TABLES": DB_TABLES})
 
@@ -447,3 +457,46 @@ class TestValidRoutineActivitiesView:
             rows = conn.execute(ValidRoutineActivitiesView.build_query()).mappings().all()
 
         assert len(rows) == 0
+
+
+class TestMedicationViewToday:
+    """curDate=True compared against now(), so a course ending at midnight of its last day
+    dropped off for that whole day, and NULL EndDateTime (no end date) was always excluded."""
+
+    NOW = datetime(2024, 3, 20, 10, 0)
+
+    def _active_ids(self, monkeypatch, courses):
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return TestMedicationViewToday.NOW
+
+        monkeypatch.setattr(views, "datetime", FixedDatetime)
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        medication = schema.tables["REF_PATIENT_MEDICATION"]
+        with engine.begin() as conn:
+            for med_id, (start, end) in courses.items():
+                conn.execute(insert(medication).values(
+                    MedicationID=med_id, PatientID=1, IsDeleted=False, StartDateTime=start, EndDateTime=end,
+                ))
+        with engine.connect() as conn:
+            return {r["MedicationID"] for r in conn.execute(MedicationView.build_query(curDate=True)).mappings()}
+
+    def test_course_ending_at_midnight_today_is_active_all_day(self, monkeypatch):
+        assert self._active_ids(monkeypatch, {1: (datetime(2024, 3, 1), datetime(2024, 3, 20))}) == {1}
+
+    def test_course_with_no_end_date_is_active(self, monkeypatch):
+        assert self._active_ids(monkeypatch, {1: (datetime(2024, 3, 1), None)}) == {1}
+
+    def test_course_starting_later_today_is_active(self, monkeypatch):
+        assert self._active_ids(monkeypatch, {1: (datetime(2024, 3, 20, 15, 0), None)}) == {1}
+
+    def test_excludes_courses_outside_today(self, monkeypatch):
+        courses = {
+            1: (datetime(2024, 3, 1), datetime(2024, 3, 19, 23, 59)),  # ended yesterday
+            2: (datetime(2024, 3, 21), None),  # starts tomorrow
+            3: (datetime(2024, 3, 1), datetime(2024, 3, 25)),  # active
+        }
+        assert self._active_ids(monkeypatch, courses) == {3}
