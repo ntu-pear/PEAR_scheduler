@@ -1,6 +1,6 @@
 import pytest
 
-from app import validate_group_timeslot_mapping
+from pear_schedule.services.care_centre_util import validate_group_timeslot_mapping
 from tests.utils.scheduler_config import make_scheduler_config
 
 

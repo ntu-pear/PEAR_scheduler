@@ -102,6 +102,7 @@ jobs:
           echo "WEB_FE_ORIGIN=${{ vars.WEB_FE_ORIGIN }}" >> .env
           echo "WEB_FE_ORIGIN_STAGING=${{ vars.WEB_FE_ORIGIN_STAGING }}" >> .env
           echo "USER_BE_ORIGIN=${{ vars.USER_BE_ORIGIN }}" >> .env
+          echo "ACTIVITY_SERVICE_URL=${{ vars.ACTIVITY_SERVICE_URL }}" >> .env
           echo "ENVIRONMENT=${{ inputs.environment }}" >> .env
 
       # A var or secret missing from the environment resolves to an empty string

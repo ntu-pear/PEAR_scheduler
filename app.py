@@ -6,9 +6,6 @@ import sys
 import threading
 import signal
 import asyncio
-import json
-import pandas as pd
-import datetime
 from typing import Any, Mapping
 
 import uvicorn
@@ -17,7 +14,7 @@ from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.db_utils.views import CareCentreView
-from pear_schedule.db_utils.utils import timeslot_index
+from pear_schedule.services.care_centre_util import apply_centre_hours
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -78,25 +75,6 @@ logger = logging.getLogger(__name__)
 consumer_manager = None
 shutdown_event = threading.Event()
 
-def validate_group_timeslot_mapping(config: Mapping[str, Any]) -> Mapping[str, Any]:
-    """Validate and convert each GROUP_TIMESLOT_MAPPING entry (e.g. "Monday 09:30") into a
-    (day_index, slot_index) tuple.
-    """
-    for i, timeslot_str in enumerate(config["GROUP_TIMESLOT_MAPPING"]):
-        qualified_day = timeslot_str.split(" ")[0]
-        if qualified_day not in config["OPEN_DAYS"]:
-            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because centre is not open on {qualified_day}.")
-        day = config["OPEN_DAYS"].index(qualified_day)
-
-        time_obj = datetime.datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
-        opening_time_obj = datetime.datetime.strptime(config["WORKING_HOURS"].get(qualified_day.lower()).get("open"), "%H:%M")
-        slot = timeslot_index(time_obj - opening_time_obj, config["MIN_ACTIVITY_DURATION"])
-        if slot < 0 or slot >= config["SLOTS_PER_DAY"].get(qualified_day):
-            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because timing is out of bounds for center's working hours.")
-        config["GROUP_TIMESLOT_MAPPING"][i] = (day, slot)
-
-    return config
-
 def create_app():
     from pear_schedule.api import (
         schedule_router,
@@ -136,32 +114,8 @@ def create_app():
     DB.init_app(app.state.config["DB_CONN_STR"], app.state.config)
     logger.info("Initialising Care Centre View")
     CareCentreView.init_app(app.state.config)
-    careCentreView: pd.DataFrame = CareCentreView.get_data()
-    workingHours_str = ""
-    try:
-        workingHours_str = careCentreView.iloc[0]["WorkingHours"]
-    except IndexError:
-        raise Exception("No care centre found in database.")
-    if not workingHours_str:
-        raise Exception("Working hours not found for care centre.")
-    workingHours: dict = json.loads(workingHours_str)
-    # data format: day in lowercase -> open, close (24hr format, e.g. 0900, 1700)
-    schedulable_days = []
-    num_slots_per_day = {}
-    for day in app.state.config["DAY_OF_WEEK_ORDER"]:
-        opening_info: dict = workingHours.get(day.lower())
-        if opening_info.get("open"):
-            schedulable_days.append(day)
-            open_hour = datetime.datetime.strptime(workingHours.get(day.lower()).get("open"), "%H:%M")
-            closing_hour = datetime.datetime.strptime(workingHours.get(day.lower()).get("close"), "%H:%M")
-            num_slots_per_day[day] = (closing_hour - open_hour) // datetime.timedelta(minutes=app.state.config["MIN_ACTIVITY_DURATION"])
-    
-    # push this as global config variable for writer.py to use. reload configs for all subclasses of ConfigDependant
-    app.state.config["OPEN_DAYS"] = schedulable_days
-    app.state.config["WORKING_HOURS"] = workingHours
-    app.state.config["SLOTS_PER_DAY"] = num_slots_per_day
-
-    validate_group_timeslot_mapping(app.state.config)
+    # working hours from Activity service, falls back to REF_CARE_CENTRE
+    apply_centre_hours(app.state.config)
     logger.info(f"check group timeslot mapping: {app.state.config['GROUP_TIMESLOT_MAPPING']}")
     loadConfigs(app.state.config) # then load config for the rest of the classes
 

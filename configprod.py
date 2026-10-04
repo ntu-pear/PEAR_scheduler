@@ -63,3 +63,5 @@ MIN_ACTIVITY_DURATION: int = 30 # in minutes
 MAX_ACTIVITY_DURATION: int = 60 # in minutes
 STD_DATE_FORMAT = "%Y-%m-%d"
 CARE_CENTRE_ID = 1
+# working hours come from here when set, else from REF_CARE_CENTRE
+ACTIVITY_SERVICE_URL = os.getenv("ACTIVITY_SERVICE_URL", "")
