@@ -173,3 +173,56 @@ class TestCheckAndFlush:
         selects = [s for s in _executed(session) if "STRING_SPLIT" in _sql(s).upper()]
         assert len(selects) == 1
         assert "[MEDICATION_SCHEDULE].[Status] = '0'" in _sql(selects[0])
+
+
+def _put(monkeypatch, doses, rowcounts):
+    """Runs MedicationScheduleWrite.update with the DB mocked. Returns (result or exception, session)."""
+    monkeypatch.setattr(writer_module.DB, "get_engine", lambda: MagicMock())
+    session = MagicMock()
+    lookup = MagicMock()
+    lookup.all.return_value = [SimpleNamespace(MedicationID=m, ScheduleID=5) for m in doses]
+    session.execute.side_effect = [lookup] + [SimpleNamespace(rowcount=n) for n in rowcounts]
+    session_cm = MagicMock()
+    session_cm.__enter__.return_value = session
+    monkeypatch.setattr(writer_module, "Session", lambda **k: session_cm)
+
+    data = SimpleNamespace(
+        PatientID=1, PrescriptionName="Paracetamol", AdministerDate=TODAY,
+        AdministerTime="0900", Status="1", AdministeredBy="cg1",
+    )
+    try:
+        return MedicationScheduleWrite.update(data), session
+    except Exception as e:
+        return e, session
+
+
+class TestMarkAdministered:
+    def test_lookup_goes_straight_to_the_dose_row(self, monkeypatch):
+        # used to look up the medication with scalar_one(), which failed with two courses of
+        # the same drug, then the schedule with scalar_one(), which failed with two schedules
+        _, session = _put(monkeypatch, doses=[1], rowcounts=[1])
+        sql = _sql(_executed(session)[0])
+        assert "FROM [MEDICATION_SCHEDULE] JOIN [REF_PATIENT_MEDICATION]" in sql
+        assert "[MEDICATION_SCHEDULE].[AdministerTime] = '0900'" in sql
+        assert "[SCHEDULE]" not in sql.replace("[MEDICATION_SCHEDULE]", "")
+
+    def test_two_courses_of_same_drug_marks_the_pending_one(self, monkeypatch):
+        result, session = _put(monkeypatch, doses=[1, 2], rowcounts=[0, 1])
+        assert isinstance(result, datetime.datetime)
+        session.commit.assert_called_once()
+
+    def test_update_only_applies_to_pending_dose(self, monkeypatch):
+        # status check used to be a separate read, so two caregivers could both mark the dose
+        _, session = _put(monkeypatch, doses=[1], rowcounts=[1])
+        update_sql = _sql(_executed(session)[1])
+        assert update_sql.startswith("UPDATE [MEDICATION_SCHEDULE]")
+        assert "[MEDICATION_SCHEDULE].[Status] = '0'" in update_sql
+
+    def test_already_given_raises(self, monkeypatch):
+        result, session = _put(monkeypatch, doses=[1], rowcounts=[0])
+        assert isinstance(result, writer_module.MedicationAlreadyAdministeredException)
+        session.commit.assert_not_called()
+
+    def test_missing_dose_raises_not_found(self, monkeypatch):
+        result, _ = _put(monkeypatch, doses=[], rowcounts=[])
+        assert isinstance(result, writer_module.MedicationScheduleNotFoundException)

@@ -5,7 +5,7 @@ import pandas as pd
 import json
 from typing import Mapping, List, Dict
 
-from sqlalchemy import Connection, column, delete, select, func, literal_column, column
+from sqlalchemy import Connection, column, delete, select, func, literal_column, update
 from pear_schedule.db import DB
 from pear_schedule.db_utils.utils import day_timeslot_labels, get_week_start, get_week_end
 from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView, WeeklyScheduleView
@@ -273,36 +273,44 @@ class MedicationScheduleWrite(ConfigDependant):
     def update(cls, medication_data) -> datetime:
       with DB.get_engine().begin() as conn:
         with Session(bind=conn) as session:
-          # returns None if no results
-          try: 
-            # get MedicationID
-            medication_record = session.execute(select(RefPatientMedication).where(
-               RefPatientMedication.PatientID == medication_data.PatientID,
-               RefPatientMedication.PrescriptionName == medication_data.PrescriptionName
-            )).scalar_one()
-
-            # get ScheduleID
-            schedule_record = session.execute(select(Schedule).where(
-               Schedule.PatientID == medication_data.PatientID,
-               Schedule.EndDate >= medication_data.AdministerDate
-            )).scalar_one()
-            
-            composite_key = {
-               "MedicationID": medication_record.MedicationID,
-               "ScheduleID": schedule_record.ScheduleID,
-               "AdministerDate": medication_data.AdministerDate,
-               "AdministerTime": medication_data.AdministerTime
-            }
-            existingSchedule = session.get(MedicationSchedule, composite_key)
-            if not existingSchedule: raise MedicationScheduleNotFoundException()
-            if existingSchedule.Status == '1': raise MedicationAlreadyAdministeredException()
-            existingSchedule.Status = medication_data.Status
-            existingSchedule.AdministeredBy = medication_data.AdministeredBy
+          try:
+            # find the dose row directly, so two courses of the same drug or several
+            # schedules for the patient don't break the lookup
+            doses = session.execute(
+              select(MedicationSchedule.MedicationID, MedicationSchedule.ScheduleID)
+              .join(RefPatientMedication, MedicationSchedule.MedicationID == RefPatientMedication.MedicationID)
+              .where(
+                RefPatientMedication.PatientID == medication_data.PatientID,
+                RefPatientMedication.PrescriptionName == medication_data.PrescriptionName,
+                MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+              )
+            ).all()
+            if not doses: raise MedicationScheduleNotFoundException()
 
             timestamp = datetime.datetime.now()
-            existingSchedule.ActualAdministerTime = timestamp
-            session.commit()
-            return timestamp
+            for dose in doses:
+              # Status check is part of the UPDATE, so two caregivers can't both mark the same dose
+              result = session.execute(
+                update(MedicationSchedule)
+                .where(
+                  MedicationSchedule.MedicationID == dose.MedicationID,
+                  MedicationSchedule.ScheduleID == dose.ScheduleID,
+                  MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                  MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+                  MedicationSchedule.Status == '0',
+                )
+                .values(
+                  Status=medication_data.Status,
+                  AdministeredBy=medication_data.AdministeredBy,
+                  ActualAdministerTime=timestamp,
+                )
+                .execution_options(synchronize_session=False)
+              )
+              if result.rowcount == 1:
+                session.commit()
+                return timestamp
+            raise MedicationAlreadyAdministeredException()
           except Exception as e:
             logger.exception(e)
             logger.error(f"Error updating medication schedule: {traceback.format_exc()}")
