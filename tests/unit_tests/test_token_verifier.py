@@ -110,3 +110,38 @@ def test_log_message_names_claimed_identity(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING, logger="pear.auth"):
         apply_verification("tok", "U1", "ADMIN", "/x")
     assert "claimed user U1, role ADMIN" in caplog.records[-1].getMessage()
+
+
+_resp = lambda s: FakeResponse(s)
+
+
+def _counting(monkeypatch, status):
+    calls = []
+
+    def fake(base_url, token):
+        calls.append(token)
+        return _resp(status)
+
+    monkeypatch.setattr(token_verifier, "_call_user_service", fake)
+    return calls
+
+
+@pytest.mark.parametrize("token", ["toké", "a" * 5000])
+def test_non_ascii_or_oversized_token_is_rejected_without_calling_user_service(monkeypatch, token):
+    calls = _counting(monkeypatch, 200)
+    assert verify_token(token, now=lambda: 1000.0) == (Verdict.REJECTED, None)
+    assert calls == []
+
+
+def test_client_error_429_is_rejected_without_backoff(monkeypatch):
+    calls = _counting(monkeypatch, 429)
+    assert verify_token("a", now=lambda: 1000.0) == (Verdict.REJECTED, None)
+    assert verify_token("b", now=lambda: 1010.0) == (Verdict.REJECTED, None)
+    assert calls == ["a", "b"]
+
+
+def test_503_is_unavailable_and_backs_off(monkeypatch):
+    calls = _counting(monkeypatch, 503)
+    assert verify_token("a", now=lambda: 1000.0) == (Verdict.UNAVAILABLE, None)
+    assert verify_token("b", now=lambda: 1010.0) == (Verdict.UNAVAILABLE, None)
+    assert calls == ["a"]
