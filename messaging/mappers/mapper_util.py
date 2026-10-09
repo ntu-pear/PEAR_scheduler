@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -361,6 +361,49 @@ class MapperUtil:
                 },
                 'ignored_fields': []
             },
+            # Activity Service → Scheduler Service (Centre Activity Availabilities)
+            'centre_activity_availability_service_to_scheduler': {
+                'source_service': 'activity-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'centre_activity_availability',
+                'required_fields': ['id', 'centre_activity_id', 'days_of_week', 'start_time', 'end_time'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field)
+                    'id': 'CentreActivityAvailabilityID',
+                    'centre_activity_id': 'CentreActivityID',
+                    'days_of_week': 'DaysOfWeek',
+                    'start_time': 'StartTime',
+                    'end_time': 'EndTime',
+                    'start_date': 'StartDate',
+                    'end_date': 'EndDate',
+                    'is_deleted': 'IsDeleted',
+                    'created_date': 'CreatedDateTime',
+                    'modified_date': 'UpdatedDateTime',
+                    'created_by_id': 'CreatedById',
+                    'modified_by_id': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'DaysOfWeek': lambda x: int(x),
+                    'StartTime': lambda x: self._parse_time(x),
+                    'EndTime': lambda x: self._parse_time(x),
+                    'StartDate': lambda x: self._parse_date(x),
+                    'EndDate': lambda x: self._parse_date(x),
+                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
+                    'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
+                    'CreatedById': 'activity_service',
+                    'ModifiedById': 'activity_service'
+                },
+                'ignored_fields': []
+            },
             # Activity Service → Scheduler Service (Activity Routines)
             'routine_service_to_scheduler': {
                 'source_service': 'activity-service',
@@ -655,6 +698,28 @@ class MapperUtil:
             logger.warning(f"Failed to parse date: {date_str}, error: {str(e)}")
             return None
     
+    def _parse_time(self, time_str: Any) -> Optional[time]:
+        """Parse a time-of-day ('HH:MM', 'HH:MM:SS', optional tz suffix) into a naive time"""
+        if time_str is None or time_str == "":
+            return None
+
+        try:
+            if isinstance(time_str, time):
+                return time_str.replace(tzinfo=None)
+            if isinstance(time_str, datetime):
+                return time_str.time()
+            if isinstance(time_str, str):
+                clean_str = time_str.replace('Z', '')
+                # Drop any UTC offset such as +00:00 / -08:00
+                for sign in ('+', '-'):
+                    if sign in clean_str:
+                        clean_str = clean_str.split(sign)[0]
+                return time.fromisoformat(clean_str)
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to parse time: {time_str}, error: {str(e)}")
+            return None
+
     def _convert_boolean(self, value: Any, default: str = "0") -> str:
         """Convert boolean values to string representation for database"""
         if value is None:
@@ -891,6 +956,20 @@ def update_activity_exclusion_field_mapping(source_field: str, target_field: str
 def add_activity_exclusion_ignored_field(field_name: str):
     """Add field to activity exclusion ignore list"""
     mapper.add_ignored_field("activity_exclusion_service_to_scheduler", field_name)
+
+
+# Convenience functions for centre activity availability mapper
+def map_centre_activity_availability_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map centre activity availability data for create operation"""
+    return mapper.map_data(source_data, 'centre_activity_availability_service_to_scheduler', 'create')
+
+def map_centre_activity_availability_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map centre activity availability data for update operation"""
+    return mapper.map_data(source_data, 'centre_activity_availability_service_to_scheduler', 'update')
+
+def get_centre_activity_availability_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get centre activity availability mapping information"""
+    return mapper.get_mapping_info('centre_activity_availability_service_to_scheduler')
 
 
 # Convenience functions for activity routine mapper

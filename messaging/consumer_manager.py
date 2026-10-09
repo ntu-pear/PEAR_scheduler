@@ -9,6 +9,7 @@ from .activity_exclusion_consumer import ActivityExclusionConsumer
 from .activity_preference_consumer import ActivityPreferenceConsumer
 from .activity_recommendation_consumer import ActivityRecommendationConsumer
 from .adhoc_consumer import AdhocConsumer
+from .centre_activity_availability_consumer import CentreActivityAvailabilityConsumer
 from .centre_activity_consumer import CentreActivityConsumer
 from .patient_allocation_consumer import PatientAllocationConsumer
 from .patient_consumer import PatientConsumer
@@ -198,6 +199,7 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     manager.register_consumer("activity_preference", ActivityPreferenceConsumer)
     manager.register_consumer("activity_recommendation", ActivityRecommendationConsumer)
     manager.register_consumer("centre_activity", CentreActivityConsumer)
+    manager.register_consumer("centre_activity_availability", CentreActivityAvailabilityConsumer)
     manager.register_consumer("routine", RoutineConsumer)
     manager.register_consumer("adhoc", AdhocConsumer)
     
