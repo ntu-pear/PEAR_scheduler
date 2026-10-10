@@ -9,9 +9,10 @@ from pear_schedule.models import (
     ref_activity_recommendation_model,
     ref_activity_preference_model,
     ref_activity_routine_model,
+    ref_adhoc_model,
     ref_patient_model,
     ref_patient_medication_model,
-    schedule_model
+    schedule_model,
 )
 
 # Create all tables in the database using the engine

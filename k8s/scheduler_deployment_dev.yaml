@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: scheduler-service-dev
+  namespace: default
 spec:
   replicas: 1
   selector:
@@ -28,7 +29,8 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: scheduler-service-dev
+  name: scheduler-service
+  namespace: default
 spec:
   selector:
     app: scheduler-service-dev

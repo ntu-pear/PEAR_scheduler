@@ -1,6 +1,6 @@
-from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime, date
 import logging
+from datetime import date, datetime
+from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,48 @@ class MapperUtil:
                     'patient', 'prescription_list'  # SQLAlchemy relationship fields
                 ]
             },
-            
+            # Patient Allocation mapping (Patient Service -> Scheduler Service)
+            'patient_allocation_service_to_scheduler': {
+                'source_service': 'patient-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'patient_allocation',
+                'required_fields': ['id', 'patientId', 'doctorId', 'gameTherapistId', 
+                                   'supervisorId', 'caregiverId'],
+                'field_mappings': {
+                    'id': 'id',
+                    'active': 'active',
+                    'isDeleted': 'is_deleted',
+                    'patientId': 'patient_id',
+                    'doctorId': 'doctor_id',
+                    'gameTherapistId': 'game_therapist_id',
+                    'supervisorId': 'supervisor_id',
+                    'caregiverId': 'caregiver_id',
+                    'tempDoctorId': 'temp_doctor_id',
+                    'tempCaregiverId': 'temp_caregiver_id',
+                    'createdDate': 'created_date',
+                    'modifiedDate': 'modified_date',
+                    'CreatedById': 'created_by_id',
+                    'ModifiedById': 'modified_by_id',
+                },
+                'field_transforms': {
+                    'is_deleted': lambda x: self._convert_boolean(x, "0"),
+                    'created_date': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'modified_date': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'temp_doctor_id': lambda x: str(x) if x is not None else None,
+                    'temp_caregiver_id': lambda x: str(x) if x is not None else None,
+                },
+                'defaults': {
+                    'active': 'Y',
+                    'is_deleted': '0',
+                    'created_by_id': 'patient_service',
+                    'modified_by_id': 'patient_service'
+                },
+                'ignored_fields': [
+                    # Ignore guardian relationships for now
+                    'guardianId', 'guardian2Id'
+                ]
+            },
+                    
             # Activity Service → Scheduler Service
             'activity_service_to_scheduler': {
                 'source_service': 'activity-service',
@@ -320,7 +361,88 @@ class MapperUtil:
                 },
                 'ignored_fields': []
             },
-            
+            # Activity Service → Scheduler Service (Activity Routines)
+            'routine_service_to_scheduler': {
+                'source_service': 'activity-service',
+                'target_service': 'scheduler-service',
+                'entity_type': 'routine',
+                'required_fields': ['id', 'patient_id', 'activity_id'],
+                'field_mappings': {
+                    # Direct mappings (source_field: target_field)
+                    'id': 'RoutineID',
+                    'patient_id': 'PatientID',
+                    'activity_id': 'ActivityID',
+                    'is_deleted': 'IsDeleted',
+                    'created_date': 'CreatedDateTime',
+                    'modified_date': 'UpdatedDateTime',
+                    'created_by_id': 'CreatedById',
+                    'modified_by_id': 'ModifiedById',
+                },
+                'field_transforms': {
+                    # Special transformations (target_field: transform_function)
+                    'IsDeleted': lambda x: self._convert_boolean(x, "0"),
+                    'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'UpdatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    'CreatedById': lambda x: str(x) if x is not None else 'activity_service',
+                    'ModifiedById': lambda x: str(x) if x is not None else 'activity_service',
+                },
+                'defaults': {
+                    'IsDeleted': '0',
+                    'IncludeInSchedule': '1',  # no source field for this yet - default to included
+                    'CreatedDateTime': datetime.now(),
+                    'UpdatedDateTime': datetime.now(),
+                    'CreatedById': 'activity_service',
+                    'ModifiedById': 'activity_service'
+                },
+                'ignored_fields': [
+                    # REF_ACTIVITY_ROUTINE has no columns for these yet.
+                    # Add mappings here once the schedule columns are agreed on.
+                    'name', 'day_of_week', 'start_time', 'end_time',
+                    'start_date', 'end_date', 'activity_title'
+                ]
+            },
+
+            # Activity Service → Scheduler Service (Adhoc Activities)
+            "adhoc_service_to_scheduler": {
+                "source_service": "activity-service",
+                "target_service": "scheduler-service",
+                "entity_type": "adhoc",
+                "required_fields": ["id", "patient_id", "old_centre_activity_id", "new_centre_activity_id"],
+                "field_mappings": {
+                    # Direct mappings (source_field: target_field)
+                    "id": "AdhocID",
+                    "patient_id": "PatientID",
+                    "old_centre_activity_id": "OldCentreActivityID",
+                    "new_centre_activity_id": "NewCentreActivityID",
+                    "start_date": "StartDate",
+                    "end_date": "EndDate",
+                    "status": "Status",
+                    "is_deleted": "IsDeleted",
+                    "created_date": "CreatedDateTime",
+                    "modified_date": "UpdatedDateTime",
+                    "created_by_id": "CreatedById",
+                    "modified_by_id": "ModifiedById",
+                },
+                "field_transforms": {
+                    # Special transformations (target_field: transform_function)
+                    "StartDate": lambda x: self._parse_date(x),
+                    "EndDate": lambda x: self._parse_date(x),
+                    "Status": lambda x: str(x) if x is not None else "",
+                    "IsDeleted": lambda x: self._convert_boolean(x, "0"),
+                    "CreatedDateTime": lambda x: self._parse_datetime(x) or datetime.now(),
+                    "UpdatedDateTime": lambda x: self._parse_datetime(x) or datetime.now(),
+                    "CreatedById": lambda x: str(x) if x is not None else "activity_service",
+                    "ModifiedById": lambda x: str(x) if x is not None else "activity_service",
+                },
+                "defaults": {
+                    "IsDeleted": "0",
+                    "CreatedDateTime": datetime.now(),
+                    "UpdatedDateTime": datetime.now(),
+                    "CreatedById": "activity_service",
+                    "ModifiedById": "activity_service",
+                },
+                "ignored_fields": [],
+            },
             # Template for future mappings - just copy and modify
             'template_mapping': {
                 'source_service': 'source-service-name',
@@ -667,6 +789,20 @@ def update_patient_medication_field_mapping(source_field: str, target_field: str
 def add_patient_medication_ignored_field(field_name: str):
     """Add field to patient medication ignore list"""
     mapper.add_ignored_field('patient_medication_service_to_scheduler', field_name)
+    
+def map_patient_allocation_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient allocation data for create operation"""
+    return mapper.map_data(source_data, 'patient_allocation_service_to_scheduler', 'create')
+
+
+def map_patient_allocation_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map patient allocation data for update operation"""
+    return mapper.map_data(source_data, 'patient_allocation_service_to_scheduler', 'update')
+
+
+def get_patient_allocation_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get patient allocation mapping information"""
+    return mapper.get_mapping_info('patient_allocation_service_to_scheduler')
 
 # Convenience functions for activity preference mapper
 def map_activity_preference_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -754,4 +890,54 @@ def update_activity_exclusion_field_mapping(source_field: str, target_field: str
 
 def add_activity_exclusion_ignored_field(field_name: str):
     """Add field to activity exclusion ignore list"""
-    mapper.add_ignored_field('activity_exclusion_service_to_scheduler', field_name)
+    mapper.add_ignored_field("activity_exclusion_service_to_scheduler", field_name)
+
+
+# Convenience functions for activity routine mapper
+def map_routine_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity routine data for create operation"""
+    return mapper.map_data(source_data, 'routine_service_to_scheduler', 'create')
+
+def map_routine_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map activity routine data for update operation"""
+    return mapper.map_data(source_data, 'routine_service_to_scheduler', 'update')
+
+def get_routine_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get activity routine mapping information"""
+    return mapper.get_mapping_info('routine_service_to_scheduler')
+
+# Easy configuration functions for column changes
+def update_routine_field_mapping(source_field: str, target_field: str):
+    """Update activity routine field mapping when columns change"""
+    mapper.update_field_mapping('routine_service_to_scheduler', source_field, target_field)
+
+def add_routine_ignored_field(field_name: str):
+    """Add field to activity routine ignore list"""
+    mapper.add_ignored_field('routine_service_to_scheduler', field_name)
+
+
+# Convenience functions for adhoc mapper
+def map_adhoc_create(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map adhoc data for create operation"""
+    return mapper.map_data(source_data, "adhoc_service_to_scheduler", "create")
+
+
+def map_adhoc_update(source_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Map adhoc data for update operation"""
+    return mapper.map_data(source_data, "adhoc_service_to_scheduler", "update")
+
+
+def get_adhoc_mapping_info() -> Optional[Dict[str, Any]]:
+    """Get adhoc mapping information"""
+    return mapper.get_mapping_info("adhoc_service_to_scheduler")
+
+
+# Easy configuration functions for adhoc column changes
+def update_adhoc_field_mapping(source_field: str, target_field: str):
+    """Update adhoc field mapping when columns change"""
+    mapper.update_field_mapping("adhoc_service_to_scheduler", source_field, target_field)
+
+
+def add_adhoc_ignored_field(field_name: str):
+    """Add field to adhoc ignore list"""
+    mapper.add_ignored_field("adhoc_service_to_scheduler", field_name)

@@ -12,7 +12,7 @@ def get_schedule(db: Session, schedule_id: int):
     """Get a single schedule by ID"""
     db_schedule = (
         db.query(Schedule)
-        .filter(Schedule.Id == schedule_id, Schedule.IsDeleted == "0")
+        .filter(Schedule.ScheduleID == schedule_id, Schedule.IsDeleted == "0")
         .first()
     )
     return db_schedule
@@ -26,7 +26,7 @@ def get_schedules(db: Session, pageNo: int = 0, pageSize: int = 10,
 
     # Apply patient filter if provided
     if patient_id:
-        query = query.filter(Schedule.PatientId == patient_id)
+        query = query.filter(Schedule.PatientID == patient_id)
 
     # Apply date range filters if provided
     if start_date:
@@ -39,7 +39,7 @@ def get_schedules(db: Session, pageNo: int = 0, pageSize: int = 10,
     count_query = db.query(func.count()).select_from(Schedule).filter(Schedule.IsDeleted == "0")
     
     if patient_id:
-        count_query = count_query.filter(Schedule.PatientId == patient_id)
+        count_query = count_query.filter(Schedule.PatientID == patient_id)
     if start_date:
         count_query = count_query.filter(Schedule.EndDate >= start_date)
     if end_date:
@@ -59,7 +59,7 @@ def create_schedule(db: Session, schedule: ScheduleCreate, user: str, user_full_
     existing_schedule = (
         db.query(Schedule)
         .filter(
-            Schedule.PatientId == schedule.PatientId,
+            Schedule.PatientID == schedule.PatientId,
             Schedule.StartDate <= schedule.EndDate,
             Schedule.EndDate >= schedule.StartDate,
             Schedule.IsDeleted == "0"
@@ -109,11 +109,11 @@ def create_schedule(db: Session, schedule: ScheduleCreate, user: str, user_full_
     new_schedule = (
         db.query(Schedule)
         .filter(
-            Schedule.PatientId == schedule.PatientId,
+            Schedule.PatientID == schedule.PatientId,
             Schedule.StartDate == schedule.StartDate,
             Schedule.EndDate == schedule.EndDate
         )
-        .order_by(Schedule.Id.desc())
+        .order_by(Schedule.ScheduleID.desc())
         .first()
     )
 
@@ -132,7 +132,7 @@ def create_schedule(db: Session, schedule: ScheduleCreate, user: str, user_full_
         user_full_name=user_full_name,
         message="Created Schedule",
         table="Schedule",
-        entity_id=new_schedule.Id,
+        entity_id=new_schedule.ScheduleID,
         original_data=None,
         updated_data=schedule_data_dict,
     )
@@ -141,7 +141,7 @@ def create_schedule(db: Session, schedule: ScheduleCreate, user: str, user_full_
 
 def update_schedule(db: Session, schedule_id: int, schedule: ScheduleUpdate, user: str, user_full_name: str):
     """Update an existing schedule"""
-    db_schedule = db.query(Schedule).filter(Schedule.Id == schedule_id, Schedule.IsDeleted == "0").first()
+    db_schedule = db.query(Schedule).filter(Schedule.ScheduleID == schedule_id, Schedule.IsDeleted == "0").first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
 
@@ -158,8 +158,8 @@ def update_schedule(db: Session, schedule_id: int, schedule: ScheduleUpdate, use
     existing_schedule = (
         db.query(Schedule)
         .filter(
-            Schedule.Id != schedule_id,
-            Schedule.PatientId == schedule.PatientId,
+            Schedule.ScheduleID != schedule_id,
+            Schedule.PatientID == schedule.PatientId,
             Schedule.StartDate <= schedule.EndDate,
             Schedule.EndDate >= schedule.StartDate,
             Schedule.IsDeleted == "0"
@@ -172,9 +172,12 @@ def update_schedule(db: Session, schedule_id: int, schedule: ScheduleUpdate, use
             detail="Schedule overlaps with existing schedule for this patient"
         )
 
-    # Update fields
+    # Update fields (schema uses PatientId, model column is PatientID)
     for key, value in schedule.model_dump().items():
-        setattr(db_schedule, key, value)
+        if key == "PatientId":
+            db_schedule.PatientID = value
+        else:
+            setattr(db_schedule, key, value)
     
     db_schedule.UpdatedDateTime = datetime.now()
     db_schedule.ModifiedById = user
@@ -189,7 +192,7 @@ def update_schedule(db: Session, schedule_id: int, schedule: ScheduleUpdate, use
         user_full_name=user_full_name,
         message="Updated Schedule",
         table="Schedule",
-        entity_id=db_schedule.Id,
+        entity_id=db_schedule.ScheduleID,
         original_data=original_data_dict,
         updated_data=updated_data_dict,
     )
@@ -198,7 +201,7 @@ def update_schedule(db: Session, schedule_id: int, schedule: ScheduleUpdate, use
 
 def delete_schedule(db: Session, schedule_id: int, user_id: str, user_full_name: str):
     """Soft delete a schedule"""
-    db_schedule = db.query(Schedule).filter(Schedule.Id == schedule_id).first()
+    db_schedule = db.query(Schedule).filter(Schedule.ScheduleID == schedule_id).first()
     if not db_schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
 
@@ -222,7 +225,7 @@ def delete_schedule(db: Session, schedule_id: int, user_id: str, user_full_name:
         user_full_name=user_full_name,
         message="Deleted Schedule",
         table="Schedule",
-        entity_id=db_schedule.Id,
+        entity_id=db_schedule.ScheduleID,
         original_data=original_data_dict,
         updated_data=None,
     )

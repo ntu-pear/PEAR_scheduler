@@ -13,6 +13,8 @@ from fastapi import FastAPI
 from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
+from pear_schedule.db_utils.views import CareCentreView
+from pear_schedule.services.care_centre_util import apply_centre_hours
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -76,7 +78,8 @@ shutdown_event = threading.Event()
 def create_app():
     from pear_schedule.api import (
         schedule_router,
-        integrity_router
+        integrity_router,
+        medication_schedule_router
     )
     app = FastAPI(
         title="PEAR FYP Scheduler Service",
@@ -84,6 +87,7 @@ def create_app():
     )
     app.include_router(schedule_router.router, prefix="/schedule")
     app.include_router(integrity_router.router, prefix="/integrity")
+    app.include_router(medication_schedule_router.router, prefix="/MedicationSchedule")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
         "http://localhost",
@@ -108,7 +112,12 @@ def create_app():
     app.state.config = {item: getattr(config, item) for item in dir(config)}
 
     DB.init_app(app.state.config["DB_CONN_STR"], app.state.config)
-    loadConfigs(app.state.config)
+    logger.info("Initialising Care Centre View")
+    CareCentreView.init_app(app.state.config)
+    # working hours from Activity service, falls back to REF_CARE_CENTRE
+    apply_centre_hours(app.state.config)
+    logger.info(f"check group timeslot mapping: {app.state.config['GROUP_TIMESLOT_MAPPING']}")
+    loadConfigs(app.state.config) # then load config for the rest of the classes
 
     # Add startup and shutdown events for consumer management
     @app.on_event("startup")

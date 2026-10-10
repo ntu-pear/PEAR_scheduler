@@ -3,19 +3,21 @@ import logging
 from fastapi import APIRouter, Query, Request, Depends
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
-from typing import List, Optional, Annotated
+from typing import List, Optional, Annotated, Mapping, Dict
 from pear_schedule.db_utils.views import ValidRoutineActivitiesView, ActivityNameView, AdHocScheduleView, GroupActivitiesOnlyView, WeeklyScheduleView, CompulsoryActivitiesOnlyView,PatientsOnlyView,AllActivitiesView
 import pandas as pd
 
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
 import datetime
-from pear_schedule.db_utils.writer import ScheduleWriter
+from pear_schedule.db_utils.writer import ScheduleWriter, MedicationScheduleWrite
+from pear_schedule.services.care_centre_util import refresh_centre_hours
 
 from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
 from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
+from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import DBTABLES
 
 from pear_schedule.api.auth_util import Token, generateAccessToken_onLogin, JWTPayload, get_current_user, is_supervisor
@@ -57,14 +59,16 @@ def get_schedule(request: Request):
 @router.api_route("/generate/", methods=["GET"])
 def generate_schedule(request: Request):
     config = request.app.state.config
-    
+    refresh_centre_hours(config)
+
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
 
-        if ScheduleWriter.write(patientSchedules, overwriteExisting=False):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, overwriteExisting=False) \
+            and MedicationScheduleWrite.write():
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -84,12 +88,13 @@ def generate_schedule(request: Request):
     #     return JSONResponse(jsonable_encoder(responseData))
     
     config = request.app.state.config
-    
+    refresh_centre_hours(config)
+
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -99,7 +104,8 @@ def generate_schedule(request: Request):
                 "ScheduleID": row["ScheduleID"],
             }
 
-        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
+            MedicationScheduleWrite.write():
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -119,12 +125,13 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
         return JSONResponse(jsonable_encoder(responseData))
     
     config = request.app.state.config
-    
+    refresh_centre_hours(config)
+
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -134,7 +141,8 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
                 "ScheduleID": row["ScheduleID"],
             }
 
-        if ScheduleWriter.write(patientSchedules, schedule_meta=scheduleMeta, overwriteExisting=True):
+        if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
+            MedicationScheduleWrite.write():
             weeklyScheduleViewDF = WeeklyScheduleView.get_data()
             weeklyScheduleViewDF.pop("ScheduleID")
             schedules_json = weeklyScheduleViewDF.to_dict(orient="records")
@@ -351,20 +359,20 @@ async def system_report(request: Request):
         return JSONResponse(jsonable_encoder(responseData))
     
 
-    # 1. All patient weekly schedule is generated"
+    # 1. Every patient has a weekly schedule
     systemTestArray.append(allPatientScheduleGeneratedSystemTest(weeklyScheduleViewDF, patientsDF))
 
-    # 2. All compulsory activities are scheduled at correct time slots  
+    # 2. All compulsory activities are scheduled at correct time slots
     systemTestArray.append(allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request))
 
-    # 3. Only centre activities "not expired" are scheduled
+    # 3. No expired centre activities are scheduled
     systemTestArray.append(nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF))
 
-    # 4. Fixed time centre activities are scheduled in the correct timeslot (fixed and routine activities)
+    # 4. Fixed-time and routine activities are scheduled in their designated slot
     systemTestArray.append(fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request))
 
-    # 5. Group activities meet the minimum number of people   
-    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF))
+    # 5. Group activities reach minimum attendance per session
+    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))
 
     # 6. Group activities are scheduled in the correct timeslot
     systemTestArray.append(groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))

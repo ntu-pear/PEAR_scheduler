@@ -7,10 +7,12 @@ from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.utils import ConfigDependant
+from pear_schedule.db_utils.utils import timeslot_index
 
 logger = logging.getLogger(__name__)
 
-class CentreActivityConsumer:
+class CentreActivityConsumer(ConfigDependant):
     """
     Consumer for centre activity events with separated CRUD operations.
     
@@ -247,6 +249,8 @@ class CentreActivityConsumer:
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped centre activity data: {mapped_centre_activity_data}")
+
+            mapped_centre_activity_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_centre_activity_data['FixedTimeSlots'])
             
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityCreate
             try:
@@ -301,6 +305,8 @@ class CentreActivityConsumer:
                 return MessageProcessingResult.FAILED_PERMANENT
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
+
+            mapped_update_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_update_data['FixedTimeSlots'])
             
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityUpdate
             try:
@@ -331,6 +337,7 @@ class CentreActivityConsumer:
                         from pear_schedule.schemas.ref_centre_activity import RefCentreActivityCreate
                         mapped_centre_activity_data = self.map_centre_activity_create(centre_activity_data)
                         if mapped_centre_activity_data:
+                            mapped_centre_activity_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_centre_activity_data['FixedTimeSlots'])
                             ref_centre_activity_data = RefCentreActivityCreate(**mapped_centre_activity_data)
                             create_result, _ = self.create_ref_centre_activity(
                                 db=db,
@@ -430,3 +437,15 @@ class CentreActivityConsumer:
         if self.client:
             self.client.close()
             logger.info("Scheduler centre activity consumer connections closed")
+    
+    def reformat_timeslots(self, timeslot_str: str) -> str:
+        timeslot_list_tmp = timeslot_str.split(",")
+        for i, timeslot_str in enumerate(timeslot_list_tmp):
+            qualified_day = timeslot_str.split(" ")[0]
+            day = self.config['OPEN_DAYS'].index(qualified_day)
+            time_obj = datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
+            opening_time_obj = datetime.strptime(self.config['WORKING_HOURS'].get(qualified_day.lower()).get("open"), "%H:%M")
+            slot = timeslot_index(time_obj - opening_time_obj, self.config['MIN_ACTIVITY_DURATION'])
+            timeslot_list_tmp[i] = f"{day}-{slot}"
+        return ",".join(timeslot_list_tmp)
+        

@@ -552,11 +552,11 @@ class TestConsumerActivityExclusionUpdate:
         ).first()
         
         assert ref_exclusion is not None
-        assert ref_exclusion.ActivityID == 999
+        assert ref_exclusion.CentreActivityID == 999
         assert ref_exclusion.IsDeleted == "0"
-        
+
         print(f"DONE: Updated REF_ACTIVITY_EXCLUSION ID: {ref_exclusion.ActivityExclusionID}")
-        print(f"  New ActivityID: {ref_exclusion.ActivityID}")
+        print(f"  New CentreActivityID: {ref_exclusion.CentreActivityID}")
         
         # Verify PROCESSED_EVENTS record created
         processed_event = integration_db.query(ProcessedEvent).filter(

@@ -3,8 +3,8 @@ from datetime import datetime
 from typing import Optional
 
 class RefActivityRoutineBase(BaseModel):
-    PatientId: int
-    ActivityId: int
+    PatientID: int
+    ActivityID: int
     IncludeInSchedule: str = Field(default="1", pattern="^[01]$", json_schema_extra={"example": "1"})
     RoutineIssues: Optional[str] = None
     RoutineTimeSlots: Optional[str] = None
@@ -12,6 +12,7 @@ class RefActivityRoutineBase(BaseModel):
 
 
 class RefActivityRoutineCreate(RefActivityRoutineBase):
+    RoutineID: int # Include RoutineID for message queue synchronization
     CreatedDateTime: datetime
     UpdatedDateTime: datetime
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
@@ -19,9 +20,9 @@ class RefActivityRoutineCreate(RefActivityRoutineBase):
 
 
 class RefActivityRoutineUpdate(BaseModel):
-    PatientId: Optional[int] = None
-    ActivityId: Optional[int] = None
-    IsDeleted: Optional[bool] # DriftSync will update isdeleted if there are discrepency with delete records
+    PatientID: Optional[int] = None
+    ActivityID: Optional[int] = None
+    IsDeleted: Optional[bool] = None # DriftSync will update isdeleted if there are discrepency with delete records
     IncludeInSchedule: Optional[str] = Field(None, pattern="^[01]$", json_schema_extra={"example": "1"})
     RoutineIssues: Optional[str] = None
     RoutineTimeSlots: Optional[str] = None
@@ -35,10 +36,10 @@ class RefActivityRoutineDelete(BaseModel):
 
 
 class RefActivityRoutine(RefActivityRoutineBase):
-    Id: int
+    RoutineID: int
     CreatedDateTime: datetime
-    UpdatedDateTime: datetime 
+    UpdatedDateTime: datetime
     CreatedById: str = Field(json_schema_extra={"example": "scheduler_service"})
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})
-    
+
     model_config = ConfigDict(from_attributes=True)

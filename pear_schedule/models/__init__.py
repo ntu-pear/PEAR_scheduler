@@ -5,6 +5,7 @@ from .ref_activity_exclusion_model import RefActivityExclusion
 from .ref_activity_preference_model import RefActivityPreference
 from .ref_activity_recommendation_model import RefActivityRecommendation
 from .ref_activity_routine_model import RefActivityRoutine
+from .ref_adhoc_model import RefAdhoc
 from .ref_patient_medication_model import RefPatientMedication
 from .schedule_model import Schedule
 from .processed_events_model import ProcessedEvent

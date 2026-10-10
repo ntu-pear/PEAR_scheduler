@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["scheduler_prod", "scheduler_staging"]
+  push:
+    branches: ["scheduler_prod", "scheduler_staging"]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # pyodbc links against unixODBC at runtime, so it needs this to import.
+      - name: Install unixODBC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc-dev gcc
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # logger/config.py is gitignored and never committed.
+      # Any module that logs fails to import without it.
+      - name: Create logger config
+        run: |
+          mkdir -p pear_schedule/logger
+          cat > pear_schedule/logger/config.py <<'EOF'
+          import logging
+          logger = logging.getLogger("pear_schedule")
+          EOF
+
+      # database.py builds the engine at import time.
+      # engine creation is lazy and tests never connect,
+      # use db_session_mock instead.
+      - name: Run unit tests
+        env:
+          DB_USERNAME_DEV: ci
+          DB_PASSWORD_DEV: ci
+          DB_SERVER_DEV: localhost
+          DB_DATABASE_DEV: ci
+          DB_DATABASE_PORT: "1433"
+          DB_DRIVER_DEV: "ODBC Driver 17 for SQL Server"
+        run: python -m pytest tests/unit_tests -q

@@ -1,0 +1,28 @@
+name: CD (Production)
+
+on:
+  push:
+    branches: ['scheduler_prod']
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-prod:
+    uses: ./.github/workflows/base-cd.yaml
+    # `secrets: inherit` lets base-cd reach the environment secrets. The values
+    # themselves are read inside base-cd, whose jobs declare `environment:` -
+    # this job cannot, which is why no vars/secrets are listed here.
+    secrets: inherit
+    with:
+      # must match the GitHub Environment name exactly (case-sensitive)
+      environment: 'prod'
+      runner-label: '["self-hosted","Linux","X64","scheduler"]'
+      namespace: 'default'
+      deployment-name: 'scheduler-service-dev'
+      container-name: 'scheduler-service-dev'
+      configmap-name: 'scheduler-service-dev-env'
+      docker-image-name: 'scheduler_service_dev'
+      kube-deployment-file: './k8s/scheduler_deployment_dev.yaml'
+      kube-cronjob-file: './k8s/scheduler_cronjob.yaml'
+      dockerfile: 'Dockerfile.dev'

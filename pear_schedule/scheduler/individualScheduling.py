@@ -1,15 +1,18 @@
 import datetime
 from functools import partial
+import json
 import logging
-from typing import Dict, List, Mapping, Optional, Set
+from typing import Dict, List, Mapping, Optional, Set, NamedTuple
 from pandas import Timestamp
 import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
+from pear_schedule.db_utils.utils import day_timeslot_labels
 from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, DisrecommendedActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
 from pear_schedule.utils import DBTABLES
 
@@ -45,7 +48,7 @@ class IndividualActivityScheduler(BaseScheduler):
                     "preferences":set(), "exclusions": dict(), "dispreferences": set()  # recommendations handled in compulsory scheduling
                 }
             
-            # If ActivityEndDate is null, means the Activity will restart every week. #ToBeConfirmed
+            # If ActivityEndDate is Null, means the Activity will restart every week. #ToBeConfirmed
             
             if p["ActivityEndDate"] <= week_end:
                 continue
@@ -97,8 +100,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
         week_start = week_start or datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
-        today = datetime.datetime.now()
-        week_end = today - datetime.timedelta(days=today.weekday()) + datetime.timedelta(days=6)
+        week_end = week_start + datetime.timedelta(days=6)
         week_end = week_end.replace(hour=23, minute=59, second=59)
 
         with DB.get_engine().begin() as conn:
@@ -115,7 +117,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             recommendations["ActivityEndDate"] = recommendations["ActivityEndDate"].apply(pd.Timestamp)
  
             # filter out activities that are not available this week, i.e. only consider activities that run past week_end
-            # recommendations = recommendations[(recommendations["ActivityEndDate"] > week_end)] #| (recommendations["ActivityEndDate"].isna())]
+            # null ActivityEndDate means indefinite (never expires), so it always passes
+            recommendations = recommendations[recommendations["ActivityEndDate"].isna() | (recommendations["ActivityEndDate"] > week_end)]
 
             # add an extra row at end for easier handling of final patient
             dummy_row = recommendations.iloc[0:1].copy(deep=True)
@@ -126,29 +129,49 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             patients = cls._get_patient_data(conn=conn)
 
             # get routine data
-#            routines = ValidRoutineActivitiesView.get_data(conn=conn)
+            routines = ValidRoutineActivitiesView.get_data(conn=conn)
 
             start = 0
 
             for curr, (_, row) in enumerate(recommendations.iterrows()):  # not using iterrows directly since need range indexing later
+                # grab multiple recommended activities for the same patient in one go
                 if row["PatientID"] == recommendations.loc[start, "PatientID"]:
                     continue
 
                 end = curr
 
                 patient_id = recommendations["PatientID"][start]
-                curr_df: pd.DataFrame = recommendations.iloc[start: end]
-                patient_schedule = schedules[patient_id]
+                try:
+                    curr_df: pd.DataFrame = recommendations.iloc[start: end]
+                    patient_schedule = schedules[patient_id]
 
-                fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
-                #patient_routine = routines[routines["PatientID"] == patient_id]
+                    fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
+                    patient_routine = routines[routines["PatientID"] == patient_id]
 
-                cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
-               # cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
-                cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
+                    cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
+                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
+                except Exception:
+                    logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")
 
                 start = end
-    
+
+            # patients with a routine but no recommendations never hit the loop above, so
+            # they need their own pass here
+            no_fixed_activities = pd.DataFrame(columns=["ActivityTitle", "FixedTimeSlots"])
+            recommended_patient_ids = set(recommendations["PatientID"].dropna().unique())
+            routine_only_patient_ids = set(routines["PatientID"].unique()) - recommended_patient_ids
+
+            for patient_id in routine_only_patient_ids:
+                try:
+                    patient_schedule = schedules[patient_id]
+                    patient_routine = routines[routines["PatientID"] == patient_id]
+                    patient_info = patients.get(patient_id, {"preferences": set(), "exclusions": dict(), "dispreferences": set()})
+
+                    cls.__fillRoutines(patient_schedule, no_fixed_activities, patient_routine, patient_info, week_start)
+                except Exception:
+                    logger.exception(f"Routine scheduling failed for patient {patient_id}, skipping")
+
     @classmethod
     def __fillByFixedTimeSlots(
         cls, 
@@ -160,51 +183,65 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         # set week_start to current week monday if not given
         week_start = week_start or \
             datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        series_timeslots = activities["ProcessedTimeSlots"]
+        timeslots_set = set.union(*series_timeslots) if len(series_timeslots) else set()
 
         scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
         
-        for day, day_schedule in enumerate(patient_schedule):
-
+        for (day, slot) in timeslots_set:
             if scheduled_idx.all():
                 break
 
-            for slot, curr_activity in enumerate(day_schedule):
-                if curr_activity:
+            if day >= len(cls.config["OPEN_DAYS"]) or slot >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day]) \
+                or patient_schedule[day][slot]:
+                continue
+            # scan remaining allowed activities to find most constrained (fewer available time slots)
+            # not ideal but no. of activities is expected to be small so O(n2) is acceptable
+
+            least_available = -1
+            lowest_availability = float("inf")
+
+            available_activities: pd.DataFrame = activities[~scheduled_idx]
+            for row, activity in available_activities.iterrows():
+                if checkActivityExcluded(
+                    activity["ActivityID"], patient_info["exclusions"], day, week_start
+                ):
                     continue
-                # scan remaining allowed activities to find most constrained (fewer available time slots)
-                # not ideal but no. of activities is expected to be small so O(n2) is acceptable
 
-                least_available = -1
-                lowest_availability = float("inf")
+                # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
+                curr_availability: int = calculate_activity_availabillity(cls, day, slot, activity["ProcessedTimeSlots"])
 
-                available_activities: pd.DataFrame = activities[~scheduled_idx]
-                for row, activity in available_activities.iterrows():
-                    if checkActivityExcluded(
-                        activity["ActivityID"], patient_info["exclusions"], day, week_start
-                    ):
-                        continue
+                # if activity can scheduled at a starting slot, first check whether there are enough consecutive slots for a 1hr or longer activity
+                if curr_availability < float("inf"):
+                    num_slots = activity["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"] * -1
+                    for i in range(1, num_slots):
+                        if (num_slots > 1 and slot+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or patient_schedule[day][slot+i]:
+                            curr_availability = float("inf")
+                            break
 
-                    # curr_availability: activity can be scheduled at this slot or at later slots (it has higher availability if the number of said slots is high)
-                    curr_availability: int = calculate_activity_availabillity(day, slot, activity["ProcessedTimeSlots"])
+                # if there are no such slots (0), we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
+                if not curr_availability:
+                    scheduled_idx.loc[row] = True
 
-                    # if there are no such slots, we are done with this activity, i.e. cannot be scheduled anymore, or was scheduled
-                    if not curr_availability:
-                        scheduled_idx.loc[row] = True
-
-                    if curr_availability < lowest_availability:
-                        least_available = row
-                        lowest_availability = curr_availability
+                if curr_availability < lowest_availability:
+                    least_available = row
+                    lowest_availability = curr_availability
+                # if tie in availability, prioritise activity with longer duration
+                elif curr_availability == lowest_availability and lowest_availability != float("inf"):
+                    least_available = row if activity["MinDuration"] > activities.loc[least_available, "MinDuration"] else least_available
                     
-                if least_available < 0 and not available_activities.empty:
-                    continue
-                elif least_available < 0 and available_activities.empty:
-                    break
+            if least_available < 0:
+                continue
 
-                # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
-                # availability should apply to activities that can be scheduled at this slot or later
-                scheduled_idx.loc[least_available] = True
-
-                day_schedule[slot] = activities.loc[least_available, "ActivityTitle"]
+            # attempt to schedule the most constrained activity first, because other activities have higher availability and should thus be able to be scheduled later
+            # availability should apply to activities that can be scheduled at this slot or later
+            scheduled_idx.loc[least_available] = True
+                
+            # if the activity determined to be scheduled at this starting slot > MIN_DURATION, fill adjacent slots with activity title
+            selected_activity_row = activities.loc[least_available]
+            selected_activity = selected_activity_row["ActivityTitle"]
+            for i in range((selected_activity_row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1):
+                patient_schedule[day][slot + i] = selected_activity
 
     @classmethod
     def __fillRoutines(
@@ -261,6 +298,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     ):
         """
         Fill in recommended activities that do not have fixedTimeSlots, i.e. fixedTimeSlots is empty
+        Assumed to be schedulable at any time. Iterates through schedule and fills in the first available slot.
         """
         # set week_start to current week monday if not given
         week_start = week_start or \
@@ -280,9 +318,18 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                             a["ActivityID"], patient_info["exclusions"], day, week_start
                     ):
                         continue
-
-                    patient_schedule[day][time] = a["ActivityTitle"]
-                    scheduled_activities.add(a["ActivityTitle"])
+                    
+                    num_slots = (a["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1
+                    activity_schedulable = True
+                    for i in range(1, num_slots):
+                        if (num_slots > 1 and time+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or patient_schedule[day][time+i]:
+                            activity_schedulable = False
+                            break
+                        
+                    if activity_schedulable:
+                        for i in range(num_slots):
+                            patient_schedule[day][time+i] = a["ActivityTitle"]
+                            scheduled_activities.add(a["ActivityTitle"])
 
                 if len(scheduled_activities) == len(activities):
                     return
@@ -311,42 +358,59 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             if pid not in patients:
                 logger.error(f"unknown patientID {pid} found in schedules")
                 continue
-            patient = patients[pid]
+            try:
+                patient = patients[pid]
 
-            exclusions: Set[int] = patient["exclusions"]
-            preferences: Set[int] = patient["preferences"]
-            dispreferences: Set[int] = patient["dispreferences"]
+                exclusions: Set[int] = patient["exclusions"]
+                preferences: Set[int] = patient["preferences"]
+                dispreferences: Set[int] = patient["dispreferences"]
 
-            patient_activities = avail_activities[~avail_activities["ActivityID"].isin(exclusions)]
+                patient_activities = avail_activities[~avail_activities["ActivityID"].isin(exclusions)]
 
-            preference_idx = patient_activities["ActivityID"].isin(preferences)
-            non_preference_idx = (~patient_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
-            preferred_activities = patient_activities[preference_idx]
-            non_preferred_activites = patient_activities[non_preference_idx]
+                preference_idx = patient_activities["ActivityID"].isin(preferences)
+                non_preference_idx = (~patient_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
+                preferred_activities = patient_activities[preference_idx]
+                non_preferred_activites = patient_activities[non_preference_idx]
 
-            for day, day_sched in enumerate(sched):
-                curr_day_activities = set()
+                for day, day_sched in enumerate(sched):
+                    curr_day_activities = set()
 
-                i = 0
-                while i < len(day_sched):
-                    if not day_sched[i]:
-                        j = i + 1
-                        while (j < len(day_sched) and not day_sched[j]):
-                            j += 1
-                        j -= 1 # j is incremented by 1 before the last check fails
-                        if i >= len(day_sched):
-                            break
+                    i = 0
+                    while i < len(day_sched):
+                        if not day_sched[i]:
+                            # find the longest stretch of empty slots
+                            j = i + 1
+                            while (j < len(day_sched) and not day_sched[j]):
+                                j += 1
+                            j -= 1 # j is incremented by 1 before the last check fails
+                            if i >= len(day_sched):
+                                break
 
-                        find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
-                        new_activity = \
-                            find_activity(preferred_activities, curr_day_activities) or \
-                            find_activity(non_preferred_activites, curr_day_activities)
+                            find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
+                            new_activity: str = \
+                                find_activity(preferred_activities, curr_day_activities) or \
+                                find_activity(non_preferred_activites, curr_day_activities)
+                            # min slot duration for replacement with Free and Easy
+                            new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
 
-                        if not new_activity:
-                            new_activity = "Free and Easy"
-                        curr_day_activities.add(new_activity)
-                        day_sched[i] = new_activity
-                    i += 1
+                            num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
+
+                            if not new_activity or j-i+1 < num_slots:
+                                new_activity = "Free and Easy"
+                                num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
+
+                            curr_day_activities.add(new_activity)
+
+                            for k in range(num_slots):
+                                day_sched[i+k] = new_activity
+
+                        else:
+                            # potentially prevent the same activity from being scheduled again in the same day
+                            curr_day_activities.add(day_sched[i])
+
+                        i += 1
+            except Exception:
+                logger.exception(f"Preferred activity scheduling failed for patient {pid}, skipping")
 
     @classmethod
     def __findActivityBySlot(
@@ -369,6 +433,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             .reset_index(drop=True)
         
         out = [-1, 1000, False]
+        o = cls.config["OPEN_DAYS"]
 
         for i, a in activities.iterrows():
             if a["ActivityTitle"] in used_activities:
@@ -380,7 +445,8 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             if a["FixedTimeSlots"]:
                 # e.g. takes in ["1-2","1-3"], map output: [["1","2"],["1","3"]]
-                timeSlots = [t for t in a["ProcessedTimeSlots"] if t[0]==day and t[1]==slot and t[1]+minSlots<=slot+slot_size]
+                timeSlots = [t for t in a["ProcessedTimeSlots"] if t[0]<len(o) and t[1]<cls.config["SLOTS_PER_DAY"].get(o[t[0]]) and \
+                             t[0]==day and t[1]==slot and t[1]+minSlots<=slot+slot_size]
 
                 if not timeSlots:
                     continue
@@ -415,7 +481,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         # use datetime to avoid db side issues when comparing date and datetime
         curr_date = curr_date or datetime.date.today()
         curr_week_start = datetime.datetime.combine(curr_date, datetime.time(0, 0, 0))
-        curr_week_start = curr_week_start - datetime.timedelta(days = datetime.datetime.now().weekday())
+        curr_week_start = curr_week_start - datetime.timedelta(days = curr_date.weekday())
         next_week_start = curr_week_start + datetime.timedelta(days=7)
 
         latest_sched_cte = select(
@@ -453,7 +519,10 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             if not len(patientIDs):
                 stmt: Select = select(
                     patient_table.c["PatientID"]
-                ).where(patient_table.c["IsDeleted"] == False)
+                ).where(
+                    patient_table.c["IsDeleted"] == False,
+                    patient_table.c["IsActive"] == True,
+                )
 
                 res: Result = conn.execute(stmt)
                 patientIDs = set(pid for (pid,) in res.all())
@@ -477,12 +546,23 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 activityTitle = activityTitle.strip()
                 return activities_title_lookup.get(activityTitle, None) in patient_data[pid]["exclusions"]
 
+            def parse_day_cell(day: str, cell: str) -> List[str]:
+                # day columns are JSON now, not the old '--' format
+                slots_per_day = cls.config["SLOTS_PER_DAY"].get(day, 0)
+                if not cell or not slots_per_day:
+                    return []
+                day_data = json.loads(cell)
+                labels = day_timeslot_labels(
+                    day, slots_per_day, cls.config["WORKING_HOURS"], cls.config["MIN_ACTIVITY_DURATION"]
+                )
+                return [day_data.get(label, "") for label in labels]
+
             formatted_schedules = {}
             schedule_meta = {}
             for _, row in latest_schedules.iterrows():
                 formatted_schedules[row["PatientID"]] = [
-                    [i if not check_excluded(row["PatientID"], i.split("|")[0]) else "" 
-                        for i in row[day].split("-")
+                    [i if not check_excluded(row["PatientID"], i.split("|")[0]) else ""
+                        for i in parse_day_cell(day, row[day])
                     ]
                     for day in cls.config["DAY_OF_WEEK_ORDER"]
                 ]
@@ -496,34 +576,31 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
 
             cls.fillPreferences(formatted_schedules, conn, patient_data)
 
-            # recombine the updated and original schedules
-            for _, row in latest_schedules.iterrows():
-                new_schedule = formatted_schedules[row["PatientID"]]
-                for d, day in enumerate(cls.config["DAY_OF_WEEK_ORDER"]):
-                    old_schedule = row[day].split("-")
-                    # put medication back into the schedule
-                    new_schedule[d] = [
-                        "|".join((new_activity, *old_activity.split("|")[1:2]))
-                        for (new_activity, old_activity) in zip(new_schedule[d], old_schedule)
-                    ]
+            # same medication step the main pipeline uses, not the old manual copy
+            medicationSchedule_ref = medicationScheduler.fillSchedule(formatted_schedules)
 
             write_result = ScheduleWriter.write(
-                formatted_schedules, overwriteExisting=True, conn=conn, schedule_meta=schedule_meta,
+                formatted_schedules, medicationSchedule_ref, overwriteExisting=True, conn=conn, schedule_meta=schedule_meta,
             )
             if not write_result:
                 logger.error("Schedule updating failed")
 
 
-
-def calculate_activity_availabillity(day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
-    # first check whether activity can be scheduled at all at this slot
-    if (day,slot) not in processedTimeSlots:
-        return float("inf")
-
-    # give priority to activities that have fixed time slots
+"""
+This function calculates and returns the number of slots that an activity can be scheduled at or later than the given slot and day.
+Returns float("inf") if activity cannot be scheduled at the given slot. 1000 if the activity has no fixed time slots.
+"""
+def calculate_activity_availabillity(cls: RecommendedRoutineActivityScheduler, day: int, slot: int, processedTimeSlots: Set[tuple]) -> int:
+    # no fixed time slots at all -> deprioritize but still eligible, not unschedulable
     if not processedTimeSlots:
         return 1000
+
+    # activity can't be scheduled at this slot
+    if (day,slot) not in processedTimeSlots:
+        return float("inf")
     
-    tally = sum([1 for d,s in processedTimeSlots if d>day or (d==day and s>=slot)])
+    # do not count time slots that are invalid, i.e. exceed opening days and available time slots
+    o = cls.config["OPEN_DAYS"]
+    tally = sum([1 for d,s in processedTimeSlots if d<len(o) and slot<cls.config["SLOTS_PER_DAY"].get(o[d]) and (d>day or (d==day and s>=slot))])
     
     return tally

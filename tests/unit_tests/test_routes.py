@@ -1,9 +1,11 @@
 from collections import Counter
+import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from pear_schedule.api.utils import activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, getPatientWellnessPlan, getTablesDF, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, prepareMedicationSchedule, recommendedActivitiesPatientTest, routinesPatientTest
+from pear_schedule.api.utils import activitiesExcludedPatientTest, allCompulsoryActivitiesAtCorrectSlotSystemTest, checkWeeklyScheduleCorrectness, clashInFixedTimeSlotWarning, fixedActivitiesScheduledCorrectlySystemTest, generateStatistics, getPatientWellnessPlan, getTablesDF, groupActivitiesCorrectTimeslotSystemTest, groupActivitiesMinSizeSystemTest, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, prepareMedicationSchedule, recommendedActivitiesPatientTest, routinesPatientTest
 
 class TestPatientTestUtils:
     # =======================================================================
@@ -13,11 +15,11 @@ class TestPatientTestUtils:
                 'PatientID' : [1],
                 'StartDate' : [pd.to_datetime("2024-03-18")],
                 "EndDate" : [pd.to_datetime("2024-03-24 23:59:59")],
-                "Monday" : ["Breathing+Vital Check--Sewing | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Sewing--Lunch--Cutting Pictures--Origami | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Brisk Walking--Sort poker chips"],
-                "Tuesday" : ["Breathing+Vital Check--Musical Instrument Lesson | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Sewing--Lunch--Cutting Pictures--Clip Coupons | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Story Time--Cup Stacking Game"],
-                "Wednesday" : ["Breathing+Vital Check--Movie Screening | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Sewing--Lunch--Cutting Pictures--Sort poker chips | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Clip Coupons--Cup Stacking Game"],
-                "Thursday" : ["Breathing+Vital Check--Sewing | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Cutting Pictures--Lunch--Sort poker chips--String beads | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Mahjong--Cup Stacking Game"],
-                "Friday" : ["Breathing+Vital Check--Cutting Pictures | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Sewing--Lunch--Picture Coloring--Origami | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses--Cup Stacking Game--Clip Coupons"]
+                "Monday" : ['{"0": "Breathing+Vital Check", "1": "Sewing | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "2": "Sewing", "3": "Lunch", "4": "Cutting Pictures", "5": "Origami | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "6": "Brisk Walking", "7": "Sort poker chips"}'],
+                "Tuesday" : ['{"0": "Breathing+Vital Check", "1": "Musical Instrument Lesson | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "2": "Sewing", "3": "Lunch", "4": "Cutting Pictures", "5": "Clip Coupons | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "6": "Story Time", "7": "Cup Stacking Game"}'],
+                "Wednesday" : ['{"0": "Breathing+Vital Check", "1": "Movie Screening | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "2": "Sewing", "3": "Lunch", "4": "Cutting Pictures", "5": "Sort poker chips | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "6": "Clip Coupons", "7": "Cup Stacking Game"}'],
+                "Thursday" : ['{"0": "Breathing+Vital Check", "1": "Sewing | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "2": "Cutting Pictures", "3": "Lunch", "4": "Sort poker chips", "5": "String beads | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "6": "Mahjong", "7": "Cup Stacking Game"}'],
+                "Friday" : ['{"0": "Breathing+Vital Check", "1": "Cutting Pictures | Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "2": "Sewing", "3": "Lunch", "4": "Picture Coloring", "5": "Origami | Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses", "6": "Cup Stacking Game", "7": "Clip Coupons"}']
                 })), \
             patch('pear_schedule.db_utils.views.CentreActivityPreferenceView.get_data', return_value=pd.DataFrame({
                 'PatientID' : [1,1,1,1,1,1],
@@ -280,11 +282,11 @@ class TestPatientTestUtils:
             'PatientID' : [1],
             'StartDate' : [pd.to_datetime("2024-03-18")],
             "EndDate" : [pd.to_datetime("2024-03-24 23:59:59")],
-            "Monday" : ["Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Physiotherapy--Cup Stacking Game--Lunch--Origami | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Watch television--Brisk Walking--Picture Coloring"],
-            "Tuesday" : ["Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Musical Instrument Lesson--Origami--Lunch--Cup Stacking Game | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Clip Coupons--Story Time--Cutting Pictures"],
-            "Wednesday" : ["Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Movie Screening--Cup Stacking Game--Lunch--Origami | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Watch television--Sort poker chips--Clip Coupons"],
-            "Thursday" : ["Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Cup Stacking Game--Origami--Lunch--Watch television | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--String beads--Mahjong--Picture Coloring"],
-            "Friday" : ["Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Cup Stacking Game--Origami--Lunch--Sort poker chips | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses--Cutting Pictures--Clip Coupons--String beads"]
+            "Monday" : ['{"0": "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "1": "Physiotherapy", "2": "Cup Stacking Game", "3": "Lunch", "4": "Origami | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "5": "Watch television", "6": "Brisk Walking", "7": "Picture Coloring"}'],
+            "Tuesday" : ['{"0": "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "1": "Musical Instrument Lesson", "2": "Origami", "3": "Lunch", "4": "Cup Stacking Game | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "5": "Clip Coupons", "6": "Story Time", "7": "Cutting Pictures"}'],
+            "Wednesday" : ['{"0": "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "1": "Movie Screening", "2": "Cup Stacking Game", "3": "Lunch", "4": "Origami | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "5": "Watch television", "6": "Sort poker chips", "7": "Clip Coupons"}'],
+            "Thursday" : ['{"0": "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "1": "Cup Stacking Game", "2": "Origami", "3": "Lunch", "4": "Watch television | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "5": "String beads", "6": "Mahjong", "7": "Picture Coloring"}'],
+            "Friday" : ['{"0": "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "1": "Cup Stacking Game", "2": "Origami", "3": "Lunch", "4": "Sort poker chips | Give Medication@1315: Guaifenesin(10 ml)**To be eaten after meals, Give Medication@1300: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses", "5": "Cutting Pictures", "6": "Clip Coupons", "7": "String beads"}']
         })
         patientInfo = tablesDF['weeklyScheduleViewDF'].iloc[0]
         
@@ -706,4 +708,317 @@ class TestPatientTestUtils:
         }
         assert json_response[1]['Group Activities Count'] == 15
         assert json_response[1]['Solo Activities Count'] == 25
-    
+
+
+def _fake_request(config):
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(config=config)))
+
+
+DAY_OF_WEEK_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+class TestSystemTestTimeslotLabels:
+    """Tests the remaining system test timeslot label usages."""
+
+    def test_compulsory_activity_out_of_range_of_patient_schedule_raises_indexerror(self):
+        """Out-of-range timeslot crashes before the fallback can run."""
+        
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        compulsoryActivitiesDF = pd.DataFrame({
+            "ActivityTitle": ["Meds"],
+            "FixedTimeSlots": ["0-3"],  # Monday, slot index 3 - patient's Monday only has 1 slot
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        with pytest.raises(IndexError):
+            allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request)
+
+    def test_fixed_activity_mismatch_never_needs_the_fallback_label(self):
+        """timeslot comes from enumerate(), so it cannot be out of range."""
+
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({
+            "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
+        })
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_group_activity_mismatch_never_needs_the_fallback_label(self):
+        """timeslot comes from enumerate(), so the fallback cannot be reached."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "GROUP_TIMESLOT_MAPPING": [(0, 5)],
+            "MAX_ACTIVITY_DURATION": 60,
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_multi_slot_group_activity_second_slot_is_not_a_violation(self):
+        """A 60-min group activity's anchor+1 slot is part of its bin, not a mismatch."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Bingo", "09:30-10:00": "Bingo"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "GROUP_TIMESLOT_MAPPING": [(0, 0)],
+            "MAX_ACTIVITY_DURATION": 60,
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+        assert result["testRemarks"] == []
+
+    def test_group_activity_two_bins_away_from_anchor_still_fails(self):
+        """The bin expansion must not over-match slots outside any anchor's span."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({
+                "09:00-09:30": "Bingo", "09:30-10:00": "Bingo",
+                "10:00-10:30": "Bingo", "10:30-11:00": "Bingo",
+            })],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "GROUP_TIMESLOT_MAPPING": [(0, 0)],
+            "MAX_ACTIVITY_DURATION": 60,
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert len(result["testRemarks"]) == 2
+
+    def test_clash_in_fixed_time_slot_warning_uses_real_hours(self):
+        """Checks that clash warnings use the actual centre hours."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1", "1"],
+            "ActivityTitle": ["A", "B"],
+            "FixedTimeSlots": ["0-2", "0-2"],  # same day/slot - a real clash
+            "MinDuration": [30, 30],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert result["warningRemarks"] == ["These activities have clashing fixed timeslots on Monday 10:00-10:30: A(normal), B(normal)"]
+
+    def test_clash_warning_has_no_trailing_comma(self):
+        """Checks that clash warnings do not end with a trailing comma."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1", "1", "1"],
+            "ActivityTitle": ["A", "B", "C"],
+            "FixedTimeSlots": ["0-2", "0-2", "0-2"],
+            "MinDuration": [30, 30, 30],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert not result["warningRemarks"][0].endswith(",")
+
+    def test_is_fixed_string_column_is_matched_not_python_bool(self):
+        """IsFixed is '0'/'1' text, not a Python bool, so the query must match the string."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_fixed_only_activity_is_caught_without_a_routine_counterpart(self):
+        """A fixed-only activity (no routine counterpart) must still be checked."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})  # no routines at all
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_multi_slot_fixed_activity_second_slot_is_not_a_violation(self):
+        """A 60-min activity's anchor+1 slot is part of the activity, not a mismatch."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [60],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Yoga", "09:30-10:00": "Yoga"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+        assert result["testRemarks"] == []
+
+    def test_clash_warning_catches_overlap_from_different_anchors(self):
+        """Vital Check AM (slot 4, 60min) and tablet game (slot 5, 60min) don't share
+        an anchor but both occupy slot 5, so this must still be flagged as a clash."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1", "1"],
+            "ActivityTitle": ["Vital Check AM", "tablet game"],
+            "FixedTimeSlots": ["0-4", "0-5"],
+            "MinDuration": [60, 60],
+        })
+        validRoutinesDF = pd.DataFrame({"ActivityTitle": [], "FixedTimeSlots": [], "MinDuration": []})
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert result["warningRemarks"] == ["These activities have clashing fixed timeslots on Monday 11:30-12:00: Vital Check AM(normal), tablet game(normal)"]
+
+    def test_compulsory_activity_missing_from_expected_slot_wording(self):
+        """The remark must describe the expected slot, not read as 'found at X'."""
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": ""})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        compulsoryActivitiesDF = pd.DataFrame({
+            "ActivityTitle": ["Meds"],
+            "FixedTimeSlots": ["0-1"],  # Monday, slot index 1 - Meds is not there
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert result["testRemarks"] == [
+            "Meds is missing from its expected time slot (Monday 09:30-10:00) for patient ID 1"
+        ]
+
+
+class TestGroupActivitiesMinSize:
+    """Tests groupActivitiesMinSizeSystemTest's per-session attendance check."""
+
+    def test_session_below_minimum_fails_with_actual_count(self):
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert result["testRemarks"] == [
+            "Bingo on Monday 09:30-10:00 has 1 patient(s) scheduled, below the minimum of 2"
+        ]
+
+    def test_session_meeting_minimum_passes(self):
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1, 2],
+            "Monday": [
+                json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"}),
+                json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"}),
+            ],
+            "Tuesday": ["", ""], "Wednesday": ["", ""], "Thursday": ["", ""], "Friday": ["", ""], "Saturday": ["", ""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+        assert result["testRemarks"] == []
+
+    def test_meeting_minimum_only_when_summed_across_different_days_still_fails(self):
+        """Summing one patient's occurrences across two days must not satisfy MinPeopleReq=2."""
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Tuesday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Bingo"})],
+            "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert len(result["testRemarks"]) == 2  # Monday session and Tuesday session both short
+
+    def test_activity_never_scheduled_is_still_flagged(self):
+        groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"], "MinPeopleReq": [2]})
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Something", "09:30-10:00": "Something else"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER})
+
+        result = groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Fail"
+        assert result["testRemarks"] == [
+            "Bingo was not scheduled for any patients this week (requires minimum 2)"
+        ]
+
