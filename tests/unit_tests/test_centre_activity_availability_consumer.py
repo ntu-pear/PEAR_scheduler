@@ -216,6 +216,21 @@ def test_created_db_error_is_retryable(consumer):
     assert result == MessageProcessingResult.FAILED_RETRYABLE
 
 
+def test_created_before_centre_activity_synced_is_retryable(consumer):
+    """An availability arriving before its centre activity must be requeued, not acked as a duplicate."""
+    from pear_schedule.crud.ref_centre_activity_availability_crud import CentreActivityNotSyncedError
+
+    consumer.create_ref_centre_activity_availability.side_effect = CentreActivityNotSyncedError(
+        "Centre activity 5 does not exist in REF_CENTRE_ACTIVITY yet"
+    )
+
+    result = consumer._process_availability_message(created_message())
+
+    assert result == MessageProcessingResult.FAILED_RETRYABLE
+    assert "CORR-C" not in consumer.processed_events.recorded
+    assert consumer._handle_message_wrapper(created_message()) is False  # nack -> requeue
+
+
 def test_missing_envelope_fields_is_permanent_failure(consumer):
     message = created_message()
     del message["data"]["availability_id"]

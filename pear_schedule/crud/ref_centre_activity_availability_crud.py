@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from typing import Optional, Tuple
 import logging
 from ..models.ref_centre_activity_availability_model import RefCentreActivityAvailability
+from ..models.ref_centre_activity_model import RefCentreActivity
 from ..schemas.ref_centre_activity_availability import (
     RefCentreActivityAvailabilityCreate,
     RefCentreActivityAvailabilityUpdate,
@@ -13,6 +14,24 @@ logger = logging.getLogger(__name__)
 
 # Business fields copied from the source record on create/upsert
 _DATA_FIELDS = ("CentreActivityID", "DaysOfWeek", "StartTime", "EndTime", "StartDate", "EndDate", "IsDeleted")
+
+
+class CentreActivityNotSyncedError(LookupError):
+    """The referenced centre activity is not in REF_CENTRE_ACTIVITY yet; the event should be retried."""
+
+
+def _ensure_centre_activity_exists(db: Session, centre_activity_id: int):
+    """
+    Check the FK target up front. Letting the insert hit the FK constraint raises an IntegrityError,
+    which IdempotencyService.process_idempotent treats as an already-processed race and would drop.
+    """
+    exists = db.query(RefCentreActivity.CentreActivityID).filter(
+        RefCentreActivity.CentreActivityID == centre_activity_id
+    ).first()
+    if not exists:
+        raise CentreActivityNotSyncedError(
+            f"Centre activity {centre_activity_id} does not exist in REF_CENTRE_ACTIVITY yet"
+        )
 
 def create_ref_centre_activity_availability(
     db: Session,
@@ -37,6 +56,8 @@ def create_ref_centre_activity_availability(
     availability_id = availability.CentreActivityAvailabilityID
 
     def create_operation():
+        _ensure_centre_activity_exists(db, availability.CentreActivityID)
+
         existing = db.query(RefCentreActivityAvailability).filter(
             RefCentreActivityAvailability.CentreActivityAvailabilityID == availability_id
         ).first()
@@ -114,10 +135,10 @@ def create_ref_centre_activity_availability(
 
     except Exception as e:
         db.rollback()
-        error_msg = str(e)
-        if "FOREIGN KEY constraint" in error_msg and "REF_CENTRE_ACTIVITY" in error_msg:
-            logger.warning(f"Centre activity {availability.CentreActivityID} does not exist in scheduler database for availability {aggregate_key}")
-        logger.error(f"Error creating centre activity availability {aggregate_key}: {error_msg}")
+        if isinstance(e, CentreActivityNotSyncedError):
+            logger.warning(f"{e} - availability {aggregate_key} will be retried")
+        else:
+            logger.error(f"Error creating centre activity availability {aggregate_key}: {str(e)}")
         raise
 
 def update_ref_centre_activity_availability(
@@ -147,6 +168,8 @@ def update_ref_centre_activity_availability(
         logger.debug(f"Updating centre activity availability {availability_id}")
 
         update_data = availability_update.model_dump(exclude_unset=True)
+        if update_data.get("CentreActivityID") is not None:
+            _ensure_centre_activity_exists(db, update_data["CentreActivityID"])
         for field, value in update_data.items():
             if hasattr(db_availability, field) and field != 'CentreActivityAvailabilityID':
                 setattr(db_availability, field, value)

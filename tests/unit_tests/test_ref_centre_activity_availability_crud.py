@@ -2,7 +2,11 @@ import pytest
 from unittest import mock
 from datetime import datetime, date, time
 
+from sqlalchemy.exc import IntegrityError
+
 from pear_schedule.crud.ref_centre_activity_availability_crud import (
+    CentreActivityNotSyncedError,
+    _ensure_centre_activity_exists,
     create_ref_centre_activity_availability,
     update_ref_centre_activity_availability,
     delete_ref_centre_activity_availability,
@@ -19,6 +23,16 @@ CRUD = "pear_schedule.crud.ref_centre_activity_availability_crud"
 
 def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
     return operation(), False
+
+
+@pytest.fixture(autouse=True)
+def centre_activity_exists():
+    """
+    The centre activity pre-check runs its own query; stub it (as "exists") so each test
+    only has to control the availability lookup. Tests for the missing case override it.
+    """
+    with mock.patch(f"{CRUD}._ensure_centre_activity_exists") as ensure:
+        yield ensure
 
 
 @pytest.fixture
@@ -145,6 +159,77 @@ def test_create_error_rolls_back_and_raises(mock_idempotent, db_session_mock, cr
             db=db_session_mock, availability=create_data, correlation_id="C1", created_by="1"
         )
     db_session_mock.rollback.assert_called_once()
+    db_session_mock.commit.assert_not_called()
+
+
+# ==== centre activity not synced yet (arrives before its centre activity) ====
+
+def test_ensure_centre_activity_exists_raises_when_missing(db_session_mock):
+    db_session_mock.query().filter().first.return_value = None
+
+    with pytest.raises(CentreActivityNotSyncedError):
+        _ensure_centre_activity_exists(db_session_mock, 5)
+
+
+def test_ensure_centre_activity_exists_passes_when_present(db_session_mock):
+    db_session_mock.query().filter().first.return_value = (5,)
+
+    _ensure_centre_activity_exists(db_session_mock, 5)  # no exception
+
+
+def test_not_synced_error_is_not_swallowed_by_idempotency_service():
+    """
+    process_idempotent treats IntegrityError as an already-processed race (-> DUPLICATE, dropped)
+    and marks ValueError as processed. The not-synced error must be neither, so it is retried.
+    """
+    assert not issubclass(CentreActivityNotSyncedError, IntegrityError)
+    assert not issubclass(CentreActivityNotSyncedError, ValueError)
+
+
+@mock.patch(f"{CRUD}.IdempotencyService.process_idempotent", side_effect=fake_process_idempotent)
+def test_create_before_centre_activity_synced_raises_and_saves_nothing(mock_idempotent, db_session_mock, create_data, centre_activity_exists):
+    centre_activity_exists.side_effect = CentreActivityNotSyncedError("Centre activity 5 does not exist")
+
+    with pytest.raises(CentreActivityNotSyncedError):
+        create_ref_centre_activity_availability(
+            db=db_session_mock, availability=create_data, correlation_id="C1", created_by="1"
+        )
+
+    centre_activity_exists.assert_called_once_with(db_session_mock, 5)
+    db_session_mock.add.assert_not_called()
+    db_session_mock.rollback.assert_called_once()
+    db_session_mock.commit.assert_not_called()
+
+
+@mock.patch(f"{CRUD}.IdempotencyService.record_processed_event")
+def test_sync_create_before_centre_activity_synced_records_nothing(mock_record, db_session_mock, create_data, centre_activity_exists):
+    centre_activity_exists.side_effect = CentreActivityNotSyncedError("Centre activity 5 does not exist")
+
+    with pytest.raises(CentreActivityNotSyncedError):
+        create_ref_centre_activity_availability(
+            db=db_session_mock, availability=create_data, correlation_id="C1",
+            created_by="sync_script", skip_duplicate_check=True
+        )
+
+    # Not recorded as processed, so the redelivered message is not skipped as a duplicate
+    mock_record.assert_not_called()
+    db_session_mock.commit.assert_not_called()
+
+
+@mock.patch(f"{CRUD}.IdempotencyService.process_idempotent", side_effect=fake_process_idempotent)
+def test_update_to_unsynced_centre_activity_raises(mock_idempotent, db_session_mock, existing_row, centre_activity_exists):
+    centre_activity_exists.side_effect = CentreActivityNotSyncedError("Centre activity 99 does not exist")
+    db_session_mock.query().filter().first.return_value = existing_row
+    update = RefCentreActivityAvailabilityUpdate(
+        CentreActivityID=99, UpdatedDateTime=datetime(2026, 10, 9, 11), ModifiedById="2"
+    )
+
+    with pytest.raises(CentreActivityNotSyncedError):
+        update_ref_centre_activity_availability(
+            db=db_session_mock, availability_id=12, availability_update=update, correlation_id="U1"
+        )
+
+    assert existing_row.CentreActivityID == 5  # unchanged
     db_session_mock.commit.assert_not_called()
 
 
