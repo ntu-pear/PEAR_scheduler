@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 import logging
 
 from pear_schedule.services.usersvc_util import user_login
+from pear_schedule.api.token_verifier import apply_verification
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class JWTPayload(BaseModel):
     sessionId: str
 
 # conversion of an actual token to a JWTPayload model
-def decode_jwtToken(token: str, bypass_auth: bool = False) -> Optional[JWTPayload]:
+def decode_jwtToken(token: str, bypass_auth: bool = False, endpoint: str = "") -> Optional[JWTPayload]:
     try:
         header, payload, signature = token.split(".")
 
@@ -56,17 +57,35 @@ def decode_jwtToken(token: str, bypass_auth: bool = False) -> Optional[JWTPayloa
             return None
         
         user_data = json.loads(subject_identifier)
-        return JWTPayload(**user_data)
+        claimed = JWTPayload(**user_data)
     
     except Exception as e:
         error_type = type(e).__name__
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"{error_type}: {str(e)}")
 
+    # Verification runs outside the try/except above so that the verifier's
+    # 401/503 are not rewritten by the broad handler.
+    verified = apply_verification(
+        token=token,
+        claimed_user_id=claimed.userId,
+        claimed_role=claimed.roleName,
+        endpoint=endpoint,
+    )
+    if verified is None:
+        return claimed
+    return JWTPayload(
+        userId=verified.userId,
+        fullName=verified.fullName,
+        email=verified.email,
+        roleName=verified.roleName,
+        sessionId=claimed.sessionId,
+    )
+
 # get current user from incoming request, /token
-def get_current_user(token: str = Depends(oauth2_scheme)) -> JWTPayload:
+def get_current_user(request: Request = None, token: str = Depends(oauth2_scheme)) -> JWTPayload:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    return decode_jwtToken(token)
+    return decode_jwtToken(token, endpoint=request.url.path if request is not None else "")
 
 def get_role_name(payload: JWTPayload) -> Optional[str]:
     return getattr(payload, "roleName", None)
