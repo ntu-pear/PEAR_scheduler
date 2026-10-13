@@ -189,6 +189,71 @@ class TestGroupScheduling:
 
         assert len(_scheduled_bins(result, 1, "Mahjong")) == 0
 
+    def test_disliking_patient_not_topped_up_into_activity(self, monkeypatch):
+        """Same as the top-up test, but patient 2 dislikes Mahjong so shouldn't be added."""
+        cfg = _group_config(target_weekly=1)
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        group_activity_df = pd.DataFrame({
+            "ActivityID": [1], "CentreActivityID": [1], "ActivityTitle": ["Mahjong"],
+            "IsFixed": [0], "FixedTimeSlots": [""], "MinPeopleReq": [1], "MinDuration": [30],
+        })
+        recommendation_df = pd.DataFrame({
+            "CentreActivityID": [1], "PatientID": [1], "DoctorRecommendation": [1],
+        })
+        preference_df = pd.DataFrame({"CentreActivityID": [1], "PatientID": [2], "IsLike": [-1]})
+        patient_ids = [1, 2]
+        patient_schedules = _empty_patient_schedules(patient_ids, cfg["OPEN_DAYS"], 8)
+
+        with _patch_group_views(patient_ids, group_activity_df, preference_df=preference_df, recommendation_df=recommendation_df):
+            result = GroupActivityScheduler.fillSchedule(patient_schedules)
+
+        assert len(_scheduled_bins(result, 1, "Mahjong")) == 1
+        assert len(_scheduled_bins(result, 2, "Mahjong")) == 0
+
+    def test_disliking_patient_not_used_to_cover_min_size_shortfall(self, monkeypatch):
+        """Patient 2 dislikes it, so patient 3 covers the shortfall instead."""
+        cfg = _group_config()
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        group_activity_df = pd.DataFrame({
+            "ActivityID": [1], "CentreActivityID": [1], "ActivityTitle": ["Mahjong"],
+            "IsFixed": [0], "FixedTimeSlots": [""], "MinPeopleReq": [2], "MinDuration": [30],
+        })
+        recommendation_df = pd.DataFrame({
+            "CentreActivityID": [1], "PatientID": [1], "DoctorRecommendation": [1],
+        })
+        preference_df = pd.DataFrame({"CentreActivityID": [1], "PatientID": [2], "IsLike": [-1]})
+        patient_ids = [1, 2, 3]
+        patient_schedules = _empty_patient_schedules(patient_ids, cfg["OPEN_DAYS"], 8)
+
+        with _patch_group_views(patient_ids, group_activity_df, preference_df=preference_df, recommendation_df=recommendation_df):
+            result = GroupActivityScheduler.fillSchedule(patient_schedules)
+
+        assert len(_scheduled_bins(result, 2, "Mahjong")) == 0
+        assert len(_scheduled_bins(result, 3, "Mahjong")) == 1
+
+    def test_recommendation_wins_over_dislike(self, monkeypatch):
+        """Recommendation wins over a dislike."""
+        cfg = _group_config()
+        monkeypatch.setattr(GroupActivityScheduler, "config", cfg, raising=False)
+
+        group_activity_df = pd.DataFrame({
+            "ActivityID": [1], "CentreActivityID": [1], "ActivityTitle": ["Mahjong"],
+            "IsFixed": [0], "FixedTimeSlots": [""], "MinPeopleReq": [1], "MinDuration": [30],
+        })
+        recommendation_df = pd.DataFrame({
+            "CentreActivityID": [1], "PatientID": [1], "DoctorRecommendation": [1],
+        })
+        preference_df = pd.DataFrame({"CentreActivityID": [1], "PatientID": [1], "IsLike": [-1]})
+        patient_ids = [1, 2]
+        patient_schedules = _empty_patient_schedules(patient_ids, cfg["OPEN_DAYS"], 8)
+
+        with _patch_group_views(patient_ids, group_activity_df, preference_df=preference_df, recommendation_df=recommendation_df):
+            result = GroupActivityScheduler.fillSchedule(patient_schedules)
+
+        assert len(_scheduled_bins(result, 1, "Mahjong")) == 1
+
     def test_get_fixed_time_arr_translates_day_slot_string_to_index(self, monkeypatch):
         """getFixedTimeArr parses "day-slot" strings and looks up their index in
         GROUP_TIMESLOT_MAPPING, which holds (day, slot) tuples at scheduling time."""

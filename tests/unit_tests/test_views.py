@@ -326,7 +326,7 @@ class TestPatientPreferenceStartDateFiltering:
         "view_cls, is_like, activity_id_col",
         [
             (PatientsView, 1, "PreferredActivityID"),
-            (PatientsUnpreferredView, 0, "DispreferredActivityID"),
+            (PatientsUnpreferredView, -1, "DispreferredActivityID"),
         ],
     )
     def test_activity_added_on_or_after_monday_is_still_included(self, view_cls, is_like, activity_id_col):
@@ -500,3 +500,19 @@ class TestMedicationViewToday:
             3: (datetime(2024, 3, 1), datetime(2024, 3, 25)),  # active
         }
         assert self._active_ids(monkeypatch, courses) == {3}
+
+
+class TestPatientsUnpreferredViewIsLikeSemantics:
+    """-1 is dislike, 0 is neutral. Used to treat 0 as the dislike."""
+
+    @pytest.mark.parametrize("is_like, expected_dispreferred", [(-1, True), (0, False), (1, False)])
+    def test_only_real_dislikes_are_dispreferred(self, is_like, expected_dispreferred):
+        engine = create_engine("sqlite:///:memory:")
+        schema = views.DB.schema
+        schema.create_all(engine)
+        _seed_patient_preferences(engine, schema, is_like=is_like)
+
+        with engine.connect() as conn:
+            rows = conn.execute(PatientsUnpreferredView.build_query()).mappings().all()
+
+        assert bool(rows) == expected_dispreferred

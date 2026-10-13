@@ -23,12 +23,12 @@ class TestPatientTestUtils:
                 })), \
             patch('pear_schedule.db_utils.views.CentreActivityPreferenceView.get_data', return_value=pd.DataFrame({
                 'PatientID' : [1,1,1,1,1,1],
-                'IsLike': [1,1,0,0,1,1],
+                'IsLike': [1,1,-1,-1,1,1],
                 'ActivityTitle': ["Movie Screening", "Brisk Walking", "Sewing", "Origami", "Cutting Pictures", "Watch television"]
                 })), \
             patch('pear_schedule.db_utils.views.CentreActivityRecommendationView.get_data', return_value=pd.DataFrame({
                 'PatientID' : [1,1,1],
-                'DoctorRecommendation': [1,1,0],
+                'DoctorRecommendation': [1,1,-1],
                 'ActivityTitle': ["Brisk Walking", "Sewing", "Cutting Pictures"]
                 })), \
             patch('pear_schedule.db_utils.views.ActivitiesExcludedView.get_data', return_value=pd.DataFrame({
@@ -122,6 +122,24 @@ class TestPatientTestUtils:
     Generate the Patient Wellness Plan and Medication Schedule
     '''
     # test whether the patient wellness plan is parsed correctly based on the mock data 
+    def test_neutral_preference_and_recommendation_are_not_should_not_schedule(self, mock_views):
+        """0 is neutral, only -1 should land in non_preferred / non_recommended."""
+        tables_df = getTablesDF()
+        tables_df["centreActivityPreferenceViewDF"] = pd.DataFrame({
+            "PatientID": [1, 1], "IsLike": [0, -1], "ActivityTitle": ["Neutral Act", "Disliked Act"],
+        })
+        tables_df["centreActivityRecommendationViewDF"] = pd.DataFrame({
+            "PatientID": [1, 1], "DoctorRecommendation": [0, -1], "ActivityTitle": ["Neutral Rec", "Not Rec"],
+        })
+        config = {
+            'DAYS': 5,
+            'DAY_OF_WEEK_ORDER': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        }
+        plan = getPatientWellnessPlan(tables_df, patientID=1, config=config)
+
+        assert plan['should_not_be_scheduled_activities']['non_preferred'] == ["Disliked Act"]
+        assert plan['should_not_be_scheduled_activities']['non_recommended'] == ["Not Rec"]
+
     def test_get_patient_wellness_plan_based_on_mock_data(self, mock_views):
         fake_tables_DF = getTablesDF()
         config = {

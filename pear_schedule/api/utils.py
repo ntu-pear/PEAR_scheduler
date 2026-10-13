@@ -125,9 +125,10 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
         routines_timeslot[routine] = routines_df.loc[routines_df['ActivityTitle'] == routine, 'FixedTimeSlots'].iloc[0]
     
     # TYPE 'SHOULD NOT SCHEDULE'
-    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == 0]
+    # -1 is dislike / not recommended, 0 is neutral
+    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == -1]
     non_preferred_activities = non_preferred_activities['ActivityTitle'].tolist()
-    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == 0]
+    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == -1]
     non_recommended_activities = non_recommended_activities['ActivityTitle'].tolist()
     activities_excluded = tablesDF['activitiesExcludedViewDF'].loc[tablesDF['activitiesExcludedViewDF']['PatientID'] == patientID]
     activities_excluded = activities_excluded['ActivityTitle'].tolist()

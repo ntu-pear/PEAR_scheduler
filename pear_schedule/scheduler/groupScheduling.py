@@ -75,7 +75,17 @@ class GroupActivityScheduler(BaseScheduler):
                     activityMap[(activityTitle, duration)].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
-            
+
+            # patients who dislike it are kept out, unless recommended
+            dislikedDF = groupPreferenceDF[
+                (groupPreferenceDF["CentreActivityID"] == centreActivityID) &
+                (groupPreferenceDF["IsLike"].astype(int) == -1)
+            ]
+            for id in set(dislikedDF["PatientID"]) - set(recommendedDF["PatientID"]):
+                activityExclusionMap[activityTitle].add(id)
+                if id in patients:
+                    patients.remove(id)
+
         
             # Find preferred patients of activity
             preferredDF = groupPreferenceDF[
