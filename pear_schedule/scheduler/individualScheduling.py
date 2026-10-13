@@ -340,8 +340,10 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         cls.fillPreferences(schedules)
 
     @classmethod
-    def fillPreferences(cls, schedules: Mapping[str, List[str]], conn: Connection = None, patients: Mapping = None):
+    def fillPreferences(cls, schedules: Mapping[str, List[str]], conn: Connection = None, patients: Mapping = None, week_start: datetime.datetime = None):
         patients = patients or cls._get_patient_data(conn=conn)
+        week_start = week_start or \
+            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
 
         # consolidate activity data
         activities: pd.DataFrame = ActivitiesView.get_data(conn=conn)  # non compulsory individual activities
@@ -364,15 +366,21 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 preferences: Set[int] = patient["preferences"]
                 dispreferences: Set[int] = patient["dispreferences"]
 
-                patient_activities = avail_activities[~avail_activities["ActivityID"].isin(exclusions)]
-
-                preference_idx = patient_activities["ActivityID"].isin(preferences)
-                non_preference_idx = (~patient_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
-                preferred_activities = patient_activities[preference_idx]
-                non_preferred_activites = patient_activities[non_preference_idx]
+                preference_idx = avail_activities["ActivityID"].isin(preferences)
+                non_preference_idx = (~avail_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
+                patient_preferred = avail_activities[preference_idx]
+                patient_non_preferred = avail_activities[non_preference_idx]
 
                 for day, day_sched in enumerate(sched):
                     curr_day_activities = set()
+
+                    # exclusions only cover their own days
+                    excluded_today = {
+                        aid for aid in exclusions
+                        if checkActivityExcluded(aid, exclusions, day, week_start)
+                    }
+                    preferred_activities = patient_preferred[~patient_preferred["ActivityID"].isin(excluded_today)]
+                    non_preferred_activites = patient_non_preferred[~patient_non_preferred["ActivityID"].isin(excluded_today)]
 
                     i = 0
                     while i < len(day_sched):
@@ -441,6 +449,10 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
             # may change, but technically min duration is 30 mins; for now, 60 minutes.
             minDuration = max(1, a["MinDuration"] // cls.config["MIN_ACTIVITY_DURATION"]) 
             minSlots = minDuration - 1 # slots are 1 hour each
+
+            # has to fit the free run, else the slot ends up Free and Easy
+            if minSlots > slot_size:
+                continue
 
             if a["FixedTimeSlots"]:
                 # e.g. takes in ["1-2","1-3"], map output: [["1","2"],["1","3"]]

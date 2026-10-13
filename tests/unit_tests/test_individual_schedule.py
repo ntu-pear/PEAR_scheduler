@@ -623,12 +623,76 @@ class TestPreferredScheduling:
             "FixedTimeSlots": [""], "MinDuration": [30], "MaxDuration": [30],
         })
         schedules = {1: [["", "", "", ""]]}
-        patients = {1: {"exclusions": {2}, "preferences": {2}, "dispreferences": set()}}
+        # ActivityID -> EndDateTime, None = indefinite
+        patients = {1: {"exclusions": {2: None}, "preferences": {2}, "dispreferences": set()}}
 
         with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
             PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
 
         assert schedules[1][0][0] == "Free and Easy"
+
+    def test_exclusion_only_blocks_the_days_it_covers(self, monkeypatch):
+        """An exclusion ending Monday used to block the activity all week."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        cfg = make_scheduler_config(OPEN_DAYS=["Monday", "Tuesday"], SLOTS_PER_DAY={"Monday": 1, "Tuesday": 1})
+        monkeypatch.setattr(PreferredActivityScheduler, "config", cfg, raising=False)
+
+        activities_df = pd.DataFrame({
+            "ActivityID": [2], "ActivityTitle": ["Walk"],
+            "FixedTimeSlots": [""], "MinDuration": [30], "MaxDuration": [30],
+        })
+        schedules = {1: [[""], [""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+        patients = {1: {
+            "exclusions": {2: datetime.datetime(2024, 3, 18, 23, 59)},  # ends Monday night
+            "preferences": {2}, "dispreferences": set(),
+        }}
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.fillPreferences(schedules, patients=patients, week_start=week_start)
+
+        assert schedules[1][0] == ["Free and Easy"]
+        assert schedules[1][1] == ["Walk"]
+
+    def test_preferred_too_long_falls_back_to_neutral_that_fits(self, monkeypatch):
+        """Preferred 60 min doesn't fit a 1-slot gap, so the neutral 30 min one should be used."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+
+        activities_df = pd.DataFrame({
+            "ActivityID": [1, 2], "ActivityTitle": ["Long Pref", "Short Neutral"],
+            "FixedTimeSlots": ["", ""], "MinDuration": [60, 30], "MaxDuration": [60, 30],
+        })
+        schedules = {1: [["", "Pre-Existing", "Pre-Existing", "Pre-Existing"]]}
+        patients = {1: {"exclusions": {}, "preferences": {1}, "dispreferences": set()}}
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
+
+        assert schedules[1][0][0] == "Short Neutral"
+
+    def test_longer_neutral_skipped_for_shorter_one_that_fits(self, monkeypatch):
+        """3-slot run can be filled completely, no Free and Easy."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+
+        activities_df = pd.DataFrame({
+            "ActivityID": [1, 2, 3], "ActivityTitle": ["A", "B", "C"],
+            "FixedTimeSlots": ["", "", ""], "MinDuration": [60, 60, 30], "MaxDuration": [60, 60, 30],
+        })
+        schedules = {1: [["Pre-Existing", "", "", ""]]}
+        patients = {1: {"exclusions": {}, "preferences": set(), "dispreferences": set()}}
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
+
+        assert "Free and Easy" not in schedules[1][0]
 
     def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
         """Patient 1's entry is missing "exclusions", so it raises a KeyError.
