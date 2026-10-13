@@ -100,6 +100,11 @@ class IndividualActivityScheduler(BaseScheduler):
         return patients
 
 
+def _no_patient_data() -> Dict:
+    # patient with no likes, dislikes or exclusions yet
+    return {"preferences": set(), "exclusions": dict(), "dispreferences": set()}
+
+
 class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
@@ -156,10 +161,11 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
 
                     fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
                     patient_routine = routines[routines["PatientID"] == patient_id]
+                    patient_info = patients.get(patient_id) or _no_patient_data()
 
-                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start, patient_id=patient_id)
-                    cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start, patient_id=patient_id)
-                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start, patient_id=patient_id)
+                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patient_info, week_start, patient_id=patient_id)
+                    cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patient_info, week_start, patient_id=patient_id)
+                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patient_info, week_start, patient_id=patient_id)
                 except Exception as e:
                     logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")
                     trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.ERROR, "stage_exception", error=repr(e))
@@ -176,7 +182,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 try:
                     patient_schedule = schedules[patient_id]
                     patient_routine = routines[routines["PatientID"] == patient_id]
-                    patient_info = patients.get(patient_id, {"preferences": set(), "exclusions": dict(), "dispreferences": set()})
+                    patient_info = patients.get(patient_id) or _no_patient_data()
 
                     cls.__fillRoutines(patient_schedule, no_fixed_activities, patient_routine, patient_info, week_start, patient_id=patient_id)
                 except Exception as e:
@@ -419,11 +425,8 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         ] if strategy == "optimal" else []
 
         for pid, sched in schedules.items():
-            if pid not in patients:
-                logger.error(f"unknown patientID {pid} found in schedules")
-                continue
             try:
-                patient = patients[pid]
+                patient = patients.get(pid) or _no_patient_data()
 
                 exclusions: Set[int] = patient["exclusions"]
                 preferences: Set[int] = patient["preferences"]

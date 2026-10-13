@@ -355,7 +355,7 @@ class TestRecommendedRoutineFillSchedule:
         assert schedules[1][0][1] == ""
 
     def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
-        """Patient 1 has no data in PatientsView, so it raises a KeyError. Patient 2 should still get scheduled."""
+        """Patient 1 has a recommendation but no schedule (e.g. deleted), so it raises a KeyError. Patient 2 should still get scheduled."""
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
 
         monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
@@ -364,16 +364,30 @@ class TestRecommendedRoutineFillSchedule:
             "ActivityTitle": ["Broken Patient Activity", "Physiotherapy"], "FixedTimeSlots": ["0-1", "0-1"],
             "PatientID": [1, 2], "ActivityEndDate": [pd.Timestamp("2099-12-31"), pd.Timestamp("2099-12-31")],
         })
-        # patient 1 missing on purpose
         patients_df = pd.DataFrame({"PatientID": [2], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
-        schedules = {1: [["", "", "", ""]], 2: [["", "", "", ""]]}
+        schedules = {2: [["", "", "", ""]]}  # patient 1 missing on purpose
         week_start = datetime.datetime(2024, 3, 18)
 
         with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
             RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
 
-        assert schedules[1][0][1] == ""  # patient 1 never got scheduled
         assert schedules[2][0][1] == "Physiotherapy"  # patient 2 still did
+
+    def test_patient_with_no_preference_data_still_gets_recommendations(self, monkeypatch):
+        """Used to KeyError since only patients with likes/dislikes/exclusions were looked up."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": [2], "IsFixed": [1], "MinDuration": [30], "ActivityTitle": ["Physiotherapy"],
+            "FixedTimeSlots": ["0-1"], "PatientID": [1], "ActivityEndDate": [pd.Timestamp("2099-12-31")],
+        })
+        schedules = {1: [["", "", "", ""]]}
+
+        with _patch_recommended_stage(recommendations_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=datetime.datetime(2024, 3, 18))
+
+        assert schedules[1][0][1] == "Physiotherapy"
 
     def test_multi_slot_activity_at_day_end_is_not_scheduled(self, monkeypatch):
         """Unlike compulsory's version of this check, this one actually works - confirms
@@ -713,6 +727,25 @@ class TestPreferredScheduling:
             PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
 
         assert "Free and Easy" not in schedules[1][0]
+
+    def test_patient_with_no_preference_data_still_gets_gaps_filled(self, monkeypatch):
+        """Used to be skipped as an unknown patient, so every gap ended up Free and Easy."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+        activities_df = pd.DataFrame({
+            "ActivityID": [1], "ActivityTitle": ["Board Games"],
+            "FixedTimeSlots": [""], "MinDuration": [30], "MaxDuration": [30],
+        })
+        schedules = {1: [["", "", "", ""]]}
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            # only patient 2 has preference data
+            PreferredActivityScheduler.fillPreferences(
+                schedules, patients={2: {"exclusions": {}, "preferences": set(), "dispreferences": set()}})
+
+        assert schedules[1][0][0] == "Board Games"
 
     def test_one_patients_exception_does_not_block_other_patients(self, monkeypatch):
         """Patient 1's entry is missing "exclusions", so it raises a KeyError.
