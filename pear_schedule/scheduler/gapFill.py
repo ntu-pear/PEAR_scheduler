@@ -7,6 +7,8 @@ DP over slot positions, and never returns worse than the seed (the greedy result
 """
 
 import datetime
+
+import pandas as pd
 from dataclasses import dataclass, field
 from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
@@ -178,7 +180,8 @@ def is_excluded(activity_id: int, exclusions: Mapping[int, Optional[datetime.dat
     if activity_id not in exclusions:
         return False
     end = exclusions[activity_id]
-    return end is None or end >= week_start + datetime.timedelta(days=day)
+    # NaT is how pandas reads a NULL end date, same as None: no end
+    return end is None or pd.isna(end) or end >= week_start + datetime.timedelta(days=day)
 
 
 @dataclass

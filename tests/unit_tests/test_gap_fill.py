@@ -101,6 +101,10 @@ class TestBuildCandidates:
                           exclusions={2: datetime.datetime(2024, 3, 18, 23, 59)})
         assert set(out) == {"Yoga"}
 
+    def test_exclusion_with_no_end_date_applies(self):
+        import pandas as pd
+        assert "Sewing" not in self._build(day=3, exclusions={2: pd.NaT})
+
     def test_exclusion_ending_yesterday_does_not_apply(self):
         out = self._build(day=1, exclusions={2: datetime.datetime(2024, 3, 18, 23, 59)})
         assert "Sewing" in out
