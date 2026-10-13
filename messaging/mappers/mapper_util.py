@@ -4,6 +4,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# activity service sends end_date null for "excluded until further notice"
+NO_END_DATE = datetime(9999, 12, 31)
+
 class MapperUtil:
     """
     Universal mapper that handles all source-to-target transformations
@@ -341,7 +344,8 @@ class MapperUtil:
                 'field_transforms': {
                     # Special transformations (target_field: transform_function)
                     'StartDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
-                    'EndDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
+                    # null used to become now(), so an open-ended exclusion expired the same day
+                    'EndDateTime': lambda x: self._parse_datetime(x) or NO_END_DATE,
                     'ExclusionRemarks': lambda x: str(x) if x is not None else "",
                     'IsDeleted': lambda x: self._convert_boolean(x, "0"),
                     'CreatedDateTime': lambda x: self._parse_datetime(x) or datetime.now(),
@@ -353,7 +357,7 @@ class MapperUtil:
                     'IsDeleted': '0',
                     'ExclusionRemarks': '',
                     'StartDateTime': datetime.now(),
-                    'EndDateTime': datetime.now(),
+                    'EndDateTime': NO_END_DATE,
                     'CreatedDateTime': datetime.now(),
                     'UpdatedDateTime': datetime.now(),
                     'CreatedById': 'activity_service',

@@ -22,10 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def _get_max_enddate(d1, d2):
-    if d1 is None:
-        return d1
-    if d2 is None:
-        return d2
+    # None/NaT means no end, so it wins
+    if d1 is None or pd.isna(d1):
+        return None
+    if d2 is None or pd.isna(d2):
+        return None
     return max(d1, d2)
 
 
