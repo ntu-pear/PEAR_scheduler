@@ -66,6 +66,11 @@ class GroupActivityScheduler(BaseScheduler):
                     patients.remove(id)
 
 
+            disliked_ids = set(groupPreferenceDF[
+                (groupPreferenceDF["CentreActivityID"] == centreActivityID) &
+                (groupPreferenceDF["IsLike"].astype(int) == -1)
+            ]["PatientID"])
+
             # Find recommended patients of activity
             recommendedDF = groupRecommendationDF[
                 (groupRecommendationDF["CentreActivityID"] == centreActivityID) &
@@ -76,13 +81,11 @@ class GroupActivityScheduler(BaseScheduler):
                     activityMap[(activityTitle, duration)].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
+                    trace.note_reason(("group", id, activityTitle),
+                                      "recommended_over_dislike" if id in disliked_ids else "recommended")
 
             # patients who dislike it are kept out, unless recommended
-            dislikedDF = groupPreferenceDF[
-                (groupPreferenceDF["CentreActivityID"] == centreActivityID) &
-                (groupPreferenceDF["IsLike"].astype(int) == -1)
-            ]
-            for id in set(dislikedDF["PatientID"]) - set(recommendedDF["PatientID"]):
+            for id in disliked_ids - set(recommendedDF["PatientID"]):
                 activityExclusionMap[activityTitle].add(id)
                 if id in patients:
                     patients.remove(id)
@@ -98,6 +101,7 @@ class GroupActivityScheduler(BaseScheduler):
                     activityMap[(activityTitle, duration)].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
+                    trace.note_reason(("group", id, activityTitle), "liked")
 
         
         toRemoveList = []
@@ -128,6 +132,7 @@ class GroupActivityScheduler(BaseScheduler):
                     for id in leftOverPatients:
                         activityMap[(activityTitle, duration)].add(id)
                         patientActivityCountMap[id] += 1 
+                        trace.note_reason(("group", id, activityTitle), "filled_to_min_size")
 
                 else: # more leftover patients than shortfall, need to allocate patients with lower group activity count
                     minHeap = [(patientActivityCountMap[id], id) for id in leftOverPatients]
@@ -137,6 +142,7 @@ class GroupActivityScheduler(BaseScheduler):
                         _, pid = minHeap[i]
                         activityMap[(activityTitle, duration)].add(pid)
                         patientActivityCountMap[pid] += 1
+                        trace.note_reason(("group", pid, activityTitle), "filled_to_min_size")
 
             
         # Need to remove because nvr hit min size requirement
@@ -204,6 +210,7 @@ class GroupActivityScheduler(BaseScheduler):
                 if pid not in activityExclusionMap[activityTitle]: # not being excluded 
                     secondActivityMap[key].add(pid)
                     patientActivityCountMap[pid] += 1
+                    trace.note_reason(("group", pid, activityTitle), "filled_to_min_size")
         
        
         logger.info("Second Round Scheduling")
@@ -250,6 +257,7 @@ class GroupActivityScheduler(BaseScheduler):
                     for j in range(slots):
                         secondTimeTable[pid][activitySlot][j] = activity
                     toAdd -= 1
+                    trace.note_reason(("group", pid, activity), "top_up_to_weekly_target")
                 # if secondTimeTable[pid][activitySlot][0] == "" and pid not in activityExclusionMap[activity]:
                 #     secondTimeTable[pid][activitySlot][0] = activity
                 #     toAdd -= 1

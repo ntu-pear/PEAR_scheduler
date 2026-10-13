@@ -96,13 +96,14 @@ class IndividualActivityScheduler(BaseScheduler):
                 }
             activity_id = r["ActivityID"]
             patients[pid]["exclusions"][activity_id] = week_end
+            patients[pid].setdefault("not_recommended", set()).add(activity_id)
 
         return patients
 
 
 def _no_patient_data() -> Dict:
     # patient with no likes, dislikes or exclusions yet
-    return {"preferences": set(), "exclusions": dict(), "dispreferences": set()}
+    return {"preferences": set(), "exclusions": dict(), "dispreferences": set(), "not_recommended": set()}
 
 
 class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
@@ -262,13 +263,19 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             for i in range((selected_activity_row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1):
                 patient_schedule[day][slot + i] = selected_activity
             placed_rows.add(least_available)
-            trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED, "most_constrained_fixed_slot",
+            trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED,
+                         "recommended_over_dislike" if selected_activity_row["ActivityID"] in patient_info.get("dispreferences", set())
+                         else "most_constrained_fixed_slot",
                          activity=selected_activity, day=day, slot=slot,
                          remaining_slots=None if lowest_availability == float("inf") else int(lowest_availability))
 
         for row, activity in activities.iterrows():
             if row not in placed_rows:
-                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "no_valid_fixed_slot",
+                days = {d for d, _ in activity["ProcessedTimeSlots"]}
+                excluded = bool(days) and all(
+                    checkActivityExcluded(activity["ActivityID"], patient_info["exclusions"], d, week_start) for d in days)
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED,
+                             "excluded" if excluded else "no_valid_fixed_slot",
                              activity=activity["ActivityTitle"],
                              fixed_slots=sorted(activity["ProcessedTimeSlots"]))
 
@@ -380,7 +387,9 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     for i in range(num_slots):
                         patient_schedule[day][time+i] = a["ActivityTitle"]
                     scheduled_activities.add(a["ActivityID"])
-                    trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED, "first_free_run",
+                    trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED,
+                                 "recommended_over_dislike" if a["ActivityID"] in patient_info.get("dispreferences", set())
+                                 else "first_free_run",
                                  activity=a["ActivityTitle"], day=day, slot=time)
                     # slot taken, move on
                     break
@@ -390,7 +399,10 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
 
         for _, a in activities.iterrows():
             if a["ActivityID"] not in scheduled_activities:
-                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "no_free_run",
+                excluded = all(checkActivityExcluded(a["ActivityID"], patient_info["exclusions"], d, week_start)
+                               for d in range(len(patient_schedule)))
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED,
+                             "excluded" if excluded else "no_free_run",
                              activity=a["ActivityTitle"], min_duration=int(a["MinDuration"]))
 
 
@@ -436,6 +448,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 non_preference_idx = (~avail_activities["ActivityID"].isin(dispreferences)) & ~preference_idx
                 patient_preferred = avail_activities[preference_idx]
                 patient_non_preferred = avail_activities[non_preference_idx]
+                before = [list(d) for d in sched]
 
                 for day, day_sched in enumerate(sched):
                     # exclusions only cover their own days
@@ -453,9 +466,42 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                         )
                     else:
                         cls._greedyFillDay(day_sched, day, pid, preferred_activities, non_preferred_activites, avail_activities)
+
+                cls._traceLikedNotPlaced(pid, before, sched, avail_activities, preferences, exclusions,
+                                         patient.get("not_recommended", set()), week_start)
             except Exception as e:
                 logger.exception(f"Preferred activity scheduling failed for patient {pid}, skipping")
                 trace.record(trace.STAGE_PREFERRED, pid, trace.ERROR, "stage_exception", error=repr(e))
+
+    @classmethod
+    def _traceLikedNotPlaced(cls, pid, before: List[List[str]], after: List[List[str]], avail_activities: pd.DataFrame,
+                             preferences: Set[int], exclusions: Mapping, not_recommended: Set[int],
+                             week_start: datetime.datetime) -> None:
+        """Liked activities that never made it into the week, and why."""
+        if trace.current() is None:
+            return
+        placed = {v for day in after for v in day}
+        for _, a in avail_activities[avail_activities["ActivityID"].isin(preferences)].iterrows():
+            if a["ActivityTitle"] in placed:
+                continue
+            aid = a["ActivityID"]
+            length = max(1, -(-int(a["MinDuration"]) // cls.config["MIN_ACTIVITY_DURATION"]))
+            days = [d for d in range(len(before)) if not checkActivityExcluded(aid, exclusions, d, week_start)]
+
+            def free(d, s):
+                return s + length <= len(before[d]) and not any(before[d][s:s + length])
+
+            if aid in not_recommended:
+                reason = "liked_but_not_recommended"
+            elif not days:
+                reason = "liked_but_excluded"
+            elif a["ProcessedTimeSlots"]:
+                fits = any(d in days and free(d, s) for d, s in a["ProcessedTimeSlots"])
+                reason = "liked_but_gaps_used" if fits else "liked_but_fixed_time_taken"
+            else:
+                fits = any(free(d, s) for d in days for s in range(len(before[d])))
+                reason = "liked_but_gaps_used" if fits else "liked_but_no_gap_long_enough"
+            trace.record(trace.STAGE_PREFERRED, pid, trace.SKIPPED, reason, activity=a["ActivityTitle"])
 
     @classmethod
     def _greedyFillDay(cls, day_sched: List[str], day: int, pid, preferred_activities: pd.DataFrame,

@@ -62,6 +62,8 @@ class ScheduleTrace:
         self.events: List[TraceEvent] = []
         # (patient_id, day, slot) -> writes in stage order
         self.provenance: Dict[Tuple[Any, int, int], List[SlotWrite]] = {}
+        # why a stage picked something, looked up later (e.g. why a patient is in a group)
+        self.reasons: Dict[Tuple, str] = {}
         self._snapshot = None
 
     def add(self, event: TraceEvent) -> None:
@@ -128,6 +130,18 @@ def tracing(trace: Optional[ScheduleTrace] = None):
         yield trace
     finally:
         _current.reset(token)
+
+
+def note_reason(key: Tuple, reason: str) -> None:
+    """Remember why something was picked, first reason wins. No-op without a trace."""
+    trace = _current.get()
+    if trace is not None:
+        trace.reasons.setdefault(key, reason)
+
+
+def reason_for(key: Tuple, default: str) -> str:
+    trace = _current.get()
+    return trace.reasons.get(key, default) if trace is not None else default
 
 
 def record(stage: str, patient_id, outcome: str, reason: str, activity: Optional[str] = None,
