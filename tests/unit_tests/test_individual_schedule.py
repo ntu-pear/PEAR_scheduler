@@ -312,6 +312,26 @@ class TestRecommendedRoutineFillSchedule:
 
         assert schedules[1][0][0] == "Flexible Activity"
 
+    def test_flexible_activity_with_null_fixed_time_slots(self, monkeypatch):
+        """NULL FixedTimeSlots used to become "None" and crash the stage for every patient."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", self._config(), raising=False)
+        recommendations_df = pd.DataFrame({
+            "ActivityID": [1, 2], "IsFixed": [0, 1], "MinDuration": [30, 30],
+            "ActivityTitle": ["Flexible Activity", "Fixed Activity"], "FixedTimeSlots": [None, "0-2"],
+            "PatientID": [1, 1], "ActivityEndDate": [pd.Timestamp("2099-12-31")] * 2,
+        })
+        patients_df = pd.DataFrame({"PatientID": [1], "PreferredActivityID": [999], "ActivityEndDate": [pd.Timestamp("2099-12-31")]})
+        schedules = {1: [["", "", "", ""]]}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        with _patch_recommended_stage(recommendations_df, patients_df=patients_df):
+            RecommendedRoutineActivityScheduler.fillSchedule(schedules, week_start=week_start)
+
+        assert schedules[1][0][2] == "Fixed Activity"
+        assert "Flexible Activity" in schedules[1][0]
+
     def test_excluded_activity_is_not_scheduled(self, monkeypatch):
         from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
 

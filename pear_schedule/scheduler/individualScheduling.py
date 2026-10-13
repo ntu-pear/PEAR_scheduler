@@ -107,7 +107,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             # pull recommendations
             recommendations: pd.DataFrame = RecommendedActivitiesView.get_data(conn=conn)
             recommendations = recommendations.sort_values(by=["PatientID"])
-            recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].astype(str)
+            # NULL for flexible activities, astype(str) alone turns it into "None"
+            recommendations["FixedTimeSlots"] = recommendations["FixedTimeSlots"].fillna("").astype(str)
 
             # break down fixedTimeSlots into a list (day,slot) pairs
             proc_fixedTimeSlots:pd.Series = recommendations["FixedTimeSlots"].apply(lambda x: {(int(a),int(b)) for a,b in map(lambda y: y.split('-'), x.split(','))} if pd.notna(x) and x.strip() != "" else set())
