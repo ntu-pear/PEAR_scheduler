@@ -797,7 +797,8 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
     for _, routineRecord in validRoutinesDF.iterrows():
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
-        routineActivityMap[routineRecord["ActivityTitle"]] = expandFixedTimeSlots(fixedTimeSlots, routineRecord["MinDuration"], minActivityDuration)
+        # routine slots are already one entry per slot, and the view has no MinDuration
+        routineActivityMap[routineRecord["ActivityTitle"]] = expandFixedTimeSlots(fixedTimeSlots, minActivityDuration, minActivityDuration)
 
 
     result = True
@@ -965,7 +966,8 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
         activityTitle = routineRecord["ActivityTitle"] + "(routine)"
-        for ts in expandFixedTimeSlots(fixedTimeSlots, routineRecord["MinDuration"], minActivityDuration):
+        # one entry per slot already
+        for ts in expandFixedTimeSlots(fixedTimeSlots, minActivityDuration, minActivityDuration):
             if ts not in timeSlotMap:
                 timeSlotMap[ts] = [activityTitle]
             else:

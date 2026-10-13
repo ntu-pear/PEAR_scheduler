@@ -776,6 +776,42 @@ class TestSystemTestTimeslotLabels:
         assert result["testResult"] == "Fail"
         assert "Monday 09:30-10:00" in result["testRemarks"][0]
 
+    def test_fixed_activities_check_works_with_real_routine_view_columns(self):
+        """The routine view has no MinDuration, reading it crashed /systemTest."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({
+            "PatientID": [1], "ActivityID": [7], "ActivityTitle": ["Morning Walk"], "FixedTimeSlots": ["0-1,0-2"],
+        })
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Yoga", "09:30-10:00": "Morning Walk", "10:00-10:30": "Morning Walk"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+
+    def test_clash_warning_works_with_real_routine_view_columns(self):
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-2"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({
+            "PatientID": [1], "ActivityID": [7], "ActivityTitle": ["Morning Walk"], "FixedTimeSlots": ["0-2"],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert result["warningRemarks"] == ["These activities have clashing fixed timeslots on Monday 10:00-10:30: Yoga(normal), Morning Walk(routine)"]
+
     def test_group_activity_mismatch_never_needs_the_fallback_label(self):
         """timeslot comes from enumerate(), so the fallback cannot be reached."""
         groupActivitiesDF = pd.DataFrame({"ActivityTitle": ["Bingo"]})
