@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schedule Explainer</title>
+<!--
+  Open this file in a browser and load the JSON written by:
+    python app.py explain_schedule -c configprod.py --json explain.json
+  Nothing is sent anywhere; the file is read locally.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dfe3ea;
+    --compulsory: #e8935a; --recommended_routine: #8f6bd8; --group: #3fa58b;
+    --preferred: #4f8fe0; --adhoc: #d4577a; --medication: #b08a2e;
+    --fe-data: #c9ced8; --fe-logic: #d93b3b; --chip: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b3; --border: #2c323d;
+      --fe-data: #3a404c; --chip: #262b35;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  header h1 { font-size: 18px; margin: 0 16px 0 0; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .muted { color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .card .big { font-size: 22px; font-weight: 600; }
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chip); margin-top: 6px; }
+  .bar span { display: block; height: 100%; }
+  .chip { display: inline-block; background: var(--chip); border-radius: 999px; padding: 1px 8px; margin: 2px 4px 2px 0; font-size: 12px; }
+  select, input[type=file] { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
+  .drop { border: 2px dashed var(--border); border-radius: 10px; padding: 40px; text-align: center; margin: 40px auto; max-width: 560px; }
+  .grid { display: grid; gap: 4px; overflow-x: auto; }
+  .colhead { font-weight: 600; text-align: center; padding: 4px; }
+  .timehead { color: var(--muted); font-size: 12px; padding: 6px 4px; text-align: right; white-space: nowrap; }
+  .cell { border-radius: 6px; padding: 5px 7px; color: #fff; cursor: pointer; overflow: hidden; min-height: 34px; border: 2px solid transparent; }
+  .cell:focus-visible, .cell.sel { outline: 3px solid var(--text); outline-offset: 1px; }
+  .cell .t { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell .s { font-size: 11px; opacity: .9; }
+  .cell.fe { background: var(--fe-data); color: var(--text); }
+  .cell.fe.logic { border-color: var(--fe-logic); background: repeating-linear-gradient(45deg, var(--fe-data), var(--fe-data) 6px, transparent 6px, transparent 12px); }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 12px; font-size: 12px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
+  .timeline { border-left: 2px solid var(--border); margin: 6px 0 10px 6px; padding-left: 12px; }
+  .timeline div { margin-bottom: 6px; }
+  .reason { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  h3 { font-size: 13px; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  ul { padding-left: 18px; margin: 4px 0; }
+  .warn { color: var(--fe-logic); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Schedule Explainer</h1>
+  <input type="file" id="file" accept="application/json">
+  <label>Patient <select id="patient" disabled></select></label>
+  <span class="muted" id="meta"></span>
+</header>
+
+<div id="empty" class="drop">
+  <p><strong>Drop an explanation JSON here</strong> or use the file picker.</p>
+  <p class="muted">Create one with<br><code>python app.py explain_schedule -c configprod.py --json explain.json</code></p>
+</div>
+
+<main id="app" hidden>
+  <section>
+    <div class="cards" id="cards"></div>
+    <div class="panel">
+      <h2 id="ptitle"></h2>
+      <div class="legend" id="legend"></div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+  <aside class="panel" id="detail"><p class="muted">Click a slot to see how it was decided.</p></aside>
+</main>
+
+<script>
+const STAGE_LABEL = {
+  compulsory: "Compulsory", recommended_routine: "Recommended / routine", group: "Group",
+  preferred: "Gap filling (preferred)", adhoc: "Ad-hoc", medication: "Medication",
+};
+const REASON = {
+  fixed_slot: "Compulsory activity at its fixed slot.",
+  out_of_bounds: "The fixed slot is outside the centre's hours that day, so it was dropped.",
+  slot_occupied: "Another compulsory activity already holds this slot.",
+  most_constrained_fixed_slot: "Recommended activity with the fewest remaining fixed slots goes first.",
+  no_valid_fixed_slot: "None of the recommended activity's fixed slots were free or allowed.",
+  expired: "Recommendation ended before this week.",
+  routine_slot: "Routine placed at its requested slot.",
+  routine_excluded: "Routine is excluded on this day.",
+  routine_out_of_bounds: "Routine slot is outside opening hours.",
+  routine_slot_held_by_higher_priority: "Slot holds something a routine can't move (e.g. compulsory).",
+  routine_cannot_reschedule_occupant: "The activity in this slot had no other free fixed slot to move to.",
+  displaced_by_routine: "Moved here to make room for a routine.",
+  first_free_run: "Flexible recommended activity in the first free stretch long enough.",
+  no_free_run: "No free stretch was long enough for this recommended activity.",
+  group_timeslot: "Group session at its group timeslot.",
+  below_min_group_size: "Not enough eligible patients to reach the minimum group size.",
+  preferred: "Activity the patient likes.",
+  neutral: "Allowed activity (neutral preference).",
+  no_candidate_fits: "No eligible activity fit this gap.",
+  candidate_too_long: "The chosen activity was longer than the gap.",
+  adhoc_request: "Replaced by an ad-hoc request.",
+  stage_exception: "This stage crashed for the patient; see server logs.",
+  LOGIC: "Avoidable: a valid activity could have filled this slot.",
+  no_eligible_activities: "Every individual activity is excluded, disliked or not recommended today.",
+  pool_exhausted_today: "Every eligible activity is already on this day (no repeats).",
+  no_fit_for_gap_length: "Only longer activities are left; the gap is too short.",
+  fixed_slot_elsewhere: "Only activities fixed to other times would fit.",
+};
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let data = null, selected = null;
+
+function load(json) {
+  data = json;
+  $("empty").hidden = true; $("app").hidden = false;
+  const ids = Object.keys(data.patients).sort((a, b) => Number(a) - Number(b));
+  $("patient").innerHTML = ids.map(id => `<option value="${esc(id)}">Patient ${esc(id)}</option>`).join("");
+  $("patient").disabled = !ids.length;
+  $("meta").textContent = `Week of ${data.week_start} · generated ${data.generated_at}`;
+  renderCards();
+  renderLegend();
+  if (ids.length) renderPatient(ids[0]);
+}
+
+function renderCards() {
+  const s = data.summary, fe = s.free_and_easy;
+  const pct = s.slots ? Math.round(100 * fe.total / s.slots) : 0;
+  const logicW = fe.total ? 100 * fe.avoidable_logic / fe.total : 0;
+  const reasons = Object.entries(fe.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1])
+    .map(([r, n]) => `<span class="chip" title="${esc(REASON[r] || "")}">${esc(r)}: ${n}</span>`).join("");
+  const viol = Object.entries(s.violations_by_rule || {}).map(([r, n]) => `<span class="chip warn">${esc(r)}: ${n}</span>`).join("") || "none";
+  const centre = (data.centre_events || []).map(e => `<li><span class="reason">${esc(e.reason)}</span> ${esc(e.activity)}</li>`).join("");
+  $("cards").innerHTML = `
+    <div class="card"><div class="muted">Patients · slots</div><div class="big">${s.patients} · ${s.slots}</div></div>
+    <div class="card"><div class="muted">Free and Easy</div><div class="big">${fe.total} (${pct}%)</div>
+      <div class="bar" title="avoidable vs unavoidable"><span style="width:${logicW}%;background:var(--fe-logic)"></span><span style="width:${100 - logicW}%;background:var(--fe-data)"></span></div>
+      <div class="muted">${fe.avoidable_logic} avoidable (logic) · ${fe.unavoidable_data} unavoidable (data)</div></div>
+    <div class="card"><div class="muted">Why unavoidable</div>${reasons || "none"}</div>
+    <div class="card"><div class="muted">Rule violations</div>${viol}${centre ? `<div class="muted" style="margin-top:6px">Centre-wide</div><ul>${centre}</ul>` : ""}</div>`;
+}
+
+function renderLegend() {
+  $("legend").innerHTML = Object.entries(STAGE_LABEL).filter(([k]) => k !== "medication")
+    .map(([k, v]) => `<span><i style="background:var(--${k})"></i>${esc(v)}</span>`).join("") +
+    `<span><i style="background:var(--fe-data)"></i>Free and Easy (unavoidable)</span>` +
+    `<span><i style="border:2px solid var(--fe-logic)"></i>Free and Easy (avoidable)</span>`;
+}
+
+function blocks(day) {
+  // merge consecutive identical slots, like the real schedule view
+  const out = [];
+  day.slots.forEach((slot, i) => {
+    const prev = out[out.length - 1];
+    if (prev && prev.slot.value === slot.value && prev.slot.placed_by === slot.placed_by && prev.slot.free_and_easy === slot.free_and_easy) {
+      prev.span += 1;
+    } else {
+      out.push({ start: i, span: 1, slot });
+    }
+  });
+  return out;
+}
+
+function renderPatient(pid) {
+  $("patient").value = pid;
+  const p = data.patients[pid];
+  const fe = p.free_and_easy;
+  $("ptitle").innerHTML = `Patient ${esc(pid)} <span class="muted">· Free and Easy ${fe.total} (${fe.avoidable_logic} avoidable)` +
+    (p.violations.length ? ` · <span class="warn">${p.violations.length} rule violation(s)</span>` : "") + `</span>`;
+  const days = p.days;
+  const rows = Math.max(...days.map(d => d.slots.length));
+  const longest = days.find(d => d.slots.length === rows);
+  const grid = $("grid");
+  grid.style.gridTemplateColumns = `80px repeat(${days.length}, minmax(120px, 1fr))`;
+  grid.style.gridTemplateRows = `auto repeat(${rows}, minmax(34px, auto))`;
+  let html = `<div></div>` + days.map((d, i) => `<div class="colhead" style="grid-column:${i + 2};grid-row:1">${esc(d.day)}</div>`).join("");
+  for (let r = 0; r < rows; r++) html += `<div class="timehead" style="grid-column:1;grid-row:${r + 2}">${esc(longest.labels[r] || "")}</div>`;
+  days.forEach((d, di) => {
+    blocks(d).forEach(b => {
+      const s = b.slot, isFe = s.activity === "Free and Easy";
+      const cls = isFe ? `cell fe ${s.free_and_easy === "LOGIC" ? "logic" : ""}` : "cell";
+      const bg = isFe ? "" : `background:var(--${s.placed_by || "preferred"})`;
+      const end = d.labels[b.start + b.span - 1] || "";
+      const time = `${(d.labels[b.start] || "").split("-")[0]}-${end.split("-")[1] || ""}`;
+      const sub = isFe ? (s.free_and_easy === "LOGIC" ? "avoidable" : (s.free_and_easy || "")) : (STAGE_LABEL[s.placed_by] || "");
+      const med = s.value.includes("Give Medication") ? " 💊" : "";
+      html += `<div class="${cls}" tabindex="0" role="button" data-d="${di}" data-s="${b.start}"
+        style="grid-column:${di + 2};grid-row:${b.start + 2} / span ${b.span};${bg}"
+        aria-label="${esc(d.day)} ${esc(time)} ${esc(s.activity)}">
+        <div class="t">${esc(s.activity)}${med}</div><div class="s">${esc(time)} · ${esc(sub)}</div></div>`;
+    });
+  });
+  grid.innerHTML = html;
+  grid.querySelectorAll(".cell").forEach(el => {
+    const open = () => showDetail(pid, Number(el.dataset.d), Number(el.dataset.s), el);
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+  showPatientNotes(pid);
+}
+
+function showPatientNotes(pid) {
+  const p = data.patients[pid];
+  const viol = p.violations.map(v => `<li><b>${esc(v.rule)}</b> ${esc(v.message)}${v.day != null ? ` (day ${v.day}${v.slot != null ? `, slot ${v.slot}` : ""})` : ""}</li>`).join("");
+  const notes = p.notes.map(n => `<li><span class="reason">${esc(n.outcome)} ${esc(n.reason)}</span> ${esc(n.activity || "")}<div class="muted">${esc(REASON[n.reason] || "")}</div></li>`).join("");
+  const fe = Object.entries(p.free_and_easy.unavoidable_by_reason).map(([r, n]) => `<li><span class="reason">${esc(r)}</span>: ${n}<div class="muted">${esc(REASON[r] || "")}</div></li>`).join("");
+  $("detail").innerHTML = `<h2>Patient ${esc(pid)}</h2>
+    <p class="muted">Click a slot to see how it was decided.</p>
+    <h3>Rule violations</h3>${viol ? `<ul>${viol}</ul>` : `<p class="muted">None</p>`}
+    <h3>Not placed this week</h3>${notes ? `<ul>${notes}</ul>` : `<p class="muted">Nothing dropped</p>`}
+    <h3>Unavoidable Free and Easy</h3>${fe ? `<ul>${fe}</ul>` : `<p class="muted">None</p>`}`;
+}
+
+function showDetail(pid, d, s, el) {
+  document.querySelectorAll(".cell.sel").forEach(c => c.classList.remove("sel"));
+  el.classList.add("sel");
+  const day = data.patients[pid].days[d], slot = day.slots[s];
+  const hist = slot.history.map(h => `<div><b>${esc(STAGE_LABEL[h.stage] || h.stage)}</b> wrote <i>${esc(h.activity)}</i>${h.previous ? ` <span class="muted">(replacing ${esc(h.previous)})</span>` : ""}</div>`).join("");
+  const events = slot.events.map(e => `<li><span class="reason">${esc(e.outcome)} · ${esc(e.reason)}</span><div class="muted">${esc(REASON[e.reason] || "")}</div>${Object.keys(e.details || {}).length ? `<div class="reason muted">${esc(JSON.stringify(e.details))}</div>` : ""}</li>`).join("");
+  const fe = slot.free_and_easy ? `<h3>Free and Easy</h3><p class="${slot.free_and_easy === "LOGIC" ? "warn" : ""}"><span class="reason">${esc(slot.free_and_easy)}</span><br>${esc(REASON[slot.free_and_easy] || "")}</p>` : "";
+  $("detail").innerHTML = `<h2>${esc(slot.activity || "(empty)")}</h2>
+    <div class="muted">${esc(day.day)} ${esc(day.labels[s] || "")} · Patient ${esc(pid)}</div>
+    ${slot.value !== slot.activity ? `<p class="reason muted">${esc(slot.value)}</p>` : ""}
+    ${fe}
+    <h3>How this slot was filled</h3><div class="timeline">${hist || `<div class="muted">No stage wrote this slot.</div>`}</div>
+    <h3>Decisions here</h3>${events ? `<ul>${events}</ul>` : `<p class="muted">No recorded decisions at this slot.</p>`}
+    <p><a href="#" id="back">Back to patient summary</a></p>`;
+  $("back").addEventListener("click", e => { e.preventDefault(); el.classList.remove("sel"); showPatientNotes(pid); });
+}
+
+function readFile(file) {
+  file.text().then(t => load(JSON.parse(t))).catch(err => alert(`Could not read ${file.name}: ${err.message}`));
+}
+$("file").addEventListener("change", e => e.target.files[0] && readFile(e.target.files[0]));
+$("patient").addEventListener("change", e => renderPatient(e.target.value));
+document.addEventListener("dragover", e => e.preventDefault());
+document.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+if (window.EXPLAIN_DATA) load(window.EXPLAIN_DATA);
+</script>
+</body>
+</html>

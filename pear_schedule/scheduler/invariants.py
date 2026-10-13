@@ -79,7 +79,7 @@ class FreeAndEasyReport:
     total: int = 0
     avoidable: int = 0
     unavoidable: Counter = field(default_factory=Counter)
-    # (pid, day) -> slots, avoidable, could_use, reasons
+    # (pid, day) -> slots, avoidable, could_use, reasons, slot_reasons
     by_patient_day: Dict[Tuple[Any, int], Dict[str, Any]] = field(default_factory=dict)
 
     @property
@@ -161,8 +161,11 @@ def analyse_free_and_easy(schedules: Mapping[Any, List[List[str]]], inputs: Rule
             left = [f and s not in taken for s, f in enumerate(free)]
             used_after = used_today | {c.title for c in best.assignment.values()}
             reasons = Counter()
+            slot_reasons = {s: LOGIC for s in taken}
             for run in _runs(left):
-                reasons[_unavoidable_reason(run, d, rules, inputs, used_after)] += run[1] - run[0]
+                reason = _unavoidable_reason(run, d, rules, inputs, used_after)
+                reasons[reason] += run[1] - run[0]
+                slot_reasons.update({s: reason for s in range(*run)})
 
             report.total += n_fe
             report.avoidable += avoidable
@@ -172,6 +175,7 @@ def analyse_free_and_easy(schedules: Mapping[Any, List[List[str]]], inputs: Rule
                 "avoidable": avoidable,
                 "could_use": sorted(c.title for c in best.assignment.values()),
                 "reasons": reasons,
+                "slot_reasons": slot_reasons,
             }
     return report
 

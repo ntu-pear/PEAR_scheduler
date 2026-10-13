@@ -93,6 +93,9 @@ class TestAnalyseFreeAndEasy:
         assert report.total == 4
         assert report.avoidable == 3
         assert report.unavoidable == {POOL_EXHAUSTED_TODAY: 1}
+        slot_reasons = report.by_patient_day[(1, 0)]["slot_reasons"]
+        assert sorted(slot_reasons.values()).count("LOGIC") == 3
+        assert set(slot_reasons) == {1, 2, 3, 4}
 
     def test_no_eligible_activities(self):
         rules = PatientRules(dislikes={1}, exclusions={2: None})
