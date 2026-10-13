@@ -4,6 +4,7 @@ from typing import List, Mapping, Optional
 
 from pear_schedule.db_utils.views import AdhocActivityView
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,10 @@ class AdhocScheduler(BaseScheduler):
                         if activity == old_activity:
                             schedules[patient_id][day_idx][slot_idx] = new_activity
                             replacements_applied += 1
-            except Exception:
+                            trace.record(trace.STAGE_ADHOC, patient_id, trace.REPLACED, "adhoc_request",
+                                         activity=new_activity, day=day_idx, slot=slot_idx, replaced=old_activity)
+            except Exception as e:
                 logger.exception(f"Adhoc scheduling failed for patient {patient_id}, skipping")
+                trace.record(trace.STAGE_ADHOC, patient_id, trace.ERROR, "stage_exception", error=repr(e))
         if replacements_applied:
             logger.info(f"Applied {replacements_applied} adhoc slot replacements")

@@ -3,6 +3,7 @@ import datetime
 import pandas as pd
 from typing import List, Mapping, Dict
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView, ExistingScheduleView
 from pear_schedule.db_utils.utils import timeslot_index
 
@@ -138,8 +139,9 @@ class medicationScheduler(BaseScheduler):
                   )
 
                   patientSchedules[pid][day][hour] += s
-            except Exception:
+            except Exception as e:
                 logger.exception(f"Medication scheduling failed for patient {pid}, skipping")
+                trace.record(trace.STAGE_MEDICATION, pid, trace.ERROR, "stage_exception", error=repr(e))
         
         return medicationSchedule_ref
     
