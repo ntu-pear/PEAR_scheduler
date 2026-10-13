@@ -54,6 +54,7 @@ class RuleInputs:
     compulsory: List[PoolActivity] = field(default_factory=list)
     activity_ids_by_title: Dict[str, int] = field(default_factory=dict)  # every known activity
     exempt: Set[Tuple[Any, int, int]] = field(default_factory=set)       # (pid, day, slot) set by adhoc
+    gap_filled: Set[Tuple[Any, int, int]] = field(default_factory=set)   # (pid, day, slot) placed by gap filling
 
     def activity_id(self, title: str) -> Optional[int]:
         if title in self.activity_ids_by_title:
@@ -77,7 +78,8 @@ class Violation:
 @dataclass
 class FreeAndEasyReport:
     total: int = 0
-    avoidable: int = 0
+    avoidable: int = 0              # fillable without moving anything
+    avoidable_rearranged: int = 0   # fillable if gap filling's own picks could move
     unavoidable: Counter = field(default_factory=Counter)
     # (pid, day) -> slots, avoidable, could_use, reasons, slot_reasons
     by_patient_day: Dict[Tuple[Any, int], Dict[str, Any]] = field(default_factory=dict)
@@ -90,6 +92,7 @@ class FreeAndEasyReport:
         return {
             "total": self.total,
             "avoidable_logic": self.avoidable,
+            "avoidable_rearranging_gap_fill": self.avoidable_rearranged,
             "unavoidable_data": self.unavoidable_total,
             "unavoidable_by_reason": dict(self.unavoidable),
         }
@@ -167,12 +170,30 @@ def analyse_free_and_easy(schedules: Mapping[Any, List[List[str]]], inputs: Rule
                 reasons[reason] += run[1] - run[0]
                 slot_reasons.update({s: reason for s in range(*run)})
 
+            # same again, but gap filling's own picks are allowed to move
+            movable = [(pid, d, s) in inputs.gap_filled and t != FREE_AND_EASY for s, t in enumerate(titles)]
+            rearranged = avoidable
+            if any(movable):
+                free2 = [f or m for f, m in zip(free, movable)]
+                candidates2 = build_candidates(
+                    inputs.pool, d,
+                    min_activity_duration=inputs.min_activity_duration,
+                    week_start=inputs.week_start,
+                    exclusions=rules.exclusions,
+                    liked=rules.likes,
+                    blocked=rules.dislikes | rules.not_recommended,
+                    used_titles_today={t for t, f in zip(titles, free2) if t and not f and t != FREE_AND_EASY},
+                )
+                rearranged = max(avoidable, solve_day(free2, candidates2).score[0] - sum(movable))
+
             report.total += n_fe
             report.avoidable += avoidable
+            report.avoidable_rearranged += rearranged
             report.unavoidable.update(reasons)
             report.by_patient_day[(pid, d)] = {
                 "slots": [s for s, f in enumerate(free) if f],
                 "avoidable": avoidable,
+                "avoidable_rearranged": rearranged,
                 "could_use": sorted(c.title for c in best.assignment.values()),
                 "reasons": reasons,
                 "slot_reasons": slot_reasons,

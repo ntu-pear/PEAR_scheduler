@@ -115,6 +115,16 @@ def _jsonable(value):
     return str(value)
 
 
+def gap_filled_slots(trace: schedule_trace.ScheduleTrace) -> set:
+    """(pid, day, slot) whose activity was decided by gap filling."""
+    out = set()
+    for key, writes in trace.provenance.items():
+        decided = [w for w in writes if w.stage != schedule_trace.STAGE_MEDICATION]
+        if decided and decided[-1].stage == schedule_trace.STAGE_PREFERRED and base_title(decided[-1].activity) != "Free and Easy":
+            out.add(key)
+    return out
+
+
 def build_explanation(
     schedules: Mapping[Any, List[List[str]]],
     trace: schedule_trace.ScheduleTrace,
@@ -128,6 +138,7 @@ def build_explanation(
         (pid, d, s) for (pid, d, s), writes in trace.provenance.items()
         if any(w.stage == schedule_trace.STAGE_ADHOC for w in writes)
     }
+    inputs.gap_filled = gap_filled_slots(trace)
     violations = check_rules(schedules, inputs)
     fe = analyse_free_and_easy(schedules, inputs)
 
@@ -184,6 +195,7 @@ def build_explanation(
             "free_and_easy": {
                 "total": sum(len(i["slots"]) for i in pfe),
                 "avoidable_logic": sum(i["avoidable"] for i in pfe),
+                "avoidable_rearranging_gap_fill": sum(i["avoidable_rearranged"] for i in pfe),
                 "unavoidable_by_reason": dict(sum((i["reasons"] for i in pfe), Counter())),
             },
         }
@@ -225,6 +237,7 @@ def format_text(explanation: Mapping[str, Any], patient_ids: Optional[Iterable[A
     pct = (100 * fe["total"] / s["slots"]) if s["slots"] else 0
     lines.append(
         f"Free and Easy: {fe['total']} slots ({pct:.0f}%), avoidable (LOGIC) {fe['avoidable_logic']}, "
+        f"{fe['avoidable_rearranging_gap_fill']} if gap filling re-arranged, "
         f"unavoidable (DATA) {fe['unavoidable_data']} {fe['unavoidable_by_reason']}"
     )
     lines.append(f"Rule violations: {s['violations_by_rule'] or 'none'}")

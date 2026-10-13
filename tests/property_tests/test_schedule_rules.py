@@ -8,6 +8,7 @@ import random
 from hypothesis import HealthCheck, given, settings, strategies as st
 
 from pear_schedule.scheduler import trace
+from pear_schedule.scheduler.explain import gap_filled_slots
 from pear_schedule.scheduler.invariants import analyse_free_and_easy, check_rules
 from tests.utils.schedule_scenarios import make_scenario, run
 
@@ -39,6 +40,14 @@ def _rules(violations):
 def test_optimal_follows_every_rule(p):
     schedules, _, inputs = run(_scenario(p), "optimal")
     assert check_rules(schedules, inputs) == []
+
+
+@SETTINGS
+@given(centres)
+def test_optimal_cannot_be_improved_by_rearranging(p):
+    schedules, t, inputs = run(_scenario(p), "optimal")
+    inputs.gap_filled = gap_filled_slots(t)
+    assert analyse_free_and_easy(schedules, inputs).avoidable_rearranged == 0
 
 
 @SETTINGS

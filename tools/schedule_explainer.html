@@ -145,7 +145,8 @@ function renderCards() {
     <div class="card"><div class="muted">Patients · slots</div><div class="big">${s.patients} · ${s.slots}</div></div>
     <div class="card"><div class="muted">Free and Easy</div><div class="big">${fe.total} (${pct}%)</div>
       <div class="bar" title="avoidable vs unavoidable"><span style="width:${logicW}%;background:var(--fe-logic)"></span><span style="width:${100 - logicW}%;background:var(--fe-data)"></span></div>
-      <div class="muted">${fe.avoidable_logic} avoidable (logic) · ${fe.unavoidable_data} unavoidable (data)</div></div>
+      <div class="muted">${fe.avoidable_logic} avoidable (logic) · ${fe.unavoidable_data} unavoidable (data)</div>
+      <div class="muted">${fe.avoidable_rearranging_gap_fill ?? 0} avoidable if gap filling re-arranged</div></div>
     <div class="card"><div class="muted">Why unavoidable</div>${reasons || "none"}</div>
     <div class="card"><div class="muted">Rule violations</div>${viol}${centre ? `<div class="muted" style="margin-top:6px">Centre-wide</div><ul>${centre}</ul>` : ""}</div>`;
 }
