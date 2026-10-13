@@ -85,6 +85,17 @@ class TestRunExplanation:
         assert "DATA: no_eligible_activities" in text
 
 
+class TestCollectRuleInputs:
+    def test_group_recommendations_count(self, monkeypatch):
+        """Group recommendations used to be ignored, so a recommended but disliked group activity was flagged R3."""
+        cfg = _config()
+        with _patch_all_views():
+            inputs = explain.collect_rule_inputs(cfg, __import__("datetime").datetime(2024, 3, 18))
+        # the mock recommends group activity 20 (Mahjong) to patients 1 and 2
+        assert 20 in inputs.patients[1].recommended
+        assert 20 in inputs.patients[2].recommended
+
+
 class TestExplainScheduleCli:
     def test_never_writes_schedules_or_centre_hours(self, monkeypatch, tmp_path, capsys):
         import app

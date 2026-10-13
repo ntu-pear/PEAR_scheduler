@@ -42,7 +42,7 @@ def collect_rule_inputs(config: Mapping[str, Any], week_start: Optional[datetime
     """Rule inputs from the same views the scheduler reads."""
     from pear_schedule.db_utils.views import (
         ActivitiesView, CompulsoryActivitiesOnlyView, DisrecommendedActivitiesView,
-        GroupActivitiesOnlyView, RecommendedActivitiesView,
+        GroupActivitiesOnlyView, GroupActivitiesRecommendationView, RecommendedActivitiesView,
     )
     from pear_schedule.scheduler.individualScheduling import IndividualActivityScheduler
 
@@ -58,8 +58,10 @@ def collect_rule_inputs(config: Mapping[str, Any], week_start: Optional[datetime
     ]
 
     titles: Dict[str, int] = {a.title: a.activity_id for a in pool}
+    group_activity_ids = {}  # CentreActivityID -> ActivityID
     for _, r in GroupActivitiesOnlyView.get_data().iterrows():
         titles.setdefault(r["ActivityTitle"], int(r["ActivityID"]))
+        group_activity_ids[int(r["CentreActivityID"])] = int(r["ActivityID"])
 
     recommended = defaultdict(set)
     for _, r in RecommendedActivitiesView.get_data().iterrows():
@@ -68,6 +70,15 @@ def collect_rule_inputs(config: Mapping[str, Any], week_start: Optional[datetime
     not_recommended = defaultdict(set)
     for _, r in DisrecommendedActivitiesView.get_data().iterrows():
         not_recommended[r["PatientID"]].add(int(r["ActivityID"]))
+    # group recommendations count too, a recommendation beats a dislike
+    for _, r in GroupActivitiesRecommendationView.get_data().iterrows():
+        aid = group_activity_ids.get(int(r["CentreActivityID"]))
+        if aid is None:
+            continue
+        if int(r["DoctorRecommendation"]) == 1:
+            recommended[r["PatientID"]].add(aid)
+        elif int(r["DoctorRecommendation"]) == -1:
+            not_recommended[r["PatientID"]].add(aid)
 
     patients = {}
     for pid, p in IndividualActivityScheduler._get_patient_data().items():
