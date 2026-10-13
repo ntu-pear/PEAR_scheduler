@@ -65,3 +65,5 @@ STD_DATE_FORMAT = "%Y-%m-%d"
 CARE_CENTRE_ID = 1
 # working hours come from here when set, else from REF_CARE_CENTRE
 ACTIVITY_SERVICE_URL = os.getenv("ACTIVITY_SERVICE_URL", "")
+# how gaps get filled: "greedy" (original) or "optimal" (scheduler/gapFill.py)
+GAP_FILL_STRATEGY = os.getenv("GAP_FILL_STRATEGY", "greedy")
