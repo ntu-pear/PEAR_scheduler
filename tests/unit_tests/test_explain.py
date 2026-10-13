@@ -85,6 +85,65 @@ class TestRunExplanation:
         assert "Patient 2" in text and "Patient 1:" not in text
         assert "DATA: no_eligible_activities" in text
 
+    def test_slot_minutes_for_the_viewer(self, monkeypatch):
+        assert _explain(monkeypatch)["slot_minutes"] == 30
+
+
+class TestNames:
+    def test_add_names(self):
+        result = {"patients": {"1": {}, "2": {}}}
+        explain.add_names(result, {1: "Mdm Tan"})
+        assert result["patients"]["1"]["name"] == "Mdm Tan"
+        assert result["patients"]["2"]["name"] is None
+
+    def test_no_names_by_default(self, monkeypatch):
+        assert all("name" not in p for p in _explain(monkeypatch)["patients"].values())
+
+    def test_patient_names_prefers_preferred_name(self, monkeypatch):
+        import sqlalchemy as sa
+        from pear_schedule.db import DB
+
+        engine = sa.create_engine("sqlite://")
+        meta = sa.MetaData()
+        table = sa.Table("REF_PATIENT", meta, sa.Column("PatientID", sa.Integer), sa.Column("Name", sa.String),
+                         sa.Column("PreferredName", sa.String))
+        meta.create_all(engine)
+        with engine.begin() as conn:
+            conn.execute(table.insert(), [
+                {"PatientID": 1, "Name": "Tan Ah Mei", "PreferredName": "Mdm Tan"},
+                {"PatientID": 2, "Name": " Lim Boon ", "PreferredName": None},
+            ])
+        monkeypatch.setattr(DB, "schema", meta, raising=False)
+        monkeypatch.setattr(DB, "get_engine", classmethod(lambda cls: engine))
+        cfg = {"DB_TABLES": types.SimpleNamespace(PATIENT_TABLE="REF_PATIENT")}
+        assert explain.patient_names(cfg) == {1: "Mdm Tan", 2: "Lim Boon"}
+
+
+class TestDumpHtml:
+    def _page(self, tmp_path, explanation, viewer=explain.VIEWER):
+        out = tmp_path / "out.html"
+        explain.dump_html(explanation, str(out), viewer)
+        return out.read_text(encoding="utf-8")
+
+    def test_data_goes_in_before_the_viewer_script(self, tmp_path):
+        page = self._page(tmp_path, {"week_start": "2024-03-18", "patients": {}})
+        assert "<!-- EXPLAIN_DATA -->" not in page
+        data_at = page.index("window.EXPLAIN_DATA = ")
+        assert data_at < page.index("if (window.EXPLAIN_DATA)")
+        assert '"week_start": "2024-03-18"' in page
+
+    def test_title_cannot_close_the_script_tag(self, tmp_path):
+        page = self._page(tmp_path, {"title": "</script><b>x"})
+        assert "</script><b>x" not in page
+        start = page.index("window.EXPLAIN_DATA = ") + len("window.EXPLAIN_DATA = ")
+        assert json.loads(page[start:page.index(";</script>", start)]) == {"title": "</script><b>x"}
+
+    def test_viewer_without_placeholder(self, tmp_path):
+        viewer = tmp_path / "viewer.html"
+        viewer.write_text("<html></html>")
+        with pytest.raises(ValueError):
+            self._page(tmp_path, {}, str(viewer))
+
 
 class TestCollectRuleInputs:
     def test_group_recommendations_count(self, monkeypatch):
@@ -98,7 +157,7 @@ class TestCollectRuleInputs:
 
 
 class TestExplainScheduleCli:
-    def test_never_writes_schedules_or_centre_hours(self, monkeypatch, tmp_path, capsys):
+    def _run(self, monkeypatch, args):
         import app
 
         fake_config = types.SimpleNamespace(
@@ -114,13 +173,31 @@ class TestExplainScheduleCli:
         monkeypatch.setattr(app, "loadConfigs", MagicMock())
         monkeypatch.setattr(app.ScheduleWriter, "write", writer)
         monkeypatch.setattr("pear_schedule.services.care_centre_util.save_working_hours", save)
-        fake_result = {"summary": {}, "patients": {}}
-        out_file = tmp_path / "explain.json"
-        with patch("pear_schedule.scheduler.explain.run_explanation", return_value=fake_result), \
+        run = MagicMock(return_value={"summary": {}, "patients": {}})
+        with patch("pear_schedule.scheduler.explain.run_explanation", run), \
              patch("pear_schedule.scheduler.explain.format_text", return_value="report"):
-            app.explain_schedule(fake_config, types.SimpleNamespace(patient=None, json=str(out_file)))
-
+            app.explain_schedule(fake_config, types.SimpleNamespace(patient=None, **args))
         writer.assert_not_called()
         save.assert_not_called()
-        assert json.loads(out_file.read_text()) == fake_result
+        return run
+
+    def test_never_writes_schedules_or_centre_hours(self, monkeypatch, tmp_path, capsys):
+        out_file = tmp_path / "explain.json"
+        self._run(monkeypatch, {"json": str(out_file)})
+        assert json.loads(out_file.read_text()) == {"summary": {}, "patients": {}}
         assert "report" in capsys.readouterr().out
+
+    def test_html_and_names(self, monkeypatch, tmp_path):
+        out_file = tmp_path / "schedule.html"
+        run = self._run(monkeypatch, {"json": None, "html": str(out_file), "with_names": True})
+        assert run.call_args.kwargs["with_names"] is True
+        assert "window.EXPLAIN_DATA = " in out_file.read_text(encoding="utf-8")
+
+    def test_names_off_by_default(self, monkeypatch):
+        import app
+
+        monkeypatch.setattr("sys.argv", ["app.py", "explain_schedule", "-c", "configprod.py", "--html", "out.html"])
+        args = app.parse_args()
+        assert args.html == "out.html" and args.with_names is False
+        run = self._run(monkeypatch, {"json": None, "html": None, "with_names": args.with_names})
+        assert run.call_args.kwargs["with_names"] is False

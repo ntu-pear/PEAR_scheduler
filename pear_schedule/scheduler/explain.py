@@ -5,6 +5,7 @@ and whether each Free and Easy was avoidable. Read-only.
 
 import datetime
 import json
+import os
 from collections import Counter, defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
@@ -205,6 +206,7 @@ def build_explanation(
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "week_start": inputs.week_start.date().isoformat(),
         "open_days": open_days,
+        "slot_minutes": config["MIN_ACTIVITY_DURATION"],
         "stages": STAGE_ORDER,
         "summary": {
             "patients": len(schedules),
@@ -218,14 +220,35 @@ def build_explanation(
     })
 
 
-def run_explanation(config: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None) -> Dict[str, Any]:
+def patient_names(config: Mapping[str, Any]) -> Dict[Any, str]:
+    """PatientID -> preferred name, else name. Read-only."""
+    from sqlalchemy import select
+    from pear_schedule.db import DB
+
+    patient = DB.schema.tables[config["DB_TABLES"].PATIENT_TABLE]
+    with DB.get_engine().connect() as conn:
+        rows = conn.execute(select(patient.c["PatientID"], patient.c["PreferredName"], patient.c["Name"])).all()
+    return {r[0]: (r[1] or r[2] or "").strip() for r in rows}
+
+
+def run_explanation(config: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None,
+                    with_names: bool = False) -> Dict[str, Any]:
     """Builds this week's schedules under a trace, without writing, and explains them."""
     from pear_schedule.scheduler.utils import build_schedules
 
     schedules: Dict[Any, List[List[str]]] = {}
     with schedule_trace.tracing() as trace:
         build_schedules(config, schedules)
-    return build_explanation(schedules, trace, collect_rule_inputs(config), config, patient_ids)
+    explanation = build_explanation(schedules, trace, collect_rule_inputs(config), config, patient_ids)
+    if with_names:
+        add_names(explanation, patient_names(config))
+    return explanation
+
+
+def add_names(explanation: Dict[str, Any], names: Mapping[Any, str]) -> None:
+    # off by default so the output can be shared without patient names
+    for pid, p in explanation["patients"].items():
+        p["name"] = names.get(int(pid)) or names.get(pid) or None
 
 
 def format_text(explanation: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None) -> str:
@@ -269,3 +292,20 @@ def format_text(explanation: Mapping[str, Any], patient_ids: Optional[Iterable[A
 def dump_json(explanation: Mapping[str, Any], path: str) -> None:
     with open(path, "w") as f:
         json.dump(explanation, f, indent=2)
+
+
+VIEWER = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "schedule_explainer.html")
+
+
+def dump_html(explanation: Mapping[str, Any], path: str, viewer: str = VIEWER) -> None:
+    """One page with the data inside, double-click to open."""
+    with open(viewer, encoding="utf-8") as f:
+        page = f.read()
+    # "</" would end the script tag early if a title contains it
+    data = json.dumps(explanation).replace("</", "<\\/")
+    marker = "<!-- EXPLAIN_DATA -->"
+    if marker not in page:
+        raise ValueError(f"{viewer} has no {marker} placeholder")
+    page = page.replace(marker, f"<script>window.EXPLAIN_DATA = {data};</script>", 1)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(page)
