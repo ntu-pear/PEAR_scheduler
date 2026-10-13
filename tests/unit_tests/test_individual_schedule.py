@@ -466,6 +466,65 @@ class TestFillFlexibleActivities:
         assert patient_schedule[0][1] == "Pre-Existing"
 
 
+    def test_multiple_flexible_activities_do_not_overwrite_each_other(self, monkeypatch):
+        """Used to write every activity into the same slot, only the last one survived."""
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        cfg = make_scheduler_config(OPEN_DAYS=["Monday"], SLOTS_PER_DAY={"Monday": 4})
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", cfg, raising=False)
+
+        patient_schedule = [["", "", "", ""]]
+        activities = pd.DataFrame({
+            "ActivityID": [1, 2, 3],
+            "ActivityTitle": ["Board Games", "Sewing", "Story Time"],
+            "MinDuration": [30, 60, 30],
+        })
+        patient_info = {"exclusions": {}}
+        week_start = datetime.datetime(2024, 3, 18)
+
+        RecommendedRoutineActivityScheduler._RecommendedRoutineActivityScheduler__fillFlexibleActivities(
+            patient_schedule, activities, patient_info, week_start
+        )
+
+        assert patient_schedule[0] == ["Board Games", "Sewing", "Sewing", "Story Time"]
+
+    def test_flexible_activity_scheduled_once_per_week(self, monkeypatch):
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        cfg = make_scheduler_config(OPEN_DAYS=["Monday", "Tuesday"], SLOTS_PER_DAY={"Monday": 2, "Tuesday": 2})
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", cfg, raising=False)
+
+        patient_schedule = [["", ""], ["", ""]]
+        activities = pd.DataFrame({"ActivityID": [1], "ActivityTitle": ["Board Games"], "MinDuration": [30]})
+        week_start = datetime.datetime(2024, 3, 18)
+
+        RecommendedRoutineActivityScheduler._RecommendedRoutineActivityScheduler__fillFlexibleActivities(
+            patient_schedule, activities, {"exclusions": {}}, week_start
+        )
+
+        flat = [slot for day in patient_schedule for slot in day]
+        assert flat.count("Board Games") == 1
+
+    def test_flexible_activity_skips_excluded_day(self, monkeypatch):
+        from pear_schedule.scheduler.individualScheduling import RecommendedRoutineActivityScheduler
+
+        cfg = make_scheduler_config(OPEN_DAYS=["Monday", "Tuesday"], SLOTS_PER_DAY={"Monday": 2, "Tuesday": 2})
+        monkeypatch.setattr(RecommendedRoutineActivityScheduler, "config", cfg, raising=False)
+
+        patient_schedule = [["", ""], ["", ""]]
+        activities = pd.DataFrame({"ActivityID": [1], "ActivityTitle": ["Board Games"], "MinDuration": [30]})
+        week_start = datetime.datetime(2024, 3, 18)
+        # excluded until end of Monday
+        patient_info = {"exclusions": {1: datetime.datetime(2024, 3, 18, 23, 59)}}
+
+        RecommendedRoutineActivityScheduler._RecommendedRoutineActivityScheduler__fillFlexibleActivities(
+            patient_schedule, activities, patient_info, week_start
+        )
+
+        assert patient_schedule[0] == ["", ""]
+        assert patient_schedule[1][0] == "Board Games"
+
+
 class TestPreferredScheduling:
     """PreferredActivityScheduler.fillPreferences. Passes `patients` straight in instead
     of mocking out _get_patient_data's views."""

@@ -318,18 +318,17 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                             a["ActivityID"], patient_info["exclusions"], day, week_start
                     ):
                         continue
-                    
+
                     num_slots = (a["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1
-                    activity_schedulable = True
-                    for i in range(1, num_slots):
-                        if (num_slots > 1 and time+i >= cls.config["SLOTS_PER_DAY"].get(cls.config["OPEN_DAYS"][day])) or patient_schedule[day][time+i]:
-                            activity_schedulable = False
-                            break
-                        
-                    if activity_schedulable:
-                        for i in range(num_slots):
-                            patient_schedule[day][time+i] = a["ActivityTitle"]
-                            scheduled_activities.add(a["ActivityTitle"])
+                    if time + num_slots > len(day_schedule) or \
+                        any(patient_schedule[day][time + i] for i in range(num_slots)):
+                        continue
+
+                    for i in range(num_slots):
+                        patient_schedule[day][time+i] = a["ActivityTitle"]
+                    scheduled_activities.add(a["ActivityID"])
+                    # slot taken, move on
+                    break
 
                 if len(scheduled_activities) == len(activities):
                     return
