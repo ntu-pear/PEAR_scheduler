@@ -461,7 +461,8 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
     def _greedyFillDay(cls, day_sched: List[str], day: int, pid, preferred_activities: pd.DataFrame,
                        non_preferred_activites: pd.DataFrame, avail_activities: pd.DataFrame) -> None:
         """Slot by slot, earliest-ending activity that fits, preferred list first."""
-        curr_day_activities = set()
+        # include what earlier stages put later in the day, not just what we've passed
+        curr_day_activities = {v for v in day_sched if v}
 
         i = 0
         while i < len(day_sched):

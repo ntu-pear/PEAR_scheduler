@@ -728,6 +728,24 @@ class TestPreferredScheduling:
 
         assert "Free and Easy" not in schedules[1][0]
 
+    def test_does_not_repeat_an_activity_placed_later_in_the_day(self, monkeypatch):
+        """Board Games is already at slot 2, so slot 0 used to get it again."""
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+        self._neutralize_shuffle(monkeypatch)
+        monkeypatch.setattr(PreferredActivityScheduler, "config", self._config(), raising=False)
+        activities_df = pd.DataFrame({
+            "ActivityID": [1, 2], "ActivityTitle": ["Board Games", "Chess"],
+            "FixedTimeSlots": ["", ""], "MinDuration": [30, 30], "MaxDuration": [30, 30],
+        })
+        schedules = {1: [["", "", "Board Games", "Lunch"]]}
+        patients = {1: {"exclusions": {}, "preferences": set(), "dispreferences": set()}}
+
+        with patch("pear_schedule.db_utils.views.ActivitiesView.get_data", return_value=activities_df):
+            PreferredActivityScheduler.fillPreferences(schedules, patients=patients)
+
+        assert schedules[1][0] == ["Chess", "Free and Easy", "Board Games", "Lunch"]
+
     def test_patient_with_no_preference_data_still_gets_gaps_filled(self, monkeypatch):
         """Used to be skipped as an unknown patient, so every gap ended up Free and Easy."""
         from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
