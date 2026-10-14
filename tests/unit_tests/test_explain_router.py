@@ -22,6 +22,8 @@ WEEK = datetime.datetime(2024, 3, 18, 10, 30)
 def _fresh_cache(monkeypatch):
     explain_router.reset_cache()
     monkeypatch.setattr(explain, "current_week_start", lambda: WEEK)
+    # nothing saved yet unless a test says so, so it builds
+    monkeypatch.setattr(explain, "explain_saved_week", lambda config, with_names: None)
     yield
     explain_router.reset_cache()
 
@@ -110,6 +112,16 @@ class TestCachedExplanation:
     def test_new_week_rebuilds(self, run, monkeypatch):
         explain_router.cached_explanation({}, now=lambda: 0)
         monkeypatch.setattr(explain, "current_week_start", lambda: WEEK + datetime.timedelta(days=7))
+        assert explain_router.cached_explanation({}, now=lambda: 1) == {"n": 2}
+
+    def test_saved_week_is_used_when_there_is_one(self, monkeypatch, run):
+        monkeypatch.setattr(explain, "explain_saved_week", lambda config, with_names: {"source": "saved"})
+        assert explain_router.cached_explanation({}, now=lambda: 0) == {"source": "saved"}
+        run.assert_not_called()
+
+    def test_reset_drops_the_cached_copy(self, run):
+        explain_router.cached_explanation({}, now=lambda: 0)
+        explain_router.reset_cache()
         assert explain_router.cached_explanation({}, now=lambda: 1) == {"n": 2}
 
     def test_failed_build_is_not_cached(self, monkeypatch):

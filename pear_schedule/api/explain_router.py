@@ -27,7 +27,9 @@ _cache: dict = {}
 
 
 def reset_cache() -> None:
-    _cache.clear()
+    # waits for a build in progress, so it can't put back an old copy
+    with _lock:
+        _cache.clear()
 
 
 def require_verified_supervisor(token: str = Depends(oauth2_scheme)) -> VerifiedUser:
@@ -53,7 +55,8 @@ def cached_explanation(config, refresh: bool = False, now=time.monotonic) -> dic
             # refresh still reuses a very recent build so it can't be spammed
             if age < (REFRESH_SECONDS if refresh else CACHE_SECONDS):
                 return _cache["data"]
-        data = explain.run_explanation(config, with_names=True)
+        # the saved week as it is, else a fresh build if nothing is saved yet
+        data = explain.explain_saved_week(config, with_names=True) or explain.run_explanation(config, with_names=True)
         _cache.update(week=week, built=now(), data=data)
         return data
 

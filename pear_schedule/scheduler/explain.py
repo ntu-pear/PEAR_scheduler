@@ -3,6 +3,7 @@ Explains a schedule run: which stage placed each slot and why, rule violations,
 and whether each Free and Easy was avoidable. Read-only.
 """
 
+import copy
 import datetime
 import json
 import math
@@ -14,7 +15,7 @@ from pear_schedule.db_utils.utils import day_timeslot_labels
 from pear_schedule.scheduler import trace as schedule_trace
 from pear_schedule.scheduler.gapFill import PoolActivity
 from pear_schedule.scheduler.invariants import (
-    LOGIC, PatientRules, RuleInputs, analyse_free_and_easy, base_title, check_rules,
+    FREE_AND_EASY, LOGIC, PatientRules, RuleInputs, analyse_free_and_easy, base_title, check_rules,
 )
 
 STAGE_ORDER = [
@@ -244,6 +245,83 @@ def run_explanation(config: Mapping[str, Any], patient_ids: Optional[Iterable[An
     with schedule_trace.tracing() as trace:
         build_schedules(config, schedules)
     explanation = build_explanation(schedules, trace, collect_rule_inputs(config), config, patient_ids)
+    explanation["source"] = "built"
+    if with_names:
+        add_names(explanation, patient_names(config))
+    return explanation
+
+
+def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> schedule_trace.ScheduleTrace:
+    """Why each saved slot holds what it does, worked out from current data, as a trace."""
+    from pear_schedule.scheduler.repair import _Repair, _runs
+
+    r = _Repair(saved, data, set())
+    t = schedule_trace.ScheduleTrace()
+    for pid, days in saved.items():
+        if days is None:
+            continue
+        rules = r.rules(pid)
+        for d, day in enumerate(r.grid[pid]):
+            for s, title in enumerate(day):
+                if title in ("", FREE_AND_EASY):
+                    t.provenance[(pid, d, s)] = [schedule_trace.SlotWrite(schedule_trace.STAGE_PREFERRED, FREE_AND_EASY, "")]
+            for s, e, title in _runs(day):
+                kind = r.kind(pid, d, s)
+                aid = data.inputs.activity_id(title)
+                outcome = schedule_trace.PLACED
+                if kind == "adhoc":
+                    stage, outcome, reason = schedule_trace.STAGE_ADHOC, schedule_trace.REPLACED, "adhoc_request"
+                elif kind == "compulsory":
+                    stage, reason = schedule_trace.STAGE_COMPULSORY, "fixed_slot"
+                elif kind == "routine":
+                    stage, reason = schedule_trace.STAGE_RECOMMENDED, "routine_slot"
+                elif kind == "recommended":
+                    stage = schedule_trace.STAGE_RECOMMENDED
+                    reason = "recommended_over_dislike" if aid in rules.dislikes else "doctor_recommended"
+                elif kind == "group":
+                    stage = schedule_trace.STAGE_GROUP
+                    rec = pid in data.group_recommended.get(title, set())
+                    reason = ("recommended_over_dislike" if rec and aid in rules.dislikes else "recommended" if rec
+                              else "liked" if pid in data.group_liked.get(title, set()) else "group_timeslot")
+                else:
+                    stage, reason = schedule_trace.STAGE_PREFERRED, "preferred" if aid in rules.likes else "neutral"
+                for k in range(s, e):
+                    t.provenance[(pid, d, k)] = [schedule_trace.SlotWrite(stage, title, "")]
+                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s))
+    return t
+
+
+def explain_saved_week(config: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None,
+                       with_names: bool = False, now: Optional[datetime.datetime] = None) -> Optional[Dict[str, Any]]:
+    """
+    Explains this week's saved schedule without building it again. Adds what repair
+    regenerates changed this week, and what the next one would change. None if nothing is saved yet.
+    """
+    from pear_schedule.scheduler.repair import changes_this_week, load_repair_data, load_saved, locked_slots, repair_week
+
+    now = now or datetime.datetime.now()
+    week_start = now - datetime.timedelta(days=now.weekday())
+    data = load_repair_data(config, week_start)
+    saved = load_saved(config, data.patient_ids, now)
+    have = {pid: days for pid, days in saved.items() if days is not None}
+    if not have:
+        return None
+
+    # data that changed since it was saved
+    with schedule_trace.tracing() as dry:
+        after = repair_week(copy.deepcopy(saved), data, locked_slots(config, week_start, now))
+    pending = {}
+    for pid, days in after.items():
+        before = saved.get(pid)
+        if before is None or days != [[base_title(v) or FREE_AND_EASY for v in day] for day in before]:
+            pending[pid] = [e.to_dict() for e in dry.events if e.patient_id == pid and e.stage == schedule_trace.STAGE_REPAIR]
+
+    t = saved_week_trace(saved, data)
+    for e in changes_this_week(week_start.date()):
+        t.add(e)
+    explanation = build_explanation(have, t, data.inputs, config, patient_ids)
+    explanation["source"] = "saved"
+    explanation["pending"] = _jsonable(pending)
     if with_names:
         add_names(explanation, patient_names(config))
     return explanation

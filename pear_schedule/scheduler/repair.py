@@ -469,14 +469,40 @@ def load_repair_data(config: Mapping[str, Any], week_start: datetime.datetime) -
     return data
 
 
+# what repair regenerates changed this week, for the explainer. In memory, so a restart forgets it
+_changes: Dict[str, Any] = {"week": None, "events": []}
+
+
+def record_changes(week: datetime.date, events: List[trace.TraceEvent]) -> None:
+    if _changes["week"] != week:
+        _changes.update(week=week, events=[])
+    _changes["events"].extend(events)
+
+
+def changes_this_week(week: datetime.date) -> List[trace.TraceEvent]:
+    return list(_changes["events"]) if _changes["week"] == week else []
+
+
+def load_saved(config: Mapping[str, Any], patient_ids: List[Any], now: datetime.datetime) -> Dict[Any, Optional[List[List[str]]]]:
+    """This week's saved schedule per patient as a slot grid, None if they have none yet."""
+    from pear_schedule.db import DB
+    from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+
+    saved: Dict[Any, Optional[List[List[str]]]] = {pid: None for pid in patient_ids}
+    with DB.get_engine().begin() as conn:
+        rows = PreferredActivityScheduler.getMostUpdatedSchedules(patient_ids, conn, now.date())
+    for _, row in rows.iterrows():
+        if row["PatientID"] in saved:
+            saved[row["PatientID"]] = saved_grid(row, config)
+    return saved
+
+
 def repair_schedules(config: Mapping[str, Any], patientSchedules: Dict, now: Optional[datetime.datetime] = None):
     """
     Regenerate in repair mode. Puts only the patients whose schedule changed into
     patientSchedules (same shape as build_schedules) and returns the medication data.
     """
-    from pear_schedule.db import DB
     from pear_schedule.scheduler.adhocScheduling import AdhocScheduler
-    from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
     from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 
     now = now or datetime.datetime.now()
@@ -484,15 +510,11 @@ def repair_schedules(config: Mapping[str, Any], patientSchedules: Dict, now: Opt
     week_start = now - datetime.timedelta(days=now.weekday())
     data = load_repair_data(config, week_start)
 
-    saved: Dict[Any, Optional[List[List[str]]]] = {pid: None for pid in data.patient_ids}
-    with DB.get_engine().begin() as conn:
-        rows = PreferredActivityScheduler.getMostUpdatedSchedules(data.patient_ids, conn, now.date())
-    for _, row in rows.iterrows():
-        if row["PatientID"] in saved:
-            saved[row["PatientID"]] = saved_grid(row, config)
+    saved = load_saved(config, data.patient_ids, now)
 
     locked = locked_slots(config, week_start, now)
-    grids = repair_week(saved, data, locked)
+    with trace.tracing() as t:
+        grids = repair_week(saved, data, locked)
     AdhocScheduler.fillSchedule(grids)
     medication_ref = medicationScheduler.fillSchedule(grids)
 
@@ -507,5 +529,11 @@ def repair_schedules(config: Mapping[str, Any], patientSchedules: Dict, now: Opt
         if old is None or grid != [[v or FREE_AND_EASY for v in day] for day in old]:
             patientSchedules[pid] = grid
             changed += 1
+
+    at = now.isoformat(timespec="minutes")
+    events = [e for e in t.events if e.stage == trace.STAGE_REPAIR and e.patient_id in patientSchedules]
+    for e in events:
+        e.details["at"] = at
+    record_changes(week_start.date(), events)
     logger.info(f"Regenerate (repair): {changed} of {len(grids)} patients changed")
     return medication_ref

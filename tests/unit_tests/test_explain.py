@@ -198,6 +198,19 @@ class TestExplainScheduleCli:
         assert run.call_args.kwargs["with_names"] is True
         assert "window.EXPLAIN_DATA = " in out_file.read_text(encoding="utf-8")
 
+    def test_saved_explains_without_building(self, monkeypatch, tmp_path, capsys):
+        out_file = tmp_path / "saved.json"
+        with patch("pear_schedule.scheduler.explain.explain_saved_week", return_value={"source": "saved", "patients": {}}) as saved:
+            run = self._run(monkeypatch, {"json": str(out_file), "saved": True})
+        run.assert_not_called()
+        assert saved.called
+        assert json.loads(out_file.read_text())["source"] == "saved"
+
+    def test_saved_with_nothing_saved_says_so(self, monkeypatch, capsys):
+        with patch("pear_schedule.scheduler.explain.explain_saved_week", return_value=None):
+            self._run(monkeypatch, {"json": None, "saved": True})
+        assert "Nothing saved for this week yet" in capsys.readouterr().out
+
     def test_names_off_by_default(self, monkeypatch):
         import app
 

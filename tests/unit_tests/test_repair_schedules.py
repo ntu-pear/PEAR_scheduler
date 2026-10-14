@@ -53,6 +53,15 @@ def test_only_changed_and_new_patients_are_written():
     assert "Walk" not in out[1][0] and "Walk" not in out[1][1]
 
 
+def test_changes_are_kept_for_the_explainer():
+    repair._changes.update(week=None, events=[])
+    rows = [_row(1, ["Walk", "Puzzles"], ["Walk", "Puzzles"]), _row(2, ["Walk", "Puzzles"], ["Walk", "Puzzles"])]
+    _run(datetime.datetime(2024, 3, 18, 0, 0), rows, dislikes={1})
+    changes = repair.changes_this_week(WEEK.date())
+    assert any(e.patient_id == 1 and e.reason == "disliked" and e.details["at"] == "2024-03-18T00:00" for e in changes)
+    assert repair.changes_this_week(WEEK.date() + datetime.timedelta(days=7)) == []
+
+
 def test_started_slots_keep_the_saved_text():
     saved = "Walk | Give Medication@0900: Aspirin(1)"
     rows = [_row(1, [saved, "Puzzles"], ["Walk", "Puzzles"]), _row(2, ["Walk", "Puzzles"], ["Walk", "Puzzles"])]
