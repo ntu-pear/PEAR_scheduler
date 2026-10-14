@@ -653,6 +653,13 @@ def generateStatistics(tablesDF, patient_wellness_plan, json_response, activity_
     
 #--------------------------------------------------------------------------       
 
+def dropPastDays(startDateString, endDateString, today: datetime.date):
+    """Moves the start up to today, past days already happened. None if the whole range is past."""
+    start, end = parse(startDateString).date(), parse(endDateString).date()
+    if end < today:
+        return None
+    return max(start, today).isoformat(), endDateString
+
 def getDaysFromDates(startDateString, endDateString, week_order: List[str]):
     startDayIdx = parse(startDateString).weekday()
     endDayIdx = parse(endDateString).weekday()
