@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Schedule Explained</title>
 <!--
-  Easiest: python app.py explain_schedule -c configprod.py --html schedule.html
-  (add --with-names to show patient names), then double-click schedule.html.
-  Or open this file and pick a JSON from --json. Nothing is sent anywhere.
+  Link: <scheduler>/schedule/explain/view/, supervisors sign in with their PEAR account.
+  File: python app.py explain_schedule -c configprod.py --html schedule.html, then double-click it.
+  Or open this file and pick a JSON from --json.
 -->
 <style>
   :root {
@@ -114,6 +114,14 @@
   code, .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
   .code { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
   .drop { border: 2px dashed var(--border); border-radius: 12px; padding: 32px 20px; text-align: center; margin: 40px auto; max-width: 560px; background: var(--panel); }
+  .signin { border-style: solid; max-width: 380px; text-align: left; }
+  .signin label { display: block; margin: 12px 0; font-size: 14px; }
+  .signin input { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+  .signin .btn { width: 100%; padding: 8px; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn:disabled { opacity: .6; cursor: default; }
+  .error { color: var(--warn); }
+  .live { margin-left: auto; display: flex; gap: 12px; align-items: center; font-size: 13px; }
 
   @media (max-width: 1150px) {
     .patients { grid-template-columns: 220px minmax(0, 1fr); }
@@ -134,7 +142,13 @@
   <div class="top">
     <h1>Schedule explained</h1>
     <span class="muted" id="meta"></span>
+    <span class="live" id="live" hidden>
+      <span class="muted" id="liveMsg" role="status"></span>
+      <button class="btn" id="refresh" title="Build again from current data">Refresh</button>
+      <button class="link" id="signout">Sign out</button>
+    </span>
   </div>
+  <p class="muted small" id="liveNote" hidden></p>
   <nav class="tabs" role="tablist" id="tabs" hidden>
     <button role="tab" data-tab="patients" aria-selected="true">Patients</button>
     <button role="tab" data-tab="overview" aria-selected="false">Centre overview</button>
@@ -149,6 +163,23 @@
   <p><input type="file" id="file" accept="application/json,.json"></p>
   <p class="muted small">You can also drag the file onto this page.<br>
     Make one with <code>python app.py explain_schedule -c configprod.py --html schedule.html</code></p>
+</div>
+
+<div id="signin" class="drop signin" hidden>
+  <form id="signinForm">
+    <p><strong>Sign in to see this week's schedules</strong></p>
+    <p class="muted small">Use your PEAR account. Supervisors only.</p>
+    <label>Username <input id="user" name="username" autocomplete="username" required></label>
+    <label>Password <input id="pass" name="password" type="password" autocomplete="current-password" required></label>
+    <p class="error small" id="signinError" role="alert" hidden></p>
+    <button class="btn primary" type="submit" id="signinBtn">Sign in</button>
+  </form>
+</div>
+
+<div id="loading" class="drop" hidden role="status">
+  <p><strong id="loadingTitle">Building this week's explanation…</strong></p>
+  <p class="muted small" id="loadingText">This takes a few seconds.</p>
+  <p><button class="btn" id="retry" hidden>Try again</button></p>
 </div>
 
 <div class="page" id="tab-patients" hidden>
@@ -726,17 +757,116 @@ function setTab(name) {
 function load(json) {
   data = json;
   slotMins = data.slot_minutes || 30;
-  $("empty").hidden = true;
+  screen(null);
   $("tabs").hidden = false;
   const strat = stepStrategy().split(",")[0];
-  $("meta").textContent = `Week of ${data.week_start} · ${plural(data.summary.patients, "patient")} · made ${String(data.generated_at || "").replace("T", " ")}`;
+  const made = String(data.generated_at || "").replace("T", " ");
+  $("meta").textContent = `Week of ${data.week_start} · ${plural(data.summary.patients, "patient")}${api ? "" : ` · made ${made}`}`;
   $("meta").title = `Gap filling: ${strat}`;
+  if (api) {
+    $("live").hidden = false;
+    $("liveNote").hidden = false;
+    $("liveNote").textContent = `Built at ${made.slice(11, 16)} from current data. It can differ from the saved schedule if data changed since it was generated.`;
+  }
   renderOverview();
   renderData();
   const ids = patientIds();
-  if (ids.length) showPatient(ids[0]);
+  if (ids.length) showPatient(ids.includes(current) ? current : ids[0]);
   const saved = store.get("explain.tab");
   setTab(["patients", "overview", "data"].includes(saved) ? saved : "overview");
+}
+
+// link mode: served by the scheduler, sign in and fetch the data
+const api = window.EXPLAIN_API || null;
+const session = {
+  get() { try { return sessionStorage.getItem("explain.token"); } catch (e) { return null; } },
+  set(t) { try { t ? sessionStorage.setItem("explain.token", t) : sessionStorage.removeItem("explain.token"); } catch (e) {} },
+};
+let token = null;
+
+function screen(name) {
+  ["empty", "signin", "loading"].forEach(id => { $(id).hidden = id !== name; });
+  if (name) {
+    $("tabs").hidden = true;
+    ["patients", "overview", "data"].forEach(t => { $("tab-" + t).hidden = true; });
+  }
+}
+
+function signinError(msg) {
+  $("signinError").textContent = msg || "";
+  $("signinError").hidden = !msg;
+}
+
+function signOut(msg) {
+  token = null;
+  session.set(null);
+  data = null;
+  $("live").hidden = true;
+  $("liveNote").hidden = true;
+  $("meta").textContent = "";
+  screen("signin");
+  signinError(msg);
+  $("user").focus();
+}
+
+async function signIn(e) {
+  e.preventDefault();
+  signinError("");
+  $("signinBtn").disabled = true;
+  $("signinBtn").textContent = "Signing in…";
+  try {
+    const res = await fetch(new URL(api.token, location.href), {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ username: $("user").value, password: $("pass").value }),
+    });
+    if (res.status === 503) throw new Error("The sign-in service is unavailable. Try again later.");
+    if (!res.ok) throw new Error("Sign-in failed. Check your username and password.");
+    token = (await res.json()).access_token;
+    session.set(token);
+    $("pass").value = "";
+    await fetchData(false);
+  } catch (err) {
+    signinError(err instanceof TypeError ? "Can't reach the scheduler. Check your connection." : err.message);
+  } finally {
+    $("signinBtn").disabled = false;
+    $("signinBtn").textContent = "Sign in";
+  }
+}
+
+function buildFailed(msg) {
+  if (data) { $("liveMsg").textContent = msg; return; }
+  screen("loading");
+  $("loadingTitle").textContent = "Couldn't load the schedules";
+  $("loadingText").textContent = msg;
+  $("retry").hidden = false;
+}
+
+async function fetchData(refresh) {
+  const before = data && data.generated_at;
+  if (data) { $("refresh").disabled = true; $("refresh").textContent = "Refreshing…"; $("liveMsg").textContent = ""; }
+  else {
+    screen("loading");
+    $("loadingTitle").textContent = "Building this week's explanation…";
+    $("loadingText").textContent = "This takes a few seconds.";
+    $("retry").hidden = true;
+  }
+  try {
+    const url = new URL(api.data, location.href);
+    if (refresh) url.searchParams.set("refresh", "1");
+    let res;
+    try { res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); }
+    catch (e) { return buildFailed("Can't reach the scheduler. Check your connection."); }
+    if (res.status === 401) return signOut("Your session has ended. Sign in again.");
+    if (res.status === 403) return signOut("Only supervisors can see this page.");
+    if (res.status === 503) return signOut("The sign-in service is unavailable. Try again later.");
+    if (!res.ok) return buildFailed("The explanation couldn't be built. Ask the scheduler team to check the logs.");
+    load(await res.json());
+    if (refresh && data.generated_at === before) $("liveMsg").textContent = "Already up to date, built less than 5 minutes ago.";
+  } finally {
+    $("refresh").disabled = false;
+    $("refresh").textContent = "Refresh";
+  }
 }
 
 function readFile(file) {
@@ -748,11 +878,21 @@ $("tech").checked = store.get("explain.tech") === "1";
 document.body.classList.toggle("tech", $("tech").checked);
 $("tech").addEventListener("change", e => { document.body.classList.toggle("tech", e.target.checked); store.set("explain.tech", e.target.checked ? "1" : "0"); });
 $("search").addEventListener("input", renderList);
-$("file").addEventListener("change", e => e.target.files[0] && readFile(e.target.files[0]));
-document.addEventListener("dragover", e => e.preventDefault());
-document.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) readFile(f); });
 if (window.EXPLAIN_DATA) load(window.EXPLAIN_DATA);
-else $("empty").hidden = false;
+else if (api) {
+  $("signinForm").addEventListener("submit", signIn);
+  $("refresh").addEventListener("click", () => fetchData(true));
+  $("signout").addEventListener("click", () => signOut(""));
+  $("retry").addEventListener("click", () => fetchData(false));
+  token = session.get();
+  if (token) fetchData(false);
+  else signOut("");
+} else {
+  $("file").addEventListener("change", e => e.target.files[0] && readFile(e.target.files[0]));
+  document.addEventListener("dragover", e => e.preventDefault());
+  document.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) readFile(f); });
+  $("empty").hidden = false;
+}
 </script>
 </body>
 </html>
