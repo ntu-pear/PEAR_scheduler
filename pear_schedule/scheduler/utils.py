@@ -1,5 +1,6 @@
 import datetime
 import logging
+import pandas as pd
 from typing import Dict, List, Optional, Tuple, Mapping
 from pear_schedule.db_utils.views import PatientsOnlyView, GroupActivitiesOnlyView
 
@@ -84,7 +85,8 @@ def checkActivityExcluded(
         # if activity exclusion has not yet ended then ignore
         # include current day since it can be unsafe to perform activities on the
         # day exclusion ends (eg remove leg cast then walk same day)
-        return exclusion_end is None or exclusion_end >= slot_datetime
+        # NaT is how pandas reads a NULL end date, same as None: no end
+        return exclusion_end is None or pd.isna(exclusion_end) or exclusion_end >= slot_datetime
 
 
 def rescheduleActivity(patient_schedule: List, day: int, time: int, potential_slots: List[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
