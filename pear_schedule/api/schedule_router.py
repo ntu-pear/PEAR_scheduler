@@ -17,6 +17,7 @@ from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest,
 from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
+from pear_schedule.scheduler.repair import repair_schedules
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import DBTABLES
 
@@ -31,6 +32,13 @@ init(autoreset=True)
 
 
 router = APIRouter(tags=["Scheduler"])
+
+
+def _regenerate_build(config, patientSchedules):
+    # repair keeps the saved week and only changes what has a reason to
+    if config.get("REGENERATE_MODE", "rebuild") == "repair":
+        return repair_schedules(config, patientSchedules)
+    return build_schedules(config, patientSchedules)
 
 @router.api_route("/getSchedule/", methods=["GET"])
 def get_schedule(request: Request):
@@ -94,7 +102,7 @@ def generate_schedule(request: Request):
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = _regenerate_build(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -131,7 +139,7 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = _regenerate_build(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
