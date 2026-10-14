@@ -172,7 +172,8 @@ class PatientsUnpreferredView(BaseView):
         ).join(
             activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
         ).where(
-            centre_activity_preference.c["IsLike"] == 0,
+            # -1 is dislike, 0 is neutral (activity service)
+            centre_activity_preference.c["IsLike"] == -1,
             centre_activity_preference.c["IsDeleted"] == False,
             centre_activity.c["IsDeleted"] == False,
             centre_activity.c["StartDate"] <= get_week_end(),

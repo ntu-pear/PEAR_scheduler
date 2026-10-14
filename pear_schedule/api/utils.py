@@ -125,9 +125,10 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
         routines_timeslot[routine] = routines_df.loc[routines_df['ActivityTitle'] == routine, 'FixedTimeSlots'].iloc[0]
     
     # TYPE 'SHOULD NOT SCHEDULE'
-    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == 0]
+    # -1 is dislike / not recommended, 0 is neutral
+    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == -1]
     non_preferred_activities = non_preferred_activities['ActivityTitle'].tolist()
-    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == 0]
+    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == -1]
     non_recommended_activities = non_recommended_activities['ActivityTitle'].tolist()
     activities_excluded = tablesDF['activitiesExcludedViewDF'].loc[tablesDF['activitiesExcludedViewDF']['PatientID'] == patientID]
     activities_excluded = activities_excluded['ActivityTitle'].tolist()
@@ -803,7 +804,8 @@ def fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, w
     for _, routineRecord in validRoutinesDF.iterrows():
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
-        routineActivityMap[routineRecord["ActivityTitle"]] = expandFixedTimeSlots(fixedTimeSlots, routineRecord["MinDuration"], minActivityDuration)
+        # routine slots are already one entry per slot, and the view has no MinDuration
+        routineActivityMap[routineRecord["ActivityTitle"]] = expandFixedTimeSlots(fixedTimeSlots, minActivityDuration, minActivityDuration)
 
 
     result = True
@@ -971,7 +973,8 @@ def clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request):
         fixedTimeSlots = routineRecord["FixedTimeSlots"].split(",")
         fixedTimeSlots = [(int(value.split("-")[0]), int(value.split("-")[1])) for value in fixedTimeSlots]
         activityTitle = routineRecord["ActivityTitle"] + "(routine)"
-        for ts in expandFixedTimeSlots(fixedTimeSlots, routineRecord["MinDuration"], minActivityDuration):
+        # one entry per slot already
+        for ts in expandFixedTimeSlots(fixedTimeSlots, minActivityDuration, minActivityDuration):
             if ts not in timeSlotMap:
                 timeSlotMap[ts] = [activityTitle]
             else:

@@ -23,12 +23,12 @@ class TestPatientTestUtils:
                 })), \
             patch('pear_schedule.db_utils.views.CentreActivityPreferenceView.get_data', return_value=pd.DataFrame({
                 'PatientID' : [1,1,1,1,1,1],
-                'IsLike': [1,1,0,0,1,1],
+                'IsLike': [1,1,-1,-1,1,1],
                 'ActivityTitle': ["Movie Screening", "Brisk Walking", "Sewing", "Origami", "Cutting Pictures", "Watch television"]
                 })), \
             patch('pear_schedule.db_utils.views.CentreActivityRecommendationView.get_data', return_value=pd.DataFrame({
                 'PatientID' : [1,1,1],
-                'DoctorRecommendation': [1,1,0],
+                'DoctorRecommendation': [1,1,-1],
                 'ActivityTitle': ["Brisk Walking", "Sewing", "Cutting Pictures"]
                 })), \
             patch('pear_schedule.db_utils.views.ActivitiesExcludedView.get_data', return_value=pd.DataFrame({
@@ -122,6 +122,24 @@ class TestPatientTestUtils:
     Generate the Patient Wellness Plan and Medication Schedule
     '''
     # test whether the patient wellness plan is parsed correctly based on the mock data 
+    def test_neutral_preference_and_recommendation_are_not_should_not_schedule(self, mock_views):
+        """0 is neutral, only -1 should land in non_preferred / non_recommended."""
+        tables_df = getTablesDF()
+        tables_df["centreActivityPreferenceViewDF"] = pd.DataFrame({
+            "PatientID": [1, 1], "IsLike": [0, -1], "ActivityTitle": ["Neutral Act", "Disliked Act"],
+        })
+        tables_df["centreActivityRecommendationViewDF"] = pd.DataFrame({
+            "PatientID": [1, 1], "DoctorRecommendation": [0, -1], "ActivityTitle": ["Neutral Rec", "Not Rec"],
+        })
+        config = {
+            'DAYS': 5,
+            'DAY_OF_WEEK_ORDER': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        }
+        plan = getPatientWellnessPlan(tables_df, patientID=1, config=config)
+
+        assert plan['should_not_be_scheduled_activities']['non_preferred'] == ["Disliked Act"]
+        assert plan['should_not_be_scheduled_activities']['non_recommended'] == ["Not Rec"]
+
     def test_get_patient_wellness_plan_based_on_mock_data(self, mock_views):
         fake_tables_DF = getTablesDF()
         config = {
@@ -757,6 +775,42 @@ class TestSystemTestTimeslotLabels:
 
         assert result["testResult"] == "Fail"
         assert "Monday 09:30-10:00" in result["testRemarks"][0]
+
+    def test_fixed_activities_check_works_with_real_routine_view_columns(self):
+        """The routine view has no MinDuration, reading it crashed /systemTest."""
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-0"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({
+            "PatientID": [1], "ActivityID": [7], "ActivityTitle": ["Morning Walk"], "FixedTimeSlots": ["0-1,0-2"],
+        })
+        weeklyScheduleViewDF = pd.DataFrame({
+            "PatientID": [1],
+            "Monday": [json.dumps({"09:00-09:30": "Yoga", "09:30-10:00": "Morning Walk", "10:00-10:30": "Morning Walk"})],
+            "Tuesday": [""], "Wednesday": [""], "Thursday": [""], "Friday": [""], "Saturday": [""],
+        })
+        request = _fake_request({"DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER, "MIN_ACTIVITY_DURATION": 30})
+
+        result = fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request)
+
+        assert result["testResult"] == "Pass"
+
+    def test_clash_warning_works_with_real_routine_view_columns(self):
+        activitiesDF = pd.DataFrame({
+            "IsFixed": ["1"], "ActivityTitle": ["Yoga"], "FixedTimeSlots": ["0-2"], "MinDuration": [30],
+        })
+        validRoutinesDF = pd.DataFrame({
+            "PatientID": [1], "ActivityID": [7], "ActivityTitle": ["Morning Walk"], "FixedTimeSlots": ["0-2"],
+        })
+        request = _fake_request({
+            "DAY_OF_WEEK_ORDER": DAY_OF_WEEK_ORDER,
+            "WORKING_HOURS": {"monday": {"open": "09:00", "close": "17:00"}},
+            "MIN_ACTIVITY_DURATION": 30,
+        })
+
+        result = clashInFixedTimeSlotWarning(activitiesDF, validRoutinesDF, request)
+
+        assert result["warningRemarks"] == ["These activities have clashing fixed timeslots on Monday 10:00-10:30: Yoga(normal), Morning Walk(routine)"]
 
     def test_group_activity_mismatch_never_needs_the_fallback_label(self):
         """timeslot comes from enumerate(), so the fallback cannot be reached."""
