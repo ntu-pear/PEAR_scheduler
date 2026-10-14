@@ -5,6 +5,7 @@ from pear_schedule.db_utils.views import PatientsOnlyView, GroupActivitiesOnlyVi
 import logging
 
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,9 @@ class GroupActivityScheduler(BaseScheduler):
                 shortfall = activityMinSizeMap[activityTitle] - activityCount
                 if len(leftOverPatients) < shortfall: # not enough to hit minimum requirement
                     toRemoveList.append(key)
+                    trace.record(trace.STAGE_GROUP, None, trace.DROPPED, "below_min_group_size",
+                                 activity=activityTitle, round=1, interested=activityCount,
+                                 available_to_fill=len(leftOverPatients), min_people=int(activityMinSizeMap[activityTitle]))
                     continue
 
                 elif len(leftOverPatients) == shortfall: # just nice enough to hit min requirement
@@ -183,6 +187,9 @@ class GroupActivityScheduler(BaseScheduler):
             patientSet = totalPatientSet.copy()
             availablePatients = patientSet.difference(activityExclusionMap[activityTitle])
             if len(availablePatients) < activityMinSizeMap[activityTitle]: # not enough available patients to hit min size
+                trace.record(trace.STAGE_GROUP, None, trace.DROPPED, "below_min_group_size",
+                             activity=activityTitle, round=2, available=len(availablePatients),
+                             min_people=int(activityMinSizeMap[activityTitle]))
                 continue
 
 

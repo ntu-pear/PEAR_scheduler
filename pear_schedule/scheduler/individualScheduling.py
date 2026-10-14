@@ -12,6 +12,7 @@ from pear_schedule.db_utils.utils import day_timeslot_labels
 from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, DisrecommendedActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
 from pear_schedule.utils import DBTABLES
@@ -120,7 +121,11 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
  
             # filter out activities that are not available this week, i.e. only consider activities that run past week_end
             # null ActivityEndDate means indefinite (never expires), so it always passes
-            recommendations = recommendations[recommendations["ActivityEndDate"].isna() | (recommendations["ActivityEndDate"] > week_end)]
+            not_expired = recommendations["ActivityEndDate"].isna() | (recommendations["ActivityEndDate"] > week_end)
+            for _, r in recommendations[~not_expired].iterrows():
+                trace.record(trace.STAGE_RECOMMENDED, r["PatientID"], trace.FILTERED, "expired",
+                             activity=r["ActivityTitle"], end_date=str(r["ActivityEndDate"]))
+            recommendations = recommendations[not_expired]
 
             # add an extra row at end for easier handling of final patient
             dummy_row = recommendations.iloc[0:1].copy(deep=True)
@@ -150,11 +155,12 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     fixedTimeSlotIdx = (curr_df["FixedTimeSlots"] != "") & (~curr_df["FixedTimeSlots"].isna())
                     patient_routine = routines[routines["PatientID"] == patient_id]
 
-                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start)
-                    cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start)
-                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start)
-                except Exception:
+                    cls.__fillByFixedTimeSlots(patient_schedule, curr_df[fixedTimeSlotIdx], patients[patient_id], week_start, patient_id=patient_id)
+                    cls.__fillRoutines(patient_schedule, curr_df[fixedTimeSlotIdx], patient_routine, patients[patient_id], week_start, patient_id=patient_id)
+                    cls.__fillFlexibleActivities(patient_schedule, curr_df[~fixedTimeSlotIdx], patients[patient_id], week_start, patient_id=patient_id)
+                except Exception as e:
                     logger.exception(f"Recommended/routine scheduling failed for patient {patient_id}, skipping")
+                    trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.ERROR, "stage_exception", error=repr(e))
 
                 start = end
 
@@ -170,9 +176,10 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     patient_routine = routines[routines["PatientID"] == patient_id]
                     patient_info = patients.get(patient_id, {"preferences": set(), "exclusions": dict(), "dispreferences": set()})
 
-                    cls.__fillRoutines(patient_schedule, no_fixed_activities, patient_routine, patient_info, week_start)
-                except Exception:
+                    cls.__fillRoutines(patient_schedule, no_fixed_activities, patient_routine, patient_info, week_start, patient_id=patient_id)
+                except Exception as e:
                     logger.exception(f"Routine scheduling failed for patient {patient_id}, skipping")
+                    trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.ERROR, "stage_exception", error=repr(e))
 
     @classmethod
     def __fillByFixedTimeSlots(
@@ -180,7 +187,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         patient_schedule: List[List[str]], 
         activities: pd.DataFrame, 
         patient_info: Mapping[str, Dict[str, str]],
-        week_start: datetime.datetime = None
+        week_start: datetime.datetime = None,
+        patient_id = None,
     ):
         # set week_start to current week monday if not given
         week_start = week_start or \
@@ -189,6 +197,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         timeslots_set = set.union(*series_timeslots) if len(series_timeslots) else set()
 
         scheduled_idx = pd.Series(False, index=activities.index) # refers to all activities recommended to a specific patient
+        placed_rows = set()
         
         for (day, slot) in timeslots_set:
             if scheduled_idx.all():
@@ -244,6 +253,16 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
             selected_activity = selected_activity_row["ActivityTitle"]
             for i in range((selected_activity_row["MinDuration"] // -cls.config["MIN_ACTIVITY_DURATION"]) * -1):
                 patient_schedule[day][slot + i] = selected_activity
+            placed_rows.add(least_available)
+            trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED, "most_constrained_fixed_slot",
+                         activity=selected_activity, day=day, slot=slot,
+                         remaining_slots=None if lowest_availability == float("inf") else int(lowest_availability))
+
+        for row, activity in activities.iterrows():
+            if row not in placed_rows:
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "no_valid_fixed_slot",
+                             activity=activity["ActivityTitle"],
+                             fixed_slots=sorted(activity["ProcessedTimeSlots"]))
 
     @classmethod
     def __fillRoutines(
@@ -252,7 +271,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         activities: pd.DataFrame, 
         patient_routine: pd.DataFrame, 
         patient_info: Mapping[str, Dict[str, str]],
-        week_start: datetime.datetime = None
+        week_start: datetime.datetime = None,
+        patient_id = None,
     ):
         # set week_start to current week monday if not given
         week_start = week_start or \
@@ -265,6 +285,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                 if checkActivityExcluded(
                     r["ActivityID"], patient_info["exclusions"], day, week_start
                 ):
+                    trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.SKIPPED, "routine_excluded",
+                                 activity=r["ActivityTitle"], day=day, slot=time)
                     continue
 
                 # potentially if routines clash then it will be overriden
@@ -279,16 +301,36 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
 
         # scan each routine_slot to check if it is occupied by an activity given
         for (day, time), routine_activity_title in routine_slots.items():
+            if day >= len(patient_schedule) or time >= len(patient_schedule[day]):
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "routine_out_of_bounds",
+                             activity=routine_activity_title, day=day, slot=time)
+                continue
+
             current_activity = patient_schedule[day][time]
 
             if not current_activity:
                 patient_schedule[day][time] = routine_activity_title
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED, "routine_slot",
+                             activity=routine_activity_title, day=day, slot=time)
                 continue
-            
+
+            # only fixed recommended activities can be moved, compulsory ones can't
+            if current_activity not in activity_map:
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "routine_slot_held_by_higher_priority",
+                             activity=routine_activity_title, day=day, slot=time, occupied_by=current_activity)
+                continue
+
             if new_slot := rescheduleActivity(patient_schedule, day, time, activity_map[current_activity]):
                 patient_schedule[new_slot[0]][new_slot[1]] = current_activity
                 patient_schedule[day][time] = routine_activity_title
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.MOVED, "displaced_by_routine",
+                             activity=current_activity, day=new_slot[0], slot=new_slot[1], from_day=day, from_slot=time)
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED, "routine_slot",
+                             activity=routine_activity_title, day=day, slot=time)
                 continue
+
+            trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "routine_cannot_reschedule_occupant",
+                         activity=routine_activity_title, day=day, slot=time, occupied_by=current_activity)
 
     @classmethod
     def __fillFlexibleActivities(
@@ -296,7 +338,8 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         patient_schedule: List[List[str]], 
         activities: pd.DataFrame, 
         patient_info: Mapping[str, Dict[str, str]],
-        week_start: datetime.datetime = None
+        week_start: datetime.datetime = None,
+        patient_id = None,
     ):
         """
         Fill in recommended activities that do not have fixedTimeSlots, i.e. fixedTimeSlots is empty
@@ -329,11 +372,18 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
                     for i in range(num_slots):
                         patient_schedule[day][time+i] = a["ActivityTitle"]
                     scheduled_activities.add(a["ActivityID"])
+                    trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.PLACED, "first_free_run",
+                                 activity=a["ActivityTitle"], day=day, slot=time)
                     # slot taken, move on
                     break
 
                 if len(scheduled_activities) == len(activities):
                     return
+
+        for _, a in activities.iterrows():
+            if a["ActivityID"] not in scheduled_activities:
+                trace.record(trace.STAGE_RECOMMENDED, patient_id, trace.DROPPED, "no_free_run",
+                             activity=a["ActivityTitle"], min_duration=int(a["MinDuration"]))
 
 
 class PreferredActivityScheduler(IndividualActivityScheduler):
@@ -405,8 +455,18 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                             num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
 
                             if not new_activity or j-i+1 < num_slots:
+                                trace.record(trace.STAGE_PREFERRED, pid, trace.FREE_AND_EASY,
+                                             "no_candidate_fits" if not new_activity else "candidate_too_long",
+                                             activity="Free and Easy", day=day, slot=i, free_run=j-i+1,
+                                             preferred_pool=len(preferred_activities),
+                                             neutral_pool=len(non_preferred_activites),
+                                             used_today=sorted(a for a in curr_day_activities if a != "Free and Easy"))
                                 new_activity = "Free and Easy"
                                 num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
+                            else:
+                                trace.record(trace.STAGE_PREFERRED, pid, trace.PLACED,
+                                             "preferred" if new_activity in set(preferred_activities["ActivityTitle"]) else "neutral",
+                                             activity=new_activity, day=day, slot=i)
 
                             curr_day_activities.add(new_activity)
 
@@ -418,8 +478,9 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                             curr_day_activities.add(day_sched[i])
 
                         i += 1
-            except Exception:
+            except Exception as e:
                 logger.exception(f"Preferred activity scheduling failed for patient {pid}, skipping")
+                trace.record(trace.STAGE_PREFERRED, pid, trace.ERROR, "stage_exception", error=repr(e))
 
     @classmethod
     def __findActivityBySlot(

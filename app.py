@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.db_utils.views import CareCentreView
-from pear_schedule.services.care_centre_util import apply_centre_hours
+from pear_schedule.services.care_centre_util import apply_centre_hours, centre_hours_config, read_saved_working_hours
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -236,6 +236,23 @@ def generate_schedules(config: Mapping[str, Any], args):
         logger.error("Error in writing schedule to DB. Check logs")
         exit(1)
 
+def explain_schedule(config: Mapping[str, Any], args):
+    """Read-only, builds and explains this week's schedules without writing to the DB."""
+    from pear_schedule.scheduler.explain import dump_json, format_text, run_explanation
+
+    config = {item: getattr(config, item) for item in dir(config)}
+    DB.init_app(config["DB_CONN_STR"], config)
+    CareCentreView.init_app(config)
+    config.setdefault("GROUP_TIMESLOT_MAPPING_RAW", list(config["GROUP_TIMESLOT_MAPPING"]))
+    config.update(centre_hours_config(config, read_saved_working_hours()))
+    loadConfigs(config)
+
+    explanation = run_explanation(config, args.patient)
+    print(format_text(explanation, args.patient))
+    if args.json:
+        dump_json(explanation, args.json)
+        print(f"\nWrote {args.json}")
+
 def start_consumers_only(config: Mapping[str, Any], args):
     """Start only the RabbitMQ consumers (no FastAPI server)"""
     logger.info("Starting consumers only mode...")
@@ -296,6 +313,13 @@ def parse_args():
     generate_parser.add_argument("-c", "--config", required=True)
     generate_parser.set_defaults(func=generate_schedules)
     
+    # read-only, explains how this week's schedule gets built
+    explain_parser = subparsers.add_parser("explain_schedule", help="explain schedule decisions without writing anything")
+    explain_parser.add_argument("-c", "--config", required=True)
+    explain_parser.add_argument("--patient", type=int, nargs="*", help="only show these patient IDs")
+    explain_parser.add_argument("--json", help="also write the full explanation to this JSON file")
+    explain_parser.set_defaults(func=explain_schedule)
+
     # NEW: add args for running only consumers (useful for separate consumer processes)
     consumer_parser = subparsers.add_parser("start_consumers", help="start only RabbitMQ consumers")
     consumer_parser.add_argument("-c", "--config", required=True)
