@@ -5,17 +5,28 @@ Shows why the scheduler made each decision for this week, in plain English. Two 
 - **Link**: supervisors open it in a browser and sign in. Easiest for everyone.
 - **File**: run a command on the server and get one HTML file. For when the link is down, or to keep a snapshot.
 
-Both are **read-only**. They build the schedules in memory and never write to the DB, never save centre hours and never touch RabbitMQ.
+Both are **read-only**. They never write to the DB, never save centre hours and never touch RabbitMQ. The link reads the saved schedule, the file builds one in memory (or reads the saved one with `--saved`).
 
 ## Link
 
-```
-<scheduler base URL>/schedule/explain/view/
-```
+Same server and port as the scheduler's `/docs` page, with `/schedule/explain/view/` instead of `/docs`:
 
-The base URL is the same one that opens the scheduler's `/docs` for that environment (Service `scheduler-service`, NodePort 30090 on staging, 30080 on prod).
+| Environment | Docs | Explainer |
+|---|---|---|
+| Staging | `http://<server>:5682/docs` | `http://<server>:5682/schedule/explain/view/` |
+| Prod | `http://<server>:5679/docs` | `http://<server>:5679/schedule/explain/view/` |
 
-- Sign in with a PEAR account. **Supervisors only.**
+`<server>` is the scheduler server's address (ask the team if you don't have it).
+
+### Opening it
+
+1. Open the explainer link for the environment in a browser.
+2. Sign in with your PEAR username and password. Only `SUPERVISOR` accounts get in.
+3. It opens on **Centre overview**. Use **Patients** to look at one patient's week and **Data to fix** for what to change in the activity data.
+4. Close the tab or press **Sign out** when done.
+
+### Sign-in
+
 - The page itself has no data. After sign-in it calls `GET /schedule/explain/` with the token.
 - The token is always checked with the user service (`/api/v1/current_user/`), even while `AUTH_VERIFY_MODE` is shadow for the rest of the API. Forged or expired tokens get 401, other roles get 403, and if the user service is down it's 503.
 - Patient names are shown, since only verified supervisors get the data.
@@ -62,6 +73,8 @@ A text summary is always printed to the terminal.
 ## Getting it to staging and prod
 
 Nothing extra to deploy, for both the link and the file. The explainer is part of the scheduler code, and the Dockerfile copies the whole repo (including `tools/schedule_explainer.html`) into the image. No new env vars, configmap entries or DB changes.
+
+The link's sign-in needs `USER_BE_ORIGIN` (the user service address), which is already in the configmap. If it's missing every sign-in gets "The sign-in service is unavailable". "Changed this week" needs `REGENERATE_MODE=repair`, see the push checklist.
 
 It goes out the same way as any change:
 
