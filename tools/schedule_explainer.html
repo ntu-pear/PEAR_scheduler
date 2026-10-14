@@ -11,137 +11,256 @@
 -->
 <style>
   :root {
-    --bg: #f5f6f8; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dfe3ea; --soft: #eef1f5;
-    --accent: #2f6fd0; --warn: #c4352f; --warn-bg: #fdecea; --ok: #2e7d4f; --ok-bg: #e7f4ec; --note-bg: #fff6e0;
-    --everyone: #e08a4f; --doctor: #8f6bd8; --routine: #6b5bb8; --group: #2f9a80;
-    --chosen: #4f8fe0; --request: #d4577a; --free: #d3d8e0; --free-text: #3b4250;
+    --ground: #f4f5f7; --surface: #ffffff; --surface-2: #f8f9fb; --ink: #111827; --ink-2: #374151; --muted: #5f6775;
+    --rule: #e3e6eb; --rule-strong: #cfd4db;
+    --brand: #15803d; --brand-strong: #166534; --brand-tint: #e9f5ee; --on-brand: #ffffff; --select: #111827; --on-select: #ffffff;
+    --warn: #b42318; --warn-tint: #fdf0ee; --warn-line: #f1b8b0; --caution: #9a4a06; --caution-tint: #fdf5e7; --caution-line: #ecc98f;
+    --ok: #15803d; --ok-tint: #ecf6f0; --ok-line: #a8d5b9;
+    --everyone-bg: #fdf0e3; --everyone-line: #efb47c; --everyone-ink: #7a3b0c;
+    --doctor-bg: #f2eefb; --doctor-line: #c3b3ea; --doctor-ink: #4b2c8f;
+    --routine-bg: #eceffa; --routine-line: #b3bde6; --routine-ink: #2e3f80;
+    --group-bg: #e6f4ec; --group-line: #9ccdb0; --group-ink: #14532d;
+    --chosen-bg: #f3f4f6; --chosen-line: #b8bec8; --chosen-ink: #1f2937;
+    --request-bg: #fcecf2; --request-line: #eab0c5; --request-ink: #8b1d45;
+    --free-bg: #ffffff; --free-line: #b9c0ca; --free-ink: #5f6775;
+    --s-warn: #c4352f; --s-1: #5b6b82; --s-2: #b0893a; --s-3: #7d6aa6; --s-4: #4d8a7e; --s-other: #8a93a1;
+    --r: 4px; --r-cell: 2px; --on-warn: #ffffff;
+    color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b3; --border: #2c323d; --soft: #252a34;
-      --accent: #6ea1f0; --warn: #f07a73; --warn-bg: #3a1f1e; --ok: #6cc592; --ok-bg: #1b3326; --note-bg: #352d17;
-      --free: #353b47; --free-text: #c9d0dc;
+      --ground: #0f1217; --surface: #161a21; --surface-2: #1b2029; --ink: #e7eaf0; --ink-2: #c7ccd6; --muted: #a3abb8;
+      --rule: #2a303a; --rule-strong: #3a414d;
+      --brand: #3fb871; --brand-strong: #5cc988; --brand-tint: #17301f; --on-brand: #08140c; --select: #e7eaf0; --on-select: #0f1217;
+      --warn: #f2877d; --warn-tint: #331a18; --warn-line: #7a3a33; --caution: #f0b866; --caution-tint: #2f2412; --caution-line: #6b5124;
+      --ok: #5cc988; --ok-tint: #142a1c; --ok-line: #2f6a45;
+      --everyone-bg: #33231a; --everyone-line: #84542d; --everyone-ink: #f6c9a1;
+      --doctor-bg: #241f36; --doctor-line: #5b4b8f; --doctor-ink: #d6c9fa;
+      --routine-bg: #1d2338; --routine-line: #485b9a; --routine-ink: #c8d2f6;
+      --group-bg: #15291f; --group-line: #2f6a4a; --group-ink: #b6e6c9;
+      --chosen-bg: #1f242d; --chosen-line: #3f4652; --chosen-ink: #dfe3ea;
+      --request-bg: #33182a; --request-line: #7d3657; --request-ink: #f6c2d6;
+      --free-bg: #161a21; --free-line: #4a525f; --free-ink: #a3abb8; --on-warn: #1a0806;
+      color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b3; --border: #2c323d; --soft: #252a34;
-    --accent: #6ea1f0; --warn: #f07a73; --warn-bg: #3a1f1e; --ok: #6cc592; --ok-bg: #1b3326; --note-bg: #352d17;
-    --free: #353b47; --free-text: #c9d0dc;
+    --ground: #0f1217; --surface: #161a21; --surface-2: #1b2029; --ink: #e7eaf0; --ink-2: #c7ccd6; --muted: #a3abb8;
+    --rule: #2a303a; --rule-strong: #3a414d;
+    --brand: #3fb871; --brand-strong: #5cc988; --brand-tint: #17301f; --on-brand: #08140c; --select: #e7eaf0; --on-select: #0f1217;
+    --warn: #f2877d; --warn-tint: #331a18; --warn-line: #7a3a33; --caution: #f0b866; --caution-tint: #2f2412; --caution-line: #6b5124;
+    --ok: #5cc988; --ok-tint: #142a1c; --ok-line: #2f6a45;
+    --everyone-bg: #33231a; --everyone-line: #84542d; --everyone-ink: #f6c9a1;
+    --doctor-bg: #241f36; --doctor-line: #5b4b8f; --doctor-ink: #d6c9fa;
+    --routine-bg: #1d2338; --routine-line: #485b9a; --routine-ink: #c8d2f6;
+    --group-bg: #15291f; --group-line: #2f6a4a; --group-ink: #b6e6c9;
+    --chosen-bg: #1f242d; --chosen-line: #3f4652; --chosen-ink: #dfe3ea;
+    --request-bg: #33182a; --request-line: #7d3657; --request-ink: #f6c2d6;
+    --free-bg: #161a21; --free-line: #4a525f; --free-ink: #a3abb8; --on-warn: #1a0806;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 16px 0; }
-  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
-  h1 { font-size: 20px; margin: 0; }
+  html { scrollbar-color: var(--rule-strong) transparent; accent-color: var(--brand); }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--brand-tint); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+  input, textarea { caret-color: var(--brand); }
+  h1, h2, h3 { letter-spacing: -0.01em; text-wrap: balance; }
+  h1 { font-size: 19px; font-weight: 650; margin: 0; }
+  h2 { font-size: 16px; font-weight: 650; margin: 0 0 4px; }
+  h3 { font-size: 14px; font-weight: 650; margin: 20px 0 6px; }
+  p { margin: 6px 0; }
+  ul { padding-left: 18px; margin: 6px 0; }
+  li { margin-bottom: 6px; }
   .muted { color: var(--muted); }
   .small { font-size: 13px; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; align-items: flex-end; }
-  .tabs button { font: inherit; background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 12px; color: var(--muted); cursor: pointer; }
-  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-  .tabs .spacer { flex: 1; }
-  .tabs label { font-size: 13px; color: var(--muted); padding: 8px 0; cursor: pointer; }
-  .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn); color: #fff; font-size: 12px; text-align: center; margin-left: 4px; }
-  .page { padding: 16px; max-width: 1500px; margin: 0 auto; }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
-  h2 { font-size: 17px; margin: 0 0 6px; }
-  h3 { font-size: 15px; margin: 18px 0 6px; }
-  p { margin: 6px 0; }
-  ul { padding-left: 20px; margin: 6px 0; }
-  li { margin-bottom: 6px; }
+  .num, time, #meta { font-variant-numeric: tabular-nums; }
   button, input, select { font: inherit; color: inherit; }
-  .btn { background: var(--soft); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-  .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; }
+  .i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  .i.fill { fill: currentColor; stroke: none; }
+
+  /* header */
+  header { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 14px 24px 12px; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
+  .mark { font-size: 13px; font-weight: 750; letter-spacing: 0.06em; color: var(--brand); }
+  #meta { color: var(--muted); font-size: 13px; }
+  .live { margin-left: auto; display: flex; gap: 12px; align-items: center; font-size: 13px; }
+  #liveNote { margin: 4px 0 0; }
+  .bar2 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; }
+  .tabs { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--r); padding: 2px; background: var(--surface); }
+  .tabs button { background: none; border: 0; border-radius: 3px; padding: 5px 14px; color: var(--ink-2); cursor: pointer; font-weight: 550; transition: background-color .15s, color .15s; display: inline-flex; align-items: center; gap: 6px; }
+  .tabs button:hover { background: var(--surface-2); }
+  .tabs button[aria-selected="true"] { background: var(--select); color: var(--on-select); }
+  .count { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 3px; background: var(--warn); color: var(--on-warn); font-size: 11.5px; font-weight: 650; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+  .toggle { margin-left: auto; font-size: 13px; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+
+  /* shared surfaces and controls */
+  .page { padding: 20px 24px 32px; max-width: 1520px; margin: 0 auto; }
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 16px 18px; }
+  .btn { background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--r); padding: 6px 12px; cursor: pointer; font-weight: 550; color: var(--ink); transition: background-color .15s, border-color .15s; }
+  .btn:hover { background: var(--surface-2); border-color: var(--muted); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
+  .btn.primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .link { background: none; border: 0; padding: 0; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; font-weight: 550; }
+  .link:hover { color: var(--brand-strong); }
+  .error { color: var(--warn); }
+  .when { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .note { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--rule); border-radius: var(--r); padding: 10px 12px; margin: 10px 0; background: var(--surface-2); }
+  .note > .i { margin-top: 3px; }
+  .note > div { min-width: 0; flex: 1; }
+  .note ul { margin-bottom: 0; }
+  .note.warn { background: var(--warn-tint); border-color: var(--warn-line); }
+  .note.warn > .i, .note.warn b { color: var(--warn); }
+  .note.caution { background: var(--caution-tint); border-color: var(--caution-line); }
+  .note.caution > .i, .note.caution b { color: var(--caution); }
+  .note.ok { background: var(--ok-tint); border-color: var(--ok-line); color: var(--ink); }
+  .note.ok > .i { color: var(--ok); }
+  .label { display: inline-block; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--r-cell); padding: 0 6px; font-size: 12px; font-weight: 600; line-height: 20px; }
+  .sq { display: inline-block; width: 11px; height: 11px; border-radius: 1px; border: 1px solid var(--c-line); background: var(--c-bg); vertical-align: -1px; margin-right: 6px; }
 
   /* patients tab */
-  .patients { display: grid; grid-template-columns: 240px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-  .patients > *, .two > *, .cards > * { min-width: 0; }
-  .plist input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); margin-bottom: 8px; }
+  .patients { display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+  .patients > *, .two > * { min-width: 0; }
+  .plist { padding: 12px; background: var(--surface); }
+  .plist input { width: 100%; padding: 7px 10px; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); margin-bottom: 8px; }
+  .plist input::placeholder { color: var(--muted); }
   .plist ul { list-style: none; padding: 0; margin: 0; max-height: 70vh; overflow-y: auto; }
   .plist li { margin: 0; }
-  .plist button { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: 0; border-radius: 6px; padding: 7px 8px; cursor: pointer; }
-  .plist button:hover { background: var(--soft); }
-  .plist button[aria-current="true"] { background: var(--soft); font-weight: 600; }
-  .plist .free { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .lead { font-size: 15.5px; }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 12px; font-size: 13px; }
-  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
-  .gridwrap { overflow-x: auto; }
-  .grid { display: grid; gap: 3px; min-width: 560px; }
-  .colhead { font-weight: 600; text-align: center; padding: 4px; }
-  .timehead { color: var(--muted); font-size: 12px; padding: 4px 6px 0 0; text-align: right; white-space: nowrap; }
-  .cell { border: 0; border-radius: 6px; padding: 4px 7px; color: #fff; cursor: pointer; overflow: hidden; min-height: 30px; text-align: left; display: block; width: 100%; }
-  .cell:focus-visible, .cell.sel { outline: 3px solid var(--text); outline-offset: 1px; }
-  .cell .t { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cell .s { font-size: 11px; opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cell.free { background: var(--free); color: var(--free-text); }
-  .cell.free.avoid { background: repeating-linear-gradient(45deg, var(--free), var(--free) 6px, var(--warn-bg) 6px, var(--warn-bg) 12px); box-shadow: inset 0 0 0 2px var(--warn); }
-  .cell.bad { box-shadow: inset 0 0 0 2px var(--warn); }
-  aside.panel { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
-  .tag { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: 12px; color: #fff; }
-  .why li { margin-bottom: 8px; }
-  .box { border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
-  .box.warn { background: var(--warn-bg); }
-  .box.ok { background: var(--ok-bg); }
-  .box.note { background: var(--note-bg); }
-  .when { color: var(--muted); font-size: 13px; }
+  .plist button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; background: none; border: 0; border-radius: 3px; padding: 7px 8px; cursor: pointer; transition: background-color .15s; }
+  .plist button:hover { background: var(--surface-2); }
+  .plist button[aria-current="true"] { background: var(--brand-tint); font-weight: 650; }
+  .pname { white-space: nowrap; }
+  .plist .free { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .flag { display: inline-block; width: 14px; margin-right: 6px; }
+  .flag .i { width: 13px; height: 13px; vertical-align: -2px; }
+  .lead { font-size: 14.5px; max-width: 75ch; color: var(--ink-2); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0; font-size: 12.5px; color: var(--ink-2); }
+  .gridwrap { overflow-x: auto; border-top: 1px solid var(--rule); }
+  .grid { display: grid; min-width: 600px; }
+  .colhead { font-weight: 650; font-size: 13px; padding: 8px 4px; border-bottom: 1px solid var(--rule-strong); }
+  .timehead { color: var(--muted); font-size: 11.5px; padding: 2px 10px 0 0; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .timehead.half { color: transparent; }
+  .slot { border-top: 1px solid var(--rule-strong); border-left: 1px solid var(--rule); }
+  .slot.half { border-top-color: var(--rule); }
+  .timehead:not(.half) { border-top: 1px solid var(--rule-strong); }
+  .slot.half { border-top-style: dotted; }
+  .cell { position: relative; z-index: 1; margin: 2px 3px; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--r-cell); padding: 2px 6px; cursor: pointer; overflow: hidden; min-height: 0; text-align: left; display: block; width: auto; line-height: 1.3; transition: border-color .15s, background-color .15s; }
+  .cell .t { font-weight: 650; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
+  .cell .t span { overflow: hidden; text-overflow: ellipsis; }
+  .cell .t .i { width: 12px; height: 12px; }
+  .cell .s { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .cell.free { border-style: dashed; font-weight: 500; }
+  .cell.free .t { font-weight: 550; }
+  .cell.free.avoid { border-color: var(--warn); color: var(--warn); }
+  .cell.bad { box-shadow: inset 0 0 0 1px var(--warn); border-color: var(--warn); }
+  .cell.clash { box-shadow: inset 0 0 0 1px var(--caution-line); border-color: var(--caution-line); }
+  .cell:hover { border-color: var(--ink-2); }
+  .cell.free:hover { border-color: var(--muted); }
+  .cell:focus-visible { z-index: 2; }
+  .cell.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
+  .keyline { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 12px; }
+  .keyline span { display: inline-flex; gap: 5px; align-items: center; }
+  aside.panel { position: sticky; top: 12px; }
+  .back { margin: 0 0 10px; }
+  .why li { margin-bottom: 10px; }
+  .fade { animation: fade .16s ease-out; }
+  @keyframes fade { from { opacity: .4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 
   /* overview / data tabs */
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
-  .card .big { font-size: 26px; font-weight: 650; line-height: 1.2; margin: 2px 0 4px; }
-  .card.ok .big { color: var(--ok); }
-  .card.warn .big { color: var(--warn); }
-  .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--soft); margin: 6px 0; }
-  .bar span { display: block; height: 100%; }
+  .answers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); margin-bottom: 16px; }
+  .answer { padding: 14px 18px; border-left: 1px solid var(--rule); min-width: 0; }
+  .answer:first-child { border-left: 0; }
+  .answer .q { color: var(--muted); font-size: 13px; }
+  .answer .a { font-size: 23px; font-weight: 650; letter-spacing: -0.01em; margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
+  .answer.ok .a { color: var(--ok); }
+  .answer.warn .a { color: var(--warn); }
+  .answer .d { font-size: 13px; color: var(--ink-2); }
+  .stack { display: flex; height: 6px; overflow: hidden; background: var(--rule); margin: 8px 0 6px; }
+  .stack span { display: block; height: 100%; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
-  th { font-size: 13px; color: var(--muted); font-weight: 600; }
-  td.num { text-align: right; white-space: nowrap; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 12.5px; color: var(--muted); font-weight: 600; border-bottom-color: var(--rule-strong); }
+  td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  tbody tr:last-child td { border-bottom: 0; }
   .tablewrap { overflow-x: auto; }
-  .two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
-  ol.steps li { margin-bottom: 8px; }
-  .issue { border: 1px solid var(--border); border-left: 5px solid var(--warn); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: var(--panel); }
-  .issue.mid { border-left-color: var(--everyone); }
-  .issue.low { border-left-color: var(--muted); }
-  .issue .kind { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .two { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .two > div > .panel + .panel { margin-top: 16px; }
+  ol.steps { padding-left: 20px; }
+  ol.steps li { margin-bottom: 9px; padding-left: 2px; }
+  ol.steps li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .issues { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); }
+  .issue { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; padding: 14px 18px; border-top: 1px solid var(--rule); }
+  .issue:first-child { border-top: 0; }
+  .issue .sev { font-size: 13px; font-weight: 650; display: flex; flex-direction: column; gap: 2px; }
+  .issue .sev small { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .issue .sev .high { color: var(--warn); }
+  .issue .sev .mid { color: var(--caution); }
+  .issue .sev .low { color: var(--muted); }
   .issue .fix { margin-top: 6px; }
-  .issue .fix b { color: var(--ok); }
+  .issue .fix b { color: var(--ink); font-weight: 650; }
 
   .tech-only { display: none; }
   body.tech .tech-only { display: block; }
   body.tech span.tech-only, body.tech code.tech-only { display: inline; }
   code, .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
   .code { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
-  .drop { border: 2px dashed var(--border); border-radius: 12px; padding: 32px 20px; text-align: center; margin: 40px auto; max-width: 560px; background: var(--panel); }
-  .signin { border-style: solid; max-width: 380px; text-align: left; }
-  .signin label { display: block; margin: 12px 0; font-size: 14px; }
-  .signin input { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
-  .signin .btn { width: 100%; padding: 8px; }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  .btn:disabled { opacity: .6; cursor: default; }
-  .error { color: var(--warn); }
-  .live { margin-left: auto; display: flex; gap: 12px; align-items: center; font-size: 13px; }
+
+  /* empty, sign-in and loading */
+  .drop { border: 1px dashed var(--rule-strong); border-radius: var(--r); padding: 32px 24px; text-align: center; margin: 48px auto; max-width: 560px; background: var(--surface); }
+  .signin { border-style: solid; border-color: var(--rule); max-width: 380px; text-align: left; padding: 24px; }
+  .signin h2 { margin-bottom: 2px; }
+  .signin label { display: block; margin: 14px 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .signin input { display: block; width: 100%; margin-top: 5px; padding: 8px 10px; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); font-weight: 400; transition: border-color .15s; }
+  .signin input:focus-visible { outline: 2px solid var(--brand); outline-offset: 0; border-color: var(--brand); }
+  .signin .btn { width: 100%; padding: 9px; margin-top: 4px; }
+  #file::file-selector-button { font: inherit; font-weight: 550; padding: 6px 12px; margin-right: 10px; border: 1px solid var(--brand); border-radius: var(--r); background: var(--brand); color: var(--on-brand); cursor: pointer; }
+  .loading { max-width: 1100px; text-align: left; border-style: solid; border-color: var(--rule); }
+  .skel { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 18px; }
+  .skel i { display: block; height: 30px; background: var(--surface-2); border: 1px solid var(--rule); border-radius: var(--r-cell); }
+  .skel i:nth-child(3n) { height: 62px; }
+  @media (prefers-reduced-motion: no-preference) { .skel i { animation: pulse 1.4s ease-in-out infinite alternate; } }
+  @keyframes pulse { to { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .fade { animation: none; } * { transition: none !important; } }
 
   @media (max-width: 1150px) {
     .patients { grid-template-columns: 220px minmax(0, 1fr); }
     aside.panel { grid-column: 1 / -1; position: static; max-height: none; }
+    .answers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .answer:nth-child(3) { border-left: 0; }
+    .answer:nth-child(n+3) { border-top: 1px solid var(--rule); }
   }
   @media (max-width: 760px) {
+    header { padding: 12px 16px; }
+    .page { padding: 16px; }
     .patients, .two { grid-template-columns: 1fr; }
     .plist ul { max-height: 180px; }
+    .issue { grid-template-columns: 1fr; gap: 6px; }
+    .answers { grid-template-columns: 1fr; }
+    .answer { border-left: 0; }
+    .answer + .answer { border-top: 1px solid var(--rule); }
+    .toggle { margin-left: 0; }
   }
   @media print {
-    header .tabs, .plist, .drop { display: none; }
+    header .bar2, .plist, .drop { display: none; }
     aside.panel { position: static; max-height: none; }
   }
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20Z"/></symbol>
+  <symbol id="i-pill" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="19" height="9" rx="4.5"/><path d="M12 7.5v9"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 10"/></symbol>
+</svg>
 <header>
   <div class="top">
+    <span class="mark">PEAR</span>
     <h1>Schedule explained</h1>
-    <span class="muted" id="meta"></span>
+    <span id="meta"></span>
     <span class="live" id="live" hidden>
       <span class="muted" id="liveMsg" role="status"></span>
       <button class="btn" id="refresh" title="Build again from current data">Refresh</button>
@@ -149,13 +268,14 @@
     </span>
   </div>
   <p class="muted small" id="liveNote" hidden></p>
-  <nav class="tabs" role="tablist" id="tabs" hidden>
-    <button role="tab" data-tab="patients" aria-selected="true">Patients</button>
-    <button role="tab" data-tab="overview" aria-selected="false">Centre overview</button>
-    <button role="tab" data-tab="data" aria-selected="false">Data to fix <span class="count" id="issueCount" hidden></span></button>
-    <span class="spacer"></span>
-    <label><input type="checkbox" id="tech"> Show technical details</label>
-  </nav>
+  <div class="bar2" id="tabs" hidden>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" data-tab="patients" aria-selected="true">Patients</button>
+      <button role="tab" data-tab="overview" aria-selected="false">Centre overview</button>
+      <button role="tab" data-tab="data" aria-selected="false">Data to fix <span class="count" id="issueCount" hidden></span></button>
+    </nav>
+    <label class="toggle"><input type="checkbox" id="tech"> Show technical details</label>
+  </div>
 </header>
 
 <div id="empty" class="drop" hidden>
@@ -167,7 +287,7 @@
 
 <div id="signin" class="drop signin" hidden>
   <form id="signinForm">
-    <p><strong>Sign in to see this week's schedules</strong></p>
+    <h2>Sign in to see this week's schedules</h2>
     <p class="muted small">Use your PEAR account. Supervisors only.</p>
     <label>Username <input id="user" name="username" autocomplete="username" required></label>
     <label>Password <input id="pass" name="password" type="password" autocomplete="current-password" required></label>
@@ -176,10 +296,11 @@
   </form>
 </div>
 
-<div id="loading" class="drop" hidden role="status">
-  <p><strong id="loadingTitle">Building this week's explanation…</strong></p>
+<div id="loading" class="drop loading" hidden role="status">
+  <h2 id="loadingTitle">Building this week's explanation…</h2>
   <p class="muted small" id="loadingText">This takes a few seconds.</p>
-  <p><button class="btn" id="retry" hidden>Try again</button></p>
+  <p><button class="btn primary" id="retry" hidden>Try again</button></p>
+  <div class="skel" id="skel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 </div>
 
 <div class="page" id="tab-patients" hidden>
@@ -193,7 +314,12 @@
       <p class="lead" id="plead"></p>
       <div class="legend" id="legend"></div>
       <div class="gridwrap"><div class="grid" id="grid"></div></div>
-      <p class="muted small">Click any block to see why it is there. ♥ liked · 💊 medication given · ⓘ looks unusual but follows the rules · red outline: something to check</p>
+      <p class="keyline muted small">Click any block to see why it is there.
+        <span><svg class="i"><use href="#i-heart"/></svg>liked</span>
+        <span><svg class="i"><use href="#i-pill"/></svg>medication given</span>
+        <span><svg class="i"><use href="#i-info"/></svg>looks unusual, follows the rules</span>
+        <span><svg class="i" style="color:var(--warn)"><use href="#i-alert"/></svg>needs attention</span>
+        <span><svg class="i" style="color:var(--caution)"><use href="#i-alert"/></svg>clash in the activity data</span></p>
     </section>
     <aside class="panel" id="detail"></aside>
   </div>
@@ -208,6 +334,10 @@ const KIND = {
   everyone: "For everyone", doctor: "Doctor recommended", routine: "Routine", group: "Group session",
   chosen: "Picked to fill time", request: "Special request", free: "Free and Easy",
 };
+const icon = (name, extra = "") => `<svg class="i" aria-hidden="true"${extra}><use href="#i-${name}"/></svg>`;
+// vars, not properties, so .avoid/.bad/:hover can still override them
+const kindStyle = (k) => `--c-bg:var(--${k}-bg);--c-line:var(--${k}-line);--c-ink:var(--${k}-ink)`;
+const note = (tone, ic, body) => `<div class="note ${tone}">${icon(ic)}<div>${body}</div></div>`;
 // correct by the rule order, but easy to mistake for a bug
 const OVERRIDES = new Set(["recommended_over_dislike", "filled_to_min_size", "top_up_to_weekly_target", "adhoc_request", "displaced_by_routine"]);
 const FREE_WHY = {
@@ -390,9 +520,9 @@ function violationSentence(p, v, who) {
 
 
 function dot(p) {
-  if (realViolations(p).length) return `<span title="Needs attention" style="color:var(--warn)">● </span>`;
-  if (p.violations.length) return `<span title="Affected by a clash in the activity data" style="color:var(--everyone)">● </span>`;
-  return "";
+  if (realViolations(p).length) return `<span class="flag" title="Needs attention">${icon("alert", ' style="color:var(--warn)"')}</span>`;
+  if (p.violations.length) return `<span class="flag" title="Affected by a clash in the activity data">${icon("alert", ' style="color:var(--caution)"')}</span>`;
+  return `<span class="flag"></span>`;
 }
 
 function patientIds() {
@@ -421,10 +551,10 @@ function showPatient(pid) {
     ? `${esc(who)} has <b>${hours(fe.total)}</b> of Free and Easy this week (${pct}% of their time). `
     : `${esc(who)} has no Free and Easy this week. `;
   if (fe.total) lead += fe.avoidable_logic
-    ? `<span style="color:var(--warn)"><b>${hours(fe.avoidable_logic)}</b> of it could have been filled.</span> `
+    ? `<span class="error"><b>${hours(fe.avoidable_logic)}</b> of it could have been filled.</span> `
     : `None of it could have been filled with this week's activity data. `;
-  if (realViolations(p).length) lead += `<span style="color:var(--warn)">Some things need attention, see the right.</span>`;
-  else if (p.violations.length) lead += `Some times are affected by a clash in the activity data, see the right.`;
+  if (realViolations(p).length) lead += `<span class="error">Some things need attention, see “About ${esc(who)}'s week”.</span>`;
+  else if (p.violations.length) lead += `Some times are affected by a clash in the activity data, see “About ${esc(who)}'s week”.`;
   $("plead").innerHTML = lead;
   renderGrid(pid);
   showSummary(pid);
@@ -436,28 +566,35 @@ function renderGrid(pid) {
   const longest = days.find(d => d.slots.length === rows) || { labels: [] };
   const grid = $("grid");
   grid.style.gridTemplateColumns = `52px repeat(${days.length}, minmax(96px, 1fr))`;
-  grid.style.gridTemplateRows = `auto repeat(${rows}, minmax(30px, auto))`;
+  grid.style.gridTemplateRows = `auto repeat(${rows}, 26px)`;
   let html = days.map((d, i) => `<div class="colhead" style="grid-column:${i + 2};grid-row:1">${esc(d.day)}</div>`).join("");
-  for (let r = 0; r < rows; r++) html += `<div class="timehead" style="grid-column:1;grid-row:${r + 2}">${esc(start(longest.labels[r]))}</div>`;
+  for (let r = 0; r < rows; r++) {
+    const half = start(longest.labels[r]).endsWith(":30") ? " half" : "";
+    html += `<div class="timehead${half}" style="grid-column:1;grid-row:${r + 2}">${esc(start(longest.labels[r]))}</div>`;
+    days.forEach((d, i) => { if (r < d.slots.length) html += `<div class="slot${half}" style="grid-column:${i + 2};grid-row:${r + 2}"></div>`; });
+  }
   const used = new Set();
   days.forEach((d, di) => blocks(d).forEach(b => {
     const k = kindOf(d, b), ev = blockEvents(d, b), s = b.slot;
     used.add(k);
-    const liked = ev.some(e => e.reason === "preferred" || e.reason === "liked") ? " ♥" : "";
-    const med = meds(d, b).length ? " 💊" : "";
-    const odd = ev.some(e => OVERRIDES.has(e.reason)) ? " ⓘ" : "";
-    const bad = violationsAt(p, di, b.s, b.n).length > 0;
+    const liked = ev.some(e => e.reason === "preferred" || e.reason === "liked") ? icon("heart") : "";
+    const med = meds(d, b).length ? icon("pill") : "";
+    const odd = ev.some(e => OVERRIDES.has(e.reason)) ? icon("info") : "";
+    const here = violationsAt(p, di, b.s, b.n);
+    // data clashes in amber, red only for real faults
+    const bad = here.some(v => !isClash(p, v)), clash = !bad && here.length > 0;
     const avoid = s.free_and_easy === "LOGIC";
-    const cls = `cell${k === "free" ? " free" : ""}${avoid ? " avoid" : ""}${bad ? " bad" : ""}`;
-    const bg = k === "free" ? "" : `background:var(--${k})`;
+    const cls = `cell${k === "free" ? " free" : ""}${avoid ? " avoid" : ""}${bad ? " bad" : ""}${clash ? " clash" : ""}`;
+    const bg = kindStyle(k);
+    const flag = bad ? icon("alert", ' style="color:var(--warn)"') : clash ? icon("alert", ' style="color:var(--caution)"') : "";
     html += `<button class="${cls}" data-d="${di}" data-s="${b.s}" data-n="${b.n}"
       style="grid-column:${di + 2};grid-row:${b.s + 2} / span ${b.n};${bg}"
-      aria-label="${esc(d.day)} ${esc(span(d, b.s, b.n))}: ${esc(s.activity)}, ${esc(KIND[k])}">
-      <div class="t">${esc(s.activity)}${liked}${med}${odd}</div>${k !== "free" || b.n > 1 ? `<div class="s">${esc(span(d, b.s, b.n))}</div>` : ""}</button>`;
+      aria-label="${esc(d.day)} ${esc(span(d, b.s, b.n))}: ${esc(s.activity)}, ${esc(KIND[k])}"
+      title="${esc(s.activity)}, ${esc(span(d, b.s, b.n))}"><div class="t">${flag}<span>${esc(s.activity)}</span>${liked}${med}${odd}</div>${b.n > 1 ? `<div class="s">${esc(span(d, b.s, b.n))}</div>` : ""}</button>`;
   }));
   grid.innerHTML = html;
   $("legend").innerHTML = Object.keys(KIND).filter(k => used.has(k))
-    .map(k => `<span><i style="background:var(--${k})"></i>${esc(KIND[k])}</span>`).join("");
+    .map(k => `<span><i class="sq" style="${kindStyle(k)}${k === "free" ? ";border-style:dashed" : ""}"></i>${esc(KIND[k])}</span>`).join("");
   grid.querySelectorAll(".cell").forEach(el => el.addEventListener("click", () => showBlock(pid, el)));
 }
 
@@ -488,15 +625,16 @@ function showBlock(pid, el) {
   const hist = day.slots.slice(b.s, b.s + b.n).flatMap((x, i) => (x.history || []).map(h =>
     `${start(day.labels[b.s + i])} ${h.stage} wrote ${h.activity}${h.previous ? ` (was ${h.previous})` : ""}`));
   $("detail").innerHTML = `
-    <p><button class="link" id="back">← ${esc(who)}'s summary</button></p>
+    <p class="back"><button class="link" id="back">Back to ${esc(who)}'s summary</button></p>
     <h2>${esc(b.slot.activity || "(empty)")}</h2>
-    <p class="muted">${esc(day.day)} ${esc(span(day, b.s, b.n))} · <span class="tag" style="background:var(--${k});${k === "free" ? "color:var(--free-text)" : ""}">${esc(KIND[k])}</span></p>
-    ${bad.length ? `<div class="box warn"><b>Needs attention</b><ul>${bad.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul></div>` : ""}
-    ${clash.length ? `<div class="box note"><b>Affected by a clash in the activity data</b><ul>${clash.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul></div>` : ""}
-    ${odd.length ? `<div class="box note"><b>ⓘ Looks unusual, but follows the rules.</b></div>` : ""}
+    <p class="muted"><time>${esc(day.day)} ${esc(span(day, b.s, b.n))}</time> · <span class="label" style="${kindStyle(k)}${k === "free" ? ";border-style:dashed" : ""}">${esc(KIND[k])}</span></p>
+    ${bad.length ? note("warn", "alert", `<b>Needs attention</b><ul>${bad.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul>`) : ""}
+    ${clash.length ? note("caution", "alert", `<b>Affected by a clash in the activity data</b><ul>${clash.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul>`) : ""}
+    ${odd.length ? note("", "info", `<b>Looks unusual, but follows the rules.</b>`) : ""}
     <h3>Why is this here?</h3><ul class="why">${why.join("")}</ul>
-    ${m.length ? `<h3>💊 Medication during this time</h3><ul>${m.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${m.length ? `<h3>Medication during this time</h3><ul>${m.map(x => `<li>${icon("pill")} ${esc(x)}</li>`).join("")}</ul>` : ""}
     <div class="tech-only"><h3>How each step filled this time</h3><div class="code">${esc(hist.join("\n")) || "No step wrote here."}</div></div>`;
+  $("detail").firstElementChild.classList.add("fade");
   $("back").addEventListener("click", () => { el.classList.remove("sel"); showSummary(pid); });
 }
 
@@ -527,11 +665,11 @@ function showSummary(pid) {
   const section = (title, items, none) => `<h3>${title}</h3>${items.length ? `<ul>${items.join("")}</ul>` : `<p class="muted small">${none}</p>`}`;
 
   $("detail").innerHTML = `
-    <h2>About ${esc(who)}'s week</h2>
+    <h2 class="fade">About ${esc(who)}'s week</h2>
     <p class="muted small">Click any block in the schedule to see why it is there.</p>
-    ${bad.length ? `<div class="box warn"><b>Needs attention</b><ul>${bad.join("")}</ul></div>` : ""}
-    ${clash.length ? `<div class="box note"><b>Affected by a clash in the activity data</b><ul>${clash.join("")}</ul></div>` : ""}
-    ${!bad.length && !clash.length ? `<div class="box ok">All scheduling rules are followed.</div>` : ""}
+    ${bad.length ? note("warn", "alert", `<b>Needs attention</b><ul>${bad.join("")}</ul>`) : ""}
+    ${clash.length ? note("caution", "alert", `<b>Affected by a clash in the activity data</b><ul>${clash.join("")}</ul>`) : ""}
+    ${!bad.length && !clash.length ? note("ok", "check", "All scheduling rules are followed.") : ""}
     ${section("Why the Free and Easy time", free.map(([r, n]) =>
       `<li><b>${hours(n)}</b>: ${esc((FREE_WHY[r] || { what: r }).what)}.<span class="code tech-only"> ${esc(r)}</span></li>`), "No Free and Easy.")}
     ${section("Looks unusual, but follows the rules", odd.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing unusual.")}
@@ -550,10 +688,11 @@ function renderOverview() {
   real.forEach(([, v]) => { byRule[v.rule] = (byRule[v.rule] || 0) + 1; });
   const reasons = Object.entries(fe.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1]);
   if (fe.avoidable_logic) reasons.unshift(["LOGIC", fe.avoidable_logic]);
-  const colours = { LOGIC: "var(--warn)", fixed_slot_elsewhere: "var(--everyone)", no_fit_for_gap_length: "var(--doctor)", no_eligible_activities: "var(--request)", pool_exhausted_today: "var(--group)" };
-  const bar = reasons.map(([r, c]) => `<span title="${esc((FREE_WHY[r] || { what: r }).what)}" style="width:${100 * c / (fe.total || 1)}%;background:${colours[r] || "var(--muted)"}"></span>`).join("");
+  const colours = { LOGIC: "var(--s-warn)", fixed_slot_elsewhere: "var(--s-1)", no_fit_for_gap_length: "var(--s-2)", no_eligible_activities: "var(--s-3)", pool_exhausted_today: "var(--s-4)" };
+  const colour = (r) => colours[r] || "var(--s-other)";
+  const bar = reasons.map(([r, c]) => `<span title="${esc((FREE_WHY[r] || { what: r }).what)}" style="width:${100 * c / (fe.total || 1)}%;background:${colour(r)}"></span>`).join("");
   const rows = reasons.map(([r, c]) => `<tr>
-      <td><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colours[r] || "var(--muted)"};margin-right:6px"></i>${esc((FREE_WHY[r] || { what: r }).what)}<div class="code tech-only">${esc(r)}</div></td>
+      <td><i class="sq" style="--c-bg:${colour(r)};--c-line:${colour(r)}"></i>${esc((FREE_WHY[r] || { what: r }).what)}<div class="code tech-only">${esc(r)}</div></td>
       <td class="num">${hours(c)}</td><td class="num">${fe.total ? Math.round(100 * c / fe.total) : 0}%</td>
       <td>${esc((FREE_WHY[r] || { help: "" }).help)}</td></tr>`).join("");
   const people = patientIds().map(pid => {
@@ -562,32 +701,32 @@ function renderOverview() {
     return { pid, p, t, top };
   }).sort((a, b) => b.p.free_and_easy.total - a.p.free_and_easy.total);
   const prow = people.map(({ pid, p, t, top }) => `<tr>
-      <td>${dot(p)}<button class="link" data-open="${esc(pid)}">${esc(nameOf(pid))}</button></td>
+      <td class="pname">${dot(p)}<button class="link" data-open="${esc(pid)}">${esc(nameOf(pid))}</button></td>
       <td class="num">${hours(p.free_and_easy.total)}</td><td class="num">${t ? Math.round(100 * p.free_and_easy.total / t) : 0}%</td>
       <td>${top ? esc(FREE_WHY[top[0]] ? FREE_WHY[top[0]].what : top[0]) : "—"}</td></tr>`).join("");
 
   $("tab-overview").innerHTML = `
-    <div class="cards">
-      <div class="card"><div class="muted">Patients this week</div><div class="big">${n}</div><div class="muted small">Week of ${esc(data.week_start)}</div></div>
-      <div class="card"><div class="muted">Free and Easy time</div><div class="big">${pct}%</div>
-        <div class="bar">${bar}</div><div class="muted small">${hours(fe.total)} in total, about ${hours(n ? fe.total / n : 0)} per patient</div></div>
-      <div class="card ${fe.avoidable_logic ? "warn" : "ok"}"><div class="muted">Could the scheduler have filled more?</div>
-        <div class="big">${fe.avoidable_logic ? "Yes" : "No"}</div>
-        <div class="muted small">${fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity.` : "Every Free and Easy slot was unavoidable with this week's activity data."}</div>
+    <div class="answers">
+      <div class="answer"><div class="q">Patients this week</div><div class="a">${n}</div><div class="d">Week of <time>${esc(data.week_start)}</time></div></div>
+      <div class="answer"><div class="q">Free and Easy time</div><div class="a">${pct}%</div>
+        <div class="stack" role="img" aria-label="${pct}% of all time is Free and Easy, split by reason"><div style="display:flex;width:${pct}%">${bar}</div></div><div class="d">${hours(fe.total)} in total, about ${hours(n ? fe.total / n : 0)} per patient</div></div>
+      <div class="answer ${fe.avoidable_logic ? "warn" : "ok"}"><div class="q">Could the scheduler have filled more?</div>
+        <div class="a">${fe.avoidable_logic ? "Yes" : "No"}</div>
+        <div class="d">${fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity.` : "Every Free and Easy slot was unavoidable with this week's activity data."}</div>
         <div class="code tech-only">avoidable_logic=${fe.avoidable_logic}, avoidable_rearranging_gap_fill=${fe.avoidable_rearranging_gap_fill ?? 0}</div></div>
-      <div class="card ${viol ? "warn" : "ok"}"><div class="muted">Scheduling rules</div>
-        <div class="big">${viol ? plural(viol, "issue") : "All followed"}</div>
-        <div class="muted small">${viol ? Object.entries(byRule).map(([r, c]) => `${esc(RULE_NAME[r] || r)}: ${c}`).join("<br>") : "No exclusions, dislikes or doctor's advice were broken."}</div>
-        ${clashes ? `<div class="small" style="margin-top:6px">${plural(clashes, "missing slot")} for activities for everyone come from clashes in the activity data. See <button class="link" data-tab-go="data">Data to fix</button>.</div>` : ""}</div>
+      <div class="answer ${viol ? "warn" : "ok"}"><div class="q">Scheduling rules</div>
+        <div class="a">${viol ? plural(viol, "issue") : "All followed"}</div>
+        <div class="d">${viol ? Object.entries(byRule).map(([r, c]) => `${esc(RULE_NAME[r] || r)}: ${c}`).join("<br>") : "No exclusions, dislikes or doctor's advice were broken."}</div>
+        ${clashes ? `<div class="d" style="margin-top:6px">${plural(clashes, "missing slot")} for activities for everyone come from clashes in the activity data. See <button class="link" data-tab-go="data">Data to fix</button>.</div>` : ""}</div>
     </div>
     <div class="two">
       <div>
         <section class="panel"><h2>Why there is Free and Easy</h2>
           <p class="muted small">Free and Easy is only used when nothing allowed fits. These are the reasons, and what would reduce them.</p>
-          <div class="tablewrap"><table><thead><tr><th>Reason</th><th>Time</th><th>Share</th><th>What would help</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">No Free and Easy this week.</td></tr>`}</tbody></table></div>
+          <div class="tablewrap"><table><thead><tr><th>Reason</th><th class="num">Time</th><th class="num">Share</th><th>What would help</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">No Free and Easy this week.</td></tr>`}</tbody></table></div>
         </section>
-        <section class="panel" style="margin-top:16px"><h2>Free and Easy by patient</h2>
-          <div class="tablewrap"><table><thead><tr><th>Patient</th><th>Free</th><th>Share</th><th>Main reason</th></tr></thead><tbody>${prow}</tbody></table></div>
+        <section class="panel"><h2>Free and Easy by patient</h2>
+          <div class="tablewrap"><table><thead><tr><th>Patient</th><th class="num">Free</th><th class="num">Share</th><th>Main reason</th></tr></thead><tbody>${prow}</tbody></table></div>
         </section>
       </div>
       <section class="panel"><h2>How the schedule is made</h2>
@@ -733,18 +872,20 @@ function renderData() {
   const issues = findIssues();
   $("issueCount").hidden = !issues.length;
   $("issueCount").textContent = issues.length;
+  const level = { high: "High", mid: "Medium", low: "Low" };
   $("tab-data").innerHTML = `
-    <section class="panel" style="margin-bottom:16px"><h2>Activity data to check</h2>
-      <p class="muted">Found automatically from this week's schedule. Most important first. Fixing these is the quickest way to reduce Free and Easy.</p>
-      <p class="muted small">Send this page to whoever looks after the activity data.</p></section>
-    ${issues.length ? issues.map(i => `<div class="issue ${i.level === "high" ? "" : i.level}">
-        <div class="kind">${esc(i.kind)}</div>
-        <div>${i.text}</div>
-        ${i.when && i.when.length ? `<div class="when">When: ${esc(i.when.slice(0, 8).join(", "))}${i.when.length > 8 ? ` and ${i.when.length - 8} more` : ""}</div>` : ""}
-        ${i.who ? `<div class="when">Affects: ${esc(i.who)}</div>` : ""}
-        ${i.fix ? `<div class="fix"><b>Suggested fix:</b> ${i.fix}</div>` : ""}
-        ${i.code ? `<div class="code tech-only">${esc(i.code)}</div>` : ""}
-      </div>`).join("") : `<div class="box ok">Nothing to fix found in this week's data.</div>`}`;
+    <div class="lead" style="margin:0 0 16px"><h2>Activity data to check</h2>
+      <p>Found automatically from this week's schedule, most important first. Fixing these is the quickest way to reduce Free and Easy. Send this page to whoever looks after the activity data.</p></div>
+    ${issues.length ? `<div class="issues">${issues.map(i => `<div class="issue">
+        <div class="sev"><span class="${i.level}">${level[i.level]}</span><small>${esc(i.kind)}</small></div>
+        <div>
+          <div>${i.text}</div>
+          ${i.when && i.when.length ? `<div class="when">When: ${esc(i.when.slice(0, 8).join(", "))}${i.when.length > 8 ? ` and ${i.when.length - 8} more` : ""}</div>` : ""}
+          ${i.who ? `<div class="when">Affects: ${esc(i.who)}</div>` : ""}
+          ${i.fix ? `<div class="fix"><b>Suggested fix:</b> ${i.fix}</div>` : ""}
+          ${i.code ? `<div class="code tech-only">${esc(i.code)}</div>` : ""}
+        </div>
+      </div>`).join("")}</div>` : note("ok", "check", "Nothing to fix found in this week's data.")}`;
 }
 
 
@@ -837,6 +978,7 @@ async function signIn(e) {
 function buildFailed(msg) {
   if (data) { $("liveMsg").textContent = msg; return; }
   screen("loading");
+  $("skel").hidden = true;
   $("loadingTitle").textContent = "Couldn't load the schedules";
   $("loadingText").textContent = msg;
   $("retry").hidden = false;
@@ -850,6 +992,7 @@ async function fetchData(refresh) {
     $("loadingTitle").textContent = "Building this week's explanation…";
     $("loadingText").textContent = "This takes a few seconds.";
     $("retry").hidden = true;
+    $("skel").hidden = false;
   }
   try {
     const url = new URL(api.data, location.href);
