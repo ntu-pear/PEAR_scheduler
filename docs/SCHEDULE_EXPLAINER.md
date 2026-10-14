@@ -21,18 +21,24 @@ The base URL is the same one that opens the scheduler's `/docs` for that environ
 - Patient names are shown, since only verified supervisors get the data.
 - The token is kept for that browser tab only. Closing the tab or "Sign out" clears it.
 
-### How it's built
+### What it shows
 
-- One build takes a few seconds (about 2s for 17 patients, 5s for 50, plus DB reads) and about 10-30 MB.
-- The result is kept for 30 minutes, then built again on the next visit. A new week always builds again.
-- Only one build runs at a time, others wait for it, so many visits cost one build.
-- "Refresh" builds again, but not more than once every 5 minutes.
-- It explains what the scheduler would build now from current data. It can differ from the saved schedule if data changed since that was generated. The page says when it was built.
+- **The saved schedule for this week**, exactly as staff see it. Nothing is built again. Why each slot holds what it does is worked out from current data (compulsory, routine, doctor recommended, group, liked or allowed, ad-hoc), the same way repair mode reads it.
+- **Changed this week**: what repair regenerates changed and why, e.g. "Board games was taken out at the regenerate on Wed 00:00 because it is now excluded". Only with `REGENERATE_MODE=repair`. Kept in memory, so a pod restart forgets it.
+- **Will change at the next regenerate**: patients whose saved week no longer matches current data (a new exclusion, a dislike, a new recommendation), and what will change.
+- If nothing is saved for this week yet, it builds one to explain instead and says so.
+
+### How it's checked
+
+- Reading the saved week and working out the reasons takes about a second or two.
+- The result is kept for 30 minutes. It's cleared straight away when the saved schedule changes (generate, regenerate, ad-hoc), so the next visit shows the new one.
+- Only one check runs at a time, others wait for it.
+- "Refresh" checks again, but not more than once every 5 minutes.
 
 ### Things to know
 
 - Everything is plain `http`, like the rest of PEAR, so the password and token aren't encrypted on the network.
-- Builds run inside the live scheduler pod. If it ever causes trouble, use the file way below instead.
+- It runs inside the live scheduler pod. If it ever causes trouble, use the file way below instead.
 
 ## File
 
@@ -49,6 +55,7 @@ python app.py explain_schedule -c configprod.py [options]
 | `--strategy greedy\|optimal` | Override `GAP_FILL_STRATEGY` for this run only |
 | `--patient ID [ID ...]` | Only these patients |
 | `--with-names` | Show patient names. Off by default. **The file then has patient names in it, don't share it widely** |
+| `--saved` | Explain this week's saved schedule (like the link) instead of building one. Good for checking what staff actually see |
 
 A text summary is always printed to the terminal.
 
@@ -151,11 +158,11 @@ kubectl get pods -n $NS     # no explain-tmp, the scheduler pod's age unchanged
 ## Reading the page
 
 - **Centre overview**: how much Free and Easy there is, the reasons and what would reduce it. "Could the scheduler have filled more?" says if any Free and Easy was avoidable (a scheduler problem) or all of it came from the data.
-- **Patients**: pick a patient, click any block to see why it's there. The panel on the right sums up the patient's week: rules broken, things that look odd but follow the rules, liked activities that weren't scheduled, things that couldn't be added.
+- **Patients**: pick a patient, click any block to see why it's there. The panel on the right sums up the patient's week: rules broken, things that look odd but follow the rules, liked activities that weren't scheduled, things that couldn't be added, what changed this week and what will change at the next regenerate.
 - **Data to fix**: problems found in the activity data, most important first, each with a suggested fix. Send this tab to whoever owns the activity data.
 - **Show technical details**: shows the reason codes and which stage wrote each slot, for debugging.
 
-Block markers: ♥ liked, 💊 medication given, ⓘ looks unusual but follows the rules, red outline means something to check.
+Block markers: heart liked, capsule medication given, (i) looks unusual but follows the rules, red alert needs attention, amber alert a clash in the activity data. Free and Easy is a dashed open cell, red when it could have been filled.
 
 ### Things that look like bugs but aren't
 
