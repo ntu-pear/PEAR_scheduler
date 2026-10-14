@@ -5,6 +5,7 @@ and whether each Free and Easy was avoidable. Read-only.
 
 import datetime
 import json
+import math
 import os
 from collections import Counter, defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
@@ -109,10 +110,13 @@ def _jsonable(value):
         return {str(k): _jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
         return [_jsonable(v) for v in value]
+    if hasattr(value, "item") and not isinstance(value, (str, bytes)):  # numpy scalars
+        value = value.item()
+    # NaN isn't valid JSON, the browser can't parse it
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
-    if hasattr(value, "item"):  # numpy scalars
-        return value.item()
     return str(value)
 
 
@@ -297,15 +301,20 @@ def dump_json(explanation: Mapping[str, Any], path: str) -> None:
 VIEWER = os.path.join(os.path.dirname(__file__), "..", "..", "tools", "schedule_explainer.html")
 
 
-def dump_html(explanation: Mapping[str, Any], path: str, viewer: str = VIEWER) -> None:
-    """One page with the data inside, double-click to open."""
+def viewer_page(script: str, viewer: str = VIEWER) -> str:
+    """The viewer with a script put in before its own."""
     with open(viewer, encoding="utf-8") as f:
         page = f.read()
-    # "</" would end the script tag early if a title contains it
-    data = json.dumps(explanation).replace("</", "<\\/")
     marker = "<!-- EXPLAIN_DATA -->"
     if marker not in page:
         raise ValueError(f"{viewer} has no {marker} placeholder")
-    page = page.replace(marker, f"<script>window.EXPLAIN_DATA = {data};</script>", 1)
+    return page.replace(marker, script, 1)
+
+
+def dump_html(explanation: Mapping[str, Any], path: str, viewer: str = VIEWER) -> None:
+    """One page with the data inside, double-click to open."""
+    # "</" would end the script tag early if a title contains it
+    data = json.dumps(explanation).replace("</", "<\\/")
+    page = viewer_page(f"<script>window.EXPLAIN_DATA = {data};</script>", viewer)
     with open(path, "w", encoding="utf-8") as f:
         f.write(page)
