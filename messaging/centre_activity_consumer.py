@@ -309,7 +309,9 @@ class CentreActivityConsumer(ConfigDependant):
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
 
-            mapped_update_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_update_data['FixedTimeSlots'])
+            # the mapper drops None on updates, but a None here means it's flexible now, so clear the slots
+            if 'fixed_time_slots' in centre_activity_data:
+                mapped_update_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_update_data.get('FixedTimeSlots'))
             
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityUpdate
             try:
