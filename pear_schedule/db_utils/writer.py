@@ -3,7 +3,7 @@ import logging
 import traceback
 import pandas as pd
 import json
-from typing import Mapping, List, Dict
+from typing import Callable, Mapping, List, Dict, Optional
 
 from sqlalchemy import Connection, column, delete, select, func, literal_column, update
 from pear_schedule.db import DB
@@ -270,7 +270,9 @@ class MedicationScheduleWrite(ConfigDependant):
               return False
     
     @classmethod
-    def update(cls, medication_data) -> datetime:
+    def update(cls, medication_data, before_commit: Optional[Callable[[int], None]] = None) -> datetime:
+      """Marks one dose. before_commit(medication_id) runs after the row is updated and before
+      the commit; if it raises, nothing is saved here."""
       with DB.get_engine().begin() as conn:
         with Session(bind=conn) as session:
           try:
@@ -308,6 +310,8 @@ class MedicationScheduleWrite(ConfigDependant):
                 .execution_options(synchronize_session=False)
               )
               if result.rowcount == 1:
+                if before_commit is not None:
+                  before_commit(dose.MedicationID)
                 session.commit()
                 return timestamp
             raise MedicationAlreadyAdministeredException()

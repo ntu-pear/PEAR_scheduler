@@ -77,6 +77,9 @@ class MedicationScheduleNotFoundException(Exception):
 class MedicationAlreadyAdministeredException(Exception):
     pass
 
+class PatientServiceUnavailableException(Exception):
+    pass
+
 #----------------------------- FOR PATIENT TEST -----------------------------       
 def getTablesDF():
     

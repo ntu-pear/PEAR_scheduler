@@ -12,6 +12,7 @@ import pandas as pd
 from sqlalchemy.dialects import mssql
 from sqlalchemy.sql.dml import Delete
 
+from pear_schedule.api.utils import PatientServiceUnavailableException
 from pear_schedule.db_utils import writer as writer_module
 from pear_schedule.db_utils.writer import (
     MedicationScheduleWrite,
@@ -175,7 +176,7 @@ class TestCheckAndFlush:
         assert "[MEDICATION_SCHEDULE].[Status] = '0'" in _sql(selects[0])
 
 
-def _put(monkeypatch, doses, rowcounts):
+def _put(monkeypatch, doses, rowcounts, before_commit=None):
     """Runs MedicationScheduleWrite.update with the DB mocked. Returns (result or exception, session)."""
     monkeypatch.setattr(writer_module.DB, "get_engine", lambda: MagicMock())
     session = MagicMock()
@@ -191,7 +192,7 @@ def _put(monkeypatch, doses, rowcounts):
         AdministerTime="0900", Status="1", AdministeredBy="cg1",
     )
     try:
-        return MedicationScheduleWrite.update(data), session
+        return MedicationScheduleWrite.update(data, before_commit=before_commit), session
     except Exception as e:
         return e, session
 
@@ -226,3 +227,19 @@ class TestMarkAdministered:
     def test_missing_dose_raises_not_found(self, monkeypatch):
         result, _ = _put(monkeypatch, doses=[], rowcounts=[])
         assert isinstance(result, writer_module.MedicationScheduleNotFoundException)
+
+    def test_patient_is_called_for_the_marked_dose_before_commit(self, monkeypatch):
+        order = []
+        result, session = _put(monkeypatch, doses=[1, 2], rowcounts=[0, 1], before_commit=lambda m: order.append(m))
+        assert isinstance(result, datetime.datetime)
+        assert order == [2]
+        session.commit.assert_called_once()
+
+    def test_patient_failure_saves_nothing(self, monkeypatch):
+        def patient_down(medication_id):
+            raise PatientServiceUnavailableException("down")
+
+        result, session = _put(monkeypatch, doses=[1], rowcounts=[1], before_commit=patient_down)
+        assert isinstance(result, PatientServiceUnavailableException)
+        session.commit.assert_not_called()
+        session.rollback.assert_called_once()
