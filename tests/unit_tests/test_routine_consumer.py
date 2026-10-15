@@ -11,6 +11,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 from tests.utils.scheduler_config import make_scheduler_config
 
 
@@ -269,7 +270,7 @@ class TestMessageParsing:
         assert consumer._process_routine_message(event) == MessageProcessingResult.FAILED_PERMANENT
 
     def test_already_processed_correlation_id_is_duplicate(self, consumer):
-        consumer.processed_events.recorded.add("corr-create-1")
+        consumer.processed_events.recorded.add(event_key("corr-create-1", "ROUTINE_CREATED", 7))
 
         result = consumer._process_routine_message(created_event())
 

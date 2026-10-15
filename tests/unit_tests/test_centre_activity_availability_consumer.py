@@ -16,6 +16,7 @@ from messaging.mappers.mapper_util import (
     map_centre_activity_availability_create,
 )
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 
 
 TIMESTAMP = "2026-10-09T10:30:00"
@@ -180,7 +181,7 @@ def test_created_without_dates_success(consumer):
 
 
 def test_created_duplicate_is_skipped(consumer):
-    consumer.processed_events.recorded.add("CORR-C")
+    consumer.processed_events.recorded.add(event_key("CORR-C", "CENTRE_ACTIVITY_AVAILABILITY_CREATED", 12))
 
     result = consumer._process_availability_message(created_message())
 
@@ -189,7 +190,7 @@ def test_created_duplicate_is_skipped(consumer):
 
 
 def test_created_sync_event_bypasses_duplicate_check(consumer):
-    consumer.processed_events.recorded.add("CORR-C")
+    consumer.processed_events.recorded.add(event_key("CORR-C", "CENTRE_ACTIVITY_AVAILABILITY_CREATED", 12))
     message = created_message()
     message["data"]["is_sync_event"] = True
 
@@ -278,7 +279,7 @@ def test_updated_missing_row_falls_back_to_create(consumer):
 
 
 def test_updated_duplicate_is_skipped(consumer):
-    consumer.processed_events.recorded.add("CORR-U")
+    consumer.processed_events.recorded.add(event_key("CORR-U", "CENTRE_ACTIVITY_AVAILABILITY_UPDATED", 12))
 
     assert consumer._process_availability_message(updated_message()) == MessageProcessingResult.DUPLICATE
     consumer.update_ref_centre_activity_availability.assert_not_called()

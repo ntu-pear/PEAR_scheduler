@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,8 @@ class CentreActivityAvailabilityConsumer:
 
             logger.info(f"Processing {event_type} for centre activity availability {availability_id} (correlation: {correlation_id}, sync: {is_sync_event})")
 
+            # a cascade can reuse one correlation_id for several events, so key each event on its own
+            message_data['correlation_id'] = correlation_id = event_key(correlation_id, event_type, availability_id)
             with self.get_db_transaction() as db:
                 if not is_sync_event and self.is_event_already_processed(db, correlation_id):
                     logger.info(f"Event already processed: {correlation_id}")
