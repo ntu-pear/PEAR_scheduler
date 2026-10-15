@@ -2,12 +2,16 @@
 Auth on /MedicationSchedule routes. No DB, no HTTP client.
 """
 
+import datetime
+
 import pytest
 from fastapi import HTTPException
 
 from pear_schedule.api import medication_schedule_router
 from pear_schedule.api.auth_util import JWTPayload, get_current_user
-from pear_schedule.api.medication_schedule_router import require_supervisor
+from pear_schedule.api.utils import PatientServiceUnavailableException
+from pear_schedule.schemas.medication_schedule import MedicationScheduleUpdate
+from pear_schedule.api.medication_schedule_router import require_dose_marker, require_supervisor
 
 
 def _user(role):
@@ -32,10 +36,73 @@ class TestRequireSupervisor:
 
 class TestMedicationRoutesRequireAuth:
     # these routes used to have no auth at all
-    @pytest.mark.parametrize("path", ["/get/", "/update/"])
-    def test_route_depends_on_require_supervisor(self, path):
-        assert require_supervisor in [d.call for d in _route(path).dependant.dependencies]
+    def test_get_depends_on_require_supervisor(self):
+        assert require_supervisor in [d.call for d in _route("/get/").dependant.dependencies]
+
+    def test_update_depends_on_require_dose_marker(self):
+        assert require_dose_marker in [d.call for d in _route("/update/").dependant.dependencies]
 
     def test_require_supervisor_reads_the_bearer_token(self):
         sub_deps = [d.call for d in _route("/get/").dependant.dependencies[0].dependencies]
         assert get_current_user in sub_deps
+
+
+class TestRequireDoseMarker:
+    @pytest.mark.parametrize("role", ["CAREGIVER", "SUPERVISOR"])
+    def test_caregivers_and_supervisors_allowed(self, role):
+        user = _user(role)
+        assert require_dose_marker(user) is user
+
+    @pytest.mark.parametrize("role", ["GUARDIAN", "DOCTOR", "ADMIN", "GAME THERAPIST"])
+    def test_other_roles_get_403(self, role):
+        with pytest.raises(HTTPException) as exc:
+            require_dose_marker(_user(role))
+        assert exc.value.status_code == 403
+
+
+def _body(**overrides):
+    data = dict(PatientID=1, PrescriptionName="Paracetamol", AdministerDate=datetime.date(2026, 10, 15),
+                AdministerTime="0900", Status="1", AdministeredBy="someone-else")
+    data.update(overrides)
+    return MedicationScheduleUpdate(**data)
+
+
+class TestMarkDoseGiven:
+    @pytest.fixture
+    def calls(self, monkeypatch):
+        seen = {"patient": [], "written": None}
+
+        def fake_update(data, before_commit=None):
+            seen["written"] = data
+            before_commit(7)
+            return datetime.datetime(2026, 10, 15, 9, 1)
+
+        monkeypatch.setattr(medication_schedule_router.MedicationScheduleWrite, "update", fake_update)
+        monkeypatch.setattr(medication_schedule_router, "record_administration",
+                            lambda *a: seen["patient"].append(a))
+        return seen
+
+    def test_actor_comes_from_token_not_body(self, calls):
+        medication_schedule_router.update_medication_schedule(None, _body(), _user("CAREGIVER"), "tok")
+        assert calls["written"].AdministeredBy == "1"
+
+    def test_patient_called_with_callers_token_before_commit(self, calls):
+        medication_schedule_router.update_medication_schedule(None, _body(), _user("CAREGIVER"), "tok")
+        assert calls["patient"] == [("tok", 7, datetime.date(2026, 10, 15), "0900")]
+
+    def test_patient_not_called_when_not_marking_given(self, calls):
+        medication_schedule_router.update_medication_schedule(None, _body(Status="0"), _user("SUPERVISOR"), "tok")
+        assert calls["patient"] == []
+
+    def test_patient_down_is_503(self, monkeypatch):
+        def failing_update(data, before_commit=None):
+            before_commit(7)
+
+        def patient_down(*a):
+            raise PatientServiceUnavailableException("timeout")
+
+        monkeypatch.setattr(medication_schedule_router.MedicationScheduleWrite, "update", failing_update)
+        monkeypatch.setattr(medication_schedule_router, "record_administration", patient_down)
+        with pytest.raises(HTTPException) as exc:
+            medication_schedule_router.update_medication_schedule(None, _body(), _user("CAREGIVER"), "tok")
+        assert exc.value.status_code == 503
