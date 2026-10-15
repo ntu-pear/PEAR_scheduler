@@ -85,6 +85,11 @@ class TestRunExplanation:
         assert "Patient 2" in text and "Patient 1:" not in text
         assert "DATA: no_eligible_activities" in text
 
+    def test_nan_becomes_null(self):
+        import numpy as np
+        assert explain._jsonable({"a": float("nan"), "b": np.float64("inf"), "c": np.int64(3)}) == {"a": None, "b": None, "c": 3}
+        json.loads(json.dumps(explain._jsonable([float("nan")]), allow_nan=False))
+
     def test_slot_minutes_for_the_viewer(self, monkeypatch):
         assert _explain(monkeypatch)["slot_minutes"] == 30
 

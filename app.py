@@ -79,7 +79,8 @@ def create_app():
     from pear_schedule.api import (
         schedule_router,
         integrity_router,
-        medication_schedule_router
+        medication_schedule_router,
+        explain_router,
     )
     app = FastAPI(
         title="PEAR FYP Scheduler Service",
@@ -88,6 +89,7 @@ def create_app():
     app.include_router(schedule_router.router, prefix="/schedule")
     app.include_router(integrity_router.router, prefix="/integrity")
     app.include_router(medication_schedule_router.router, prefix="/MedicationSchedule")
+    app.include_router(explain_router.router, prefix="/schedule/explain")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
         "http://localhost",
