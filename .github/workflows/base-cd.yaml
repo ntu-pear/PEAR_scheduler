@@ -105,6 +105,7 @@ jobs:
           echo "ACTIVITY_SERVICE_URL=${{ vars.ACTIVITY_SERVICE_URL }}" >> .env
           echo "GAP_FILL_STRATEGY=${{ vars.GAP_FILL_STRATEGY }}" >> .env
           echo "REGENERATE_MODE=${{ vars.REGENERATE_MODE }}" >> .env
+          echo "PATIENT_SERVICE_URL=${{ vars.PATIENT_SERVICE_URL }}" >> .env
           echo "ENVIRONMENT=${{ inputs.environment }}" >> .env
 
       # A var or secret missing from the environment resolves to an empty string

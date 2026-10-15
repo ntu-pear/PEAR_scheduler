@@ -74,6 +74,15 @@ class TestWeeklyScheduleView:
     def test_week_with_nothing_saved_is_empty(self, engine):
         assert _ids(engine, at=datetime.datetime(2026, 9, 1, 12)) == []
 
+    def test_patient_filter(self, engine):
+        with engine.begin() as conn:
+            conn.execute(insert(views.DB.schema.tables["SCHEDULE"]).values(
+                ScheduleID=3, PatientID=2, StartDate=LAST_WEEK, EndDate=LAST_WEEK + datetime.timedelta(days=6)))
+        at = datetime.datetime(2026, 10, 8, 12)
+        assert sorted(_ids(engine, at=at)) == [1, 3]
+        assert _ids(engine, at=at, patient_id=2) == [3]
+        assert _ids(engine, at=at, patient_id=99) == []
+
 
 class TestGetScheduleRoute:
     def _df(self):
