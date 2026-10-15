@@ -1,14 +1,16 @@
 """
 Centre activity availability (REF_CENTRE_ACTIVITY_AVAILABILITY) as FixedTimeSlots.
 
-With USE_ACTIVITY_AVAILABILITY on, an activity that has availability rows gets its
-FixedTimeSlots from them instead:
-  - fixed: one start per window (the window is the activity's length), this is what
-    replaces fixed_time_slots
-  - flexible individual: every start whose whole span fits in a window
+With USE_ACTIVITY_AVAILABILITY on:
+  - fixed with FixedTimeSlots: keeps them, warns if availability says otherwise
+    (staging's availability was stale test data, see the PR)
+  - fixed without FixedTimeSlots: one start per window (the window is the activity's
+    length), this is what replaces fixed_time_slots once activity service drops it.
+    No window this week, or no rows at all: not scheduled
+  - flexible individual: every start whose whole span fits in a window, none this
+    week: not scheduled
   - flexible group: left as is, group slots still come from GROUP_TIMESLOT_MAPPING
-  - none of its windows this week: not scheduled this week
-Activities with no rows are left as is.
+Activities with no rows are otherwise left as is.
 """
 
 import datetime
@@ -127,23 +129,31 @@ def apply_availability(
     restrict_flexible: bool = True,
 ) -> pd.DataFrame:
     """activities with FixedTimeSlots taken from availability where an activity has any."""
-    if activities.empty or "CentreActivityID" not in activities.columns or not windows:
+    if activities.empty or "CentreActivityID" not in activities.columns:
         return activities
     out = activities.copy()
     keep = []
     for idx, row in out.iterrows():
         rows = windows.get(int(row["CentreActivityID"])) if pd.notna(row["CentreActivityID"]) else None
         fixed = _is_true(row.get("IsFixed", False))
+        current = _parse(row.get("FixedTimeSlots"))
+        title = row.get("ActivityTitle", row["CentreActivityID"])
+        if fixed and not current and not rows:
+            # compulsory scheduling can't place it, it would crash on the empty slots
+            logger.warning(f"{title!r} is fixed with no FixedTimeSlots and no availability, not scheduled")
+            continue
         if not rows or (not fixed and not restrict_flexible):
             keep.append(idx)
             continue
         slots = availability_slots(rows, row["MinDuration"], week_start, config)
-        title = row.get("ActivityTitle", row["CentreActivityID"])
+        if fixed and current:
+            if slots != current:
+                logger.warning(f"{title!r} availability {format_slots(slots) or 'none this week'} differs from FixedTimeSlots {row.get('FixedTimeSlots')}, keeping FixedTimeSlots")
+            keep.append(idx)
+            continue
         if not slots:
             logger.info(f"{title!r} has availability but none this week, not scheduled")
             continue
-        if fixed and _parse(row.get("FixedTimeSlots")) not in (set(), slots):
-            logger.warning(f"{title!r} availability {format_slots(slots)} differs from FixedTimeSlots {row.get('FixedTimeSlots')}, using availability")
         out.at[idx, "FixedTimeSlots"] = format_slots(slots)
         keep.append(idx)
     return out.loc[keep]
