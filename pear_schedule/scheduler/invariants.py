@@ -28,6 +28,8 @@ NO_ELIGIBLE_ACTIVITIES = "no_eligible_activities"
 POOL_EXHAUSTED_TODAY = "pool_exhausted_today"
 NO_FIT_FOR_GAP_LENGTH = "no_fit_for_gap_length"
 FIXED_SLOT_ELSEWHERE = "fixed_slot_elsewhere"
+# fillable now, but that time already passed
+ALREADY_PASSED = "already_passed"
 
 
 def base_title(slot_value: str) -> str:
@@ -55,6 +57,7 @@ class RuleInputs:
     activity_ids_by_title: Dict[str, int] = field(default_factory=dict)  # every known activity
     exempt: Set[Tuple[Any, int, int]] = field(default_factory=set)       # (pid, day, slot) set by adhoc
     gap_filled: Set[Tuple[Any, int, int]] = field(default_factory=set)   # (pid, day, slot) placed by gap filling
+    locked: Set[Tuple[Any, int, int]] = field(default_factory=set)       # (pid, day, slot) already passed, can't change
 
     def activity_id(self, title: str) -> Optional[int]:
         if title in self.activity_ids_by_title:
@@ -154,16 +157,26 @@ def analyse_free_and_easy(schedules: Mapping[Any, List[List[str]]], inputs: Rule
                 blocked=rules.dislikes | rules.not_recommended,
                 used_titles_today=used_today,
             )
-            best = solve_day(free, candidates)
+            # passed slots can't be filled any more, so they're never avoidable
+            locked = [(pid, d, s) in inputs.locked for s in range(len(titles))]
+            open_free = [f and not k for f, k in zip(free, locked)]
+            best = solve_day(open_free, candidates)
             avoidable = best.score[0]
 
             taken = set()
             for start, c in best.assignment.items():
                 taken.update(range(start, start + c.length))
-            left = [f and s not in taken for s, f in enumerate(free)]
+            passed = set()
+            if any(f and k for f, k in zip(free, locked)):
+                for start, c in solve_day(free, candidates).assignment.items():
+                    passed.update(s for s in range(start, start + c.length) if locked[s])
+            left = [f and s not in taken and s not in passed for s, f in enumerate(free)]
             used_after = used_today | {c.title for c in best.assignment.values()}
             reasons = Counter()
             slot_reasons = {s: LOGIC for s in taken}
+            if passed:
+                reasons[ALREADY_PASSED] += len(passed)
+                slot_reasons.update({s: ALREADY_PASSED for s in passed})
             for run in free_runs(left):
                 reason = unfillable_reason(run[1] - run[0], d, rules, inputs.pool, inputs.week_start,
                                            inputs.min_activity_duration, used_after)
@@ -171,10 +184,10 @@ def analyse_free_and_easy(schedules: Mapping[Any, List[List[str]]], inputs: Rule
                 slot_reasons.update({s: reason for s in range(*run)})
 
             # same again, but gap filling's own picks are allowed to move
-            movable = [(pid, d, s) in inputs.gap_filled and t != FREE_AND_EASY for s, t in enumerate(titles)]
+            movable = [(pid, d, s) in inputs.gap_filled and t != FREE_AND_EASY and not locked[s] for s, t in enumerate(titles)]
             rearranged = avoidable
             if any(movable):
-                free2 = [f or m for f, m in zip(free, movable)]
+                free2 = [f or m for f, m in zip(open_free, movable)]
                 candidates2 = build_candidates(
                     inputs.pool, d,
                     min_activity_duration=inputs.min_activity_duration,
@@ -232,7 +245,8 @@ def check_rules(schedules: Mapping[Any, List[List[str]]], inputs: RuleInputs) ->
             titles = [base_title(v) for v in day]
 
             for s, t in enumerate(titles):
-                if not t or t == FREE_AND_EASY or t in compulsory_titles or (pid, d, s) in inputs.exempt:
+                if not t or t == FREE_AND_EASY or t in compulsory_titles or (pid, d, s) in inputs.exempt \
+                        or (pid, d, s) in inputs.locked:
                     continue
                 aid = inputs.activity_id(t)
                 if aid is None:
@@ -248,6 +262,8 @@ def check_rules(schedules: Mapping[Any, List[List[str]]], inputs: RuleInputs) ->
                     violations.append(Violation("R3", pid, "disliked activity scheduled", d, s, t))
 
             # R7: once a day, a multi-slot run counts once
+            if all((pid, d, s) in inputs.locked for s in range(len(titles))):
+                continue
             runs = Counter(t for t in _run_titles(titles) if t in pool_titles)
             for t, n in runs.items():
                 if n > 1:
@@ -260,7 +276,7 @@ def check_rules(schedules: Mapping[Any, List[List[str]]], inputs: RuleInputs) ->
                 if d >= len(days) or s + length > len(days[d]):
                     continue
                 for k in range(s, s + length):
-                    if (pid, d, k) in inputs.exempt:
+                    if (pid, d, k) in inputs.exempt or (pid, d, k) in inputs.locked:
                         continue
                     if base_title(days[d][k]) != c.title:
                         violations.append(Violation("R4", pid, "compulsory activity missing from its fixed slot",

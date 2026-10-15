@@ -47,11 +47,11 @@ class TestSavedWeekTrace:
 
 
 class TestExplainSavedWeek:
-    def _run(self, data, saved, changes=()):
+    def _run(self, data, saved, changes=(), now=WEEK):
         with patch.object(repair, "load_repair_data", return_value=data), \
              patch.object(repair, "load_saved", return_value=saved), \
              patch.object(repair, "changes_this_week", return_value=list(changes)):
-            return explain.explain_saved_week(CFG, now=WEEK)
+            return explain.explain_saved_week(CFG, now=now)
 
     def test_nothing_saved_means_none(self):
         assert self._run(_data(), {1: None, 2: None, 3: None}) is None
@@ -70,3 +70,13 @@ class TestExplainSavedWeek:
         assert list(out["pending"]) == ["1"]
         assert any(e["reason"] == "excluded" and e["activity"] == title for e in out["pending"]["1"])
         assert any(e["stage"] == "repair" for e in out["patients"]["2"]["days"][0]["slots"][3]["events"])
+
+    def test_passed_days_are_not_flagged(self):
+        """Excluded after it was saved: Monday already passed, only Tuesday needs attention."""
+        data = _data()
+        week = repair_week({p: None for p in data.patient_ids}, data, set())
+        title = next(t for t in week[1][0] if t not in (FE, "Exercise") and t in week[1][1])
+        data.inputs.patients[1].exclusions[data.inputs.activity_id(title)] = None
+        out = self._run(data, copy.deepcopy(week), now=WEEK + datetime.timedelta(days=1, hours=7))
+        flagged = [v for v in out["patients"]["1"]["violations"] if v["rule"] == "R1"]
+        assert flagged and {v["day"] for v in flagged} == {1}

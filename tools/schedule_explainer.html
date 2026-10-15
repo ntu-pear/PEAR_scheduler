@@ -346,6 +346,7 @@ const FREE_WHY = {
   pool_exhausted_today: { what: "Every allowed activity is already on that day", help: "Add more individual activities (the same activity is never repeated in a day)." },
   no_fit_for_gap_length: { what: "The gap is too short for the activities left", help: "Add some 30-minute activities that can run at any time." },
   fixed_slot_elsewhere: { what: "The activities that would fit only run at other set times", help: "Make some activities flexible (no set time), or add flexible ones." },
+  already_passed: { what: "Already passed, an activity would fit now", help: "Nothing to do, the data changed after this time was saved." },
 };
 const RULE_NAME = {
   R1: "Excluded activity scheduled", R2: "Not-recommended activity scheduled", R3: "Disliked activity scheduled",
@@ -452,6 +453,7 @@ function freeSentence(reason, who, n) {
     case "pool_exhausted_today": return `Every activity ${esc(who)} is allowed to do is already on this day, and activities are not repeated on the same day.`;
     case "no_fit_for_gap_length": return `This free time is only ${len} long, and the activities left need longer.`;
     case "fixed_slot_elsewhere": return `The activities that would fit only run at other set times, so none can go here.`;
+    case "already_passed": return `This time has already passed, so it stays as it was. An activity would fit here now because the data changed after it was saved.`;
     default: return `Nothing allowed fit this free time.`;
   }
 }
@@ -644,7 +646,7 @@ function showBlock(pid, el) {
   const why = [];
   if (k === "free") {
     const reasons = [...new Set(day.slots.slice(b.s, b.s + b.n).map(x => x.free_and_easy).filter(Boolean))];
-    reasons.forEach(r => why.push(`<li>${freeSentence(r, who, b.n)}${r === "LOGIC" ? "" : `<div class="when">This is a data limit, not a scheduler fault.</div>`}<div class="code tech-only">${esc(r)}</div></li>`));
+    reasons.forEach(r => why.push(`<li>${freeSentence(r, who, b.n)}${r === "LOGIC" || r === "already_passed" ? "" : `<div class="when">This is a data limit, not a scheduler fault.</div>`}<div class="code tech-only">${esc(r)}</div></li>`));
     if (!reasons.length) why.push(`<li>Nothing allowed fit this free time.</li>`);
   }
   ev.filter(e => !(k === "free" && e.outcome === "FREE_AND_EASY")).forEach(e => {
@@ -851,7 +853,7 @@ function findIssues() {
     });
   }));
   byReason.forEach((g, r) => {
-    if (r === "no_eligible_activities") return;  // per patient, below
+    if (r === "no_eligible_activities" || r === "already_passed") return;  // per patient below, or nothing to fix
     const when = [];
     g.days.forEach((ss, d) => {
       const day = first.days[d];

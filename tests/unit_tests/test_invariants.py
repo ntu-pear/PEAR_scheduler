@@ -4,7 +4,7 @@ import datetime
 
 from pear_schedule.scheduler.gapFill import PoolActivity
 from pear_schedule.scheduler.invariants import (
-    FIXED_SLOT_ELSEWHERE, NO_ELIGIBLE_ACTIVITIES, NO_FIT_FOR_GAP_LENGTH, POOL_EXHAUSTED_TODAY,
+    ALREADY_PASSED, FIXED_SLOT_ELSEWHERE, NO_ELIGIBLE_ACTIVITIES, NO_FIT_FOR_GAP_LENGTH, POOL_EXHAUSTED_TODAY,
     PatientRules, RuleInputs, analyse_free_and_easy, base_title, check_rules,
 )
 
@@ -69,6 +69,18 @@ class TestCheckRules:
         schedules = {1: [["Outing", "Walk", "Sewing", "Sewing"]]}
         assert check_rules(schedules, _inputs(compulsory=[lunch], exempt={(1, 0, 0)})) == []
 
+    def test_passed_slots_are_not_flagged(self):
+        """Lunch missing and Walk disliked, but both already passed."""
+        lunch = PoolActivity(9, "Lunch", 30, frozenset({(0, 0)}))
+        inputs = _inputs(rules=PatientRules(dislikes={1}), compulsory=[lunch])
+        inputs.locked = {(1, 0, 0), (1, 0, 1)}
+        assert check_rules({1: [["Sewing", "Walk", FE, FE]]}, inputs) == []
+
+    def test_passed_day_has_no_r7(self):
+        inputs = _inputs(pool=[PoolActivity(1, "Walk", 30)])
+        inputs.locked = {(1, 0, s) for s in range(4)}
+        assert check_rules({1: [["Walk", "Lunch", "Walk", FE]]}, inputs) == []
+
     def test_repeat_in_a_day_is_r7(self):
         schedules = {1: [["Walk", "Lunch", "Walk", FE]]}
         pool = [PoolActivity(1, "Walk", 30)]
@@ -127,6 +139,22 @@ class TestAnalyseFreeAndEasy:
         report = analyse_free_and_easy(schedules, inputs)
         assert report.avoidable == 0
         assert report.avoidable_rearranged == 2
+
+    def test_passed_free_and_easy_is_not_avoidable(self):
+        """Morning already passed, only the afternoon slot can still be filled."""
+        inputs = _inputs(pool=[PoolActivity(1, "Walk", 30)])
+        inputs.locked = {(1, 0, 0), (1, 0, 1)}
+        report = analyse_free_and_easy({1: [[FE, "Lunch", FE, "Lunch2"]]}, inputs)
+        assert report.total == 2
+        assert report.avoidable == 1
+        assert report.by_patient_day[(1, 0)]["slot_reasons"] == {0: ALREADY_PASSED, 2: "LOGIC"}
+        assert report.unavoidable == {ALREADY_PASSED: 1}
+
+    def test_passed_and_unfillable_keeps_its_data_reason(self):
+        inputs = _inputs(rules=PatientRules(dislikes={1, 2}))
+        inputs.locked = {(1, 0, 0), (1, 0, 1)}
+        report = analyse_free_and_easy({1: [[FE, "Lunch", FE, "Lunch2"]]}, inputs)
+        assert report.unavoidable == {NO_ELIGIBLE_ACTIVITIES: 2}
 
     def test_exempt_slots_are_not_counted(self):
         report = analyse_free_and_easy({1: [["Lunch", FE, FE, FE]]}, _inputs(exempt={(1, 0, 1), (1, 0, 2), (1, 0, 3)}))
