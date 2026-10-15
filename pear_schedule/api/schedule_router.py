@@ -42,9 +42,13 @@ def _regenerate_build(config, patientSchedules):
     return build_schedules(config, patientSchedules)
 
 @router.api_route("/getSchedule/", methods=["GET"])
-def get_schedule(request: Request):
+def get_schedule(request: Request, date: Optional[datetime.date] = None):
     try:
-        weeklyScheduleViewDF = WeeklyScheduleView.get_data()
+        # any day in the week to get, this week if not given
+        if date:
+            weeklyScheduleViewDF = WeeklyScheduleView.get_data(at=datetime.datetime.combine(date, datetime.time(12)))
+        else:
+            weeklyScheduleViewDF = WeeklyScheduleView.get_data()
         weeklyScheduleViewDF.pop("ScheduleID")
         if len(weeklyScheduleViewDF) == 0:
             responseData = {"Status": "404", "Message": "No schedules found", "Data": ""} 
