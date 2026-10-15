@@ -67,3 +67,5 @@ CARE_CENTRE_ID = 1
 ACTIVITY_SERVICE_URL = os.getenv("ACTIVITY_SERVICE_URL", "")
 # how gaps get filled: "greedy" (original) or "optimal" (scheduler/gapFill.py)
 GAP_FILL_STRATEGY = os.getenv("GAP_FILL_STRATEGY", "greedy")
+# how regenerate works: "rebuild" (whole week again) or "repair" (scheduler/repair.py, only what has a reason to change)
+REGENERATE_MODE = os.getenv("REGENERATE_MODE", "rebuild")

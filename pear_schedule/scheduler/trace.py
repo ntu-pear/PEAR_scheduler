@@ -33,6 +33,7 @@ STAGE_GROUP = "group"
 STAGE_PREFERRED = "preferred"
 STAGE_ADHOC = "adhoc"
 STAGE_MEDICATION = "medication"
+STAGE_REPAIR = "repair"  # regenerate in repair mode
 
 
 @dataclass
