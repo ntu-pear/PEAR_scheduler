@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 class BaseView(ConfigDependant):
     db_tables: DBTABLES
+    # FixedTimeSlots here are centre activity slots, availability may replace them
+    uses_availability = False
+    # flexible activities limited to their availability windows too
+    availability_restricts_flexible = True
+
     @classmethod
     def init_app(cls, config: Mapping[str, Any]):
         cls.db_tables = config["DB_TABLES"]
@@ -28,13 +33,25 @@ class BaseView(ConfigDependant):
         logger.info(f"Retrieving data for {cls.__name__}")
         logger.debug(compile_query(query))
 
+        given = conn
         if conn:
             with conn.begin() if conn._transaction is None else nullcontext():
                 result: pd.DataFrame = pd.read_sql(query, con=conn)
         else:
             with DB.get_engine().begin() as conn:
                 result: pd.DataFrame = pd.read_sql(query, con=conn)
+
+        if cls.uses_availability and cls.config.get("USE_ACTIVITY_AVAILABILITY") is True:
+            # own connection is closed by now, the lookup opens another
+            result = cls._with_availability(result, given)
         return result
+
+    @classmethod
+    def _with_availability(cls, result: pd.DataFrame, conn: Connection = None) -> pd.DataFrame:
+        from pear_schedule.db_utils.availability import apply_availability, windows_by_activity
+
+        windows = windows_by_activity(CentreActivityAvailabilityView.get_data(conn=conn))
+        return apply_availability(result, windows, get_week_start(), cls.config, cls.availability_restricts_flexible)
 
     @classmethod
     def build_query(cls, **query_kwargs) -> Select:
@@ -52,6 +69,8 @@ class CareCentreView(BaseView):
         return query
 
 class AllActivitiesView(BaseView):
+    uses_availability = True
+
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building all activities query")
@@ -63,6 +82,7 @@ class AllActivitiesView(BaseView):
 
         query: Select = select(
             activity,
+            centre_activity.c["CentreActivityID"],
             centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
@@ -80,6 +100,8 @@ class AllActivitiesView(BaseView):
 
 class ActivitiesView(BaseView):
     """ Data view used to schedule activities based on individual patient preferences """
+    uses_availability = True
+
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building activities query")
@@ -92,6 +114,7 @@ class ActivitiesView(BaseView):
 
         query: Select = select(
             activity,
+            centre_activity.c["CentreActivityID"],
             centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
             centre_activity.c["MinDuration"].label("MinDuration"),
@@ -213,6 +236,10 @@ class PatientsOnlyView(BaseView): # Just patients only
 
 
 class GroupActivitiesOnlyView(BaseView): # Just group activities only
+    uses_availability = True
+    # flexible group slots still come from GROUP_TIMESLOT_MAPPING
+    availability_restricts_flexible = False
+
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only group activities query")
@@ -334,6 +361,8 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
     
 
 class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
+    uses_availability = True
+
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building only compulsory activities query")
@@ -344,6 +373,7 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
 
         query: Select = select(
             # centre_activity.c["ActivityID"],
+            centre_activity.c["CentreActivityID"],
             activity.c["ActivityTitle"],
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
@@ -362,6 +392,8 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
     
 
 class RecommendedActivitiesView(BaseView):
+    uses_availability = True
+
     @classmethod
     def build_query(cls) -> Select:
         logger.info("Building recommended activities query")
@@ -373,6 +405,7 @@ class RecommendedActivitiesView(BaseView):
 
         query: Select = select(
             centre_activity.c["ActivityID"],
+            centre_activity.c["CentreActivityID"],
             centre_activity.c["IsFixed"],
             centre_activity.c["MinDuration"], # assume that MinDuration is equal to MaxDuration
             activity.c["ActivityTitle"],
@@ -868,3 +901,19 @@ class AdhocActivityView(BaseView):
             query = query.where(adhoc.c["PatientID"] == query_kwargs["arg1"])
 
         return query
+
+
+class CentreActivityAvailabilityView(BaseView):
+    @classmethod
+    def build_query(cls) -> Select:
+        logger.info("Building centre activity availability query")
+        availability = DB.schema.tables[cls.db_tables.CENTRE_ACTIVITY_AVAILABILITY_TABLE]
+
+        return select(
+            availability.c["CentreActivityID"],
+            availability.c["DaysOfWeek"],
+            availability.c["StartTime"],
+            availability.c["EndTime"],
+            availability.c["StartDate"],
+            availability.c["EndDate"],
+        ).where(availability.c["IsDeleted"] == False)
