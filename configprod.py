@@ -69,3 +69,5 @@ ACTIVITY_SERVICE_URL = os.getenv("ACTIVITY_SERVICE_URL", "")
 GAP_FILL_STRATEGY = os.getenv("GAP_FILL_STRATEGY", "greedy")
 # how regenerate works: "rebuild" (whole week again) or "repair" (scheduler/repair.py, only what has a reason to change)
 REGENERATE_MODE = os.getenv("REGENERATE_MODE", "rebuild")
+# "true": activities with availability rows take their slots from REF_CENTRE_ACTIVITY_AVAILABILITY (db_utils/availability.py)
+USE_ACTIVITY_AVAILABILITY = os.getenv("USE_ACTIVITY_AVAILABILITY", "false").strip().lower() == "true"
