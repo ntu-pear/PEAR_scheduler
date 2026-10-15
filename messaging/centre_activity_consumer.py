@@ -438,7 +438,10 @@ class CentreActivityConsumer(ConfigDependant):
             self.client.close()
             logger.info("Scheduler centre activity consumer connections closed")
     
-    def reformat_timeslots(self, timeslot_str: str) -> str:
+    def reformat_timeslots(self, timeslot_str: Optional[str]) -> Optional[str]:
+        # flexible activities come with None or ""
+        if timeslot_str is None or not timeslot_str.strip():
+            return None
         timeslot_list_tmp = timeslot_str.split(",")
         for i, timeslot_str in enumerate(timeslot_list_tmp):
             qualified_day = timeslot_str.split(" ")[0]
