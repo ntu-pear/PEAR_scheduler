@@ -1,4 +1,5 @@
 import datetime
+from collections import Counter
 from functools import partial
 import json
 import logging
@@ -13,6 +14,8 @@ from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView,
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.scheduler import trace
+from pear_schedule.scheduler.gapFill import PoolActivity, build_candidates, solve_day
+from pear_schedule.scheduler.invariants import PatientRules, free_runs, unfillable_reason
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
 from pear_schedule.utils import DBTABLES
@@ -407,6 +410,15 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         # activities = activities.sample(frac=1)\
         #     .reset_index(drop=True)
 
+        strategy = cls.config.get("GAP_FILL_STRATEGY", "greedy")
+        if strategy not in ("greedy", "optimal"):
+            logger.warning(f"Unknown GAP_FILL_STRATEGY {strategy!r}, using greedy")
+            strategy = "greedy"
+        pool = [
+            PoolActivity(int(r["ActivityID"]), r["ActivityTitle"], int(r["MinDuration"]), frozenset(r["ProcessedTimeSlots"]))
+            for _, r in avail_activities.iterrows()
+        ] if strategy == "optimal" else []
+
         for pid, sched in schedules.items():
             if pid not in patients:
                 logger.error(f"unknown patientID {pid} found in schedules")
@@ -424,8 +436,6 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                 patient_non_preferred = avail_activities[non_preference_idx]
 
                 for day, day_sched in enumerate(sched):
-                    curr_day_activities = set()
-
                     # exclusions only cover their own days
                     excluded_today = {
                         aid for aid in exclusions
@@ -434,53 +444,121 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
                     preferred_activities = patient_preferred[~patient_preferred["ActivityID"].isin(excluded_today)]
                     non_preferred_activites = patient_non_preferred[~patient_non_preferred["ActivityID"].isin(excluded_today)]
 
-                    i = 0
-                    while i < len(day_sched):
-                        if not day_sched[i]:
-                            # find the longest stretch of empty slots
-                            j = i + 1
-                            while (j < len(day_sched) and not day_sched[j]):
-                                j += 1
-                            j -= 1 # j is incremented by 1 before the last check fails
-                            if i >= len(day_sched):
-                                break
-
-                            find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
-                            new_activity: str = \
-                                find_activity(preferred_activities, curr_day_activities) or \
-                                find_activity(non_preferred_activites, curr_day_activities)
-                            # min slot duration for replacement with Free and Easy
-                            new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
-
-                            num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
-
-                            if not new_activity or j-i+1 < num_slots:
-                                trace.record(trace.STAGE_PREFERRED, pid, trace.FREE_AND_EASY,
-                                             "no_candidate_fits" if not new_activity else "candidate_too_long",
-                                             activity="Free and Easy", day=day, slot=i, free_run=j-i+1,
-                                             preferred_pool=len(preferred_activities),
-                                             neutral_pool=len(non_preferred_activites),
-                                             used_today=sorted(a for a in curr_day_activities if a != "Free and Easy"))
-                                new_activity = "Free and Easy"
-                                num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
-                            else:
-                                trace.record(trace.STAGE_PREFERRED, pid, trace.PLACED,
-                                             "preferred" if new_activity in set(preferred_activities["ActivityTitle"]) else "neutral",
-                                             activity=new_activity, day=day, slot=i)
-
-                            curr_day_activities.add(new_activity)
-
-                            for k in range(num_slots):
-                                day_sched[i+k] = new_activity
-
-                        else:
-                            # potentially prevent the same activity from being scheduled again in the same day
-                            curr_day_activities.add(day_sched[i])
-
-                        i += 1
+                    if strategy == "optimal":
+                        cls._fillDayOptimal(
+                            day_sched, day, pid, sched, pool, avail_activities, preferences, dispreferences,
+                            exclusions, week_start, preferred_activities, non_preferred_activites,
+                        )
+                    else:
+                        cls._greedyFillDay(day_sched, day, pid, preferred_activities, non_preferred_activites, avail_activities)
             except Exception as e:
                 logger.exception(f"Preferred activity scheduling failed for patient {pid}, skipping")
                 trace.record(trace.STAGE_PREFERRED, pid, trace.ERROR, "stage_exception", error=repr(e))
+
+    @classmethod
+    def _greedyFillDay(cls, day_sched: List[str], day: int, pid, preferred_activities: pd.DataFrame,
+                       non_preferred_activites: pd.DataFrame, avail_activities: pd.DataFrame) -> None:
+        """Slot by slot, earliest-ending activity that fits, preferred list first."""
+        curr_day_activities = set()
+
+        i = 0
+        while i < len(day_sched):
+            if not day_sched[i]:
+                # find the longest stretch of empty slots
+                j = i + 1
+                while (j < len(day_sched) and not day_sched[j]):
+                    j += 1
+                j -= 1 # j is incremented by 1 before the last check fails
+                if i >= len(day_sched):
+                    break
+
+                find_activity = partial(cls.__findActivityBySlot, day=day, slot=i, slot_size=j-i)
+                new_activity: str = \
+                    find_activity(preferred_activities, curr_day_activities) or \
+                    find_activity(non_preferred_activites, curr_day_activities)
+                # min slot duration for replacement with Free and Easy
+                new_activity_duration: int = avail_activities[avail_activities["ActivityTitle"] == new_activity].iloc[0]["MinDuration"] if new_activity else cls.config["MIN_ACTIVITY_DURATION"]
+
+                num_slots = new_activity_duration // cls.config["MIN_ACTIVITY_DURATION"]
+
+                if not new_activity or j-i+1 < num_slots:
+                    trace.record(trace.STAGE_PREFERRED, pid, trace.FREE_AND_EASY,
+                                 "no_candidate_fits" if not new_activity else "candidate_too_long",
+                                 activity="Free and Easy", day=day, slot=i, free_run=j-i+1,
+                                 preferred_pool=len(preferred_activities),
+                                 neutral_pool=len(non_preferred_activites),
+                                 used_today=sorted(a for a in curr_day_activities if a != "Free and Easy"))
+                    new_activity = "Free and Easy"
+                    num_slots = cls.config["MIN_ACTIVITY_DURATION"] // cls.config["MIN_ACTIVITY_DURATION"] # =1
+                else:
+                    trace.record(trace.STAGE_PREFERRED, pid, trace.PLACED,
+                                 "preferred" if new_activity in set(preferred_activities["ActivityTitle"]) else "neutral",
+                                 activity=new_activity, day=day, slot=i)
+
+                curr_day_activities.add(new_activity)
+
+                for k in range(num_slots):
+                    day_sched[i+k] = new_activity
+
+            else:
+                # potentially prevent the same activity from being scheduled again in the same day
+                curr_day_activities.add(day_sched[i])
+
+            i += 1
+
+    @classmethod
+    def _fillDayOptimal(cls, day_sched: List[str], day: int, pid, week_sched: List[List[str]], pool: List[PoolActivity],
+                        avail_activities: pd.DataFrame, preferences: Set[int], dispreferences: Set[int],
+                        exclusions: Mapping, week_start: datetime.datetime,
+                        preferred_activities: pd.DataFrame, non_preferred_activites: pd.DataFrame) -> None:
+        """Best fill for today's gaps from gapFill.solve_day, seeded with the greedy result."""
+        free = [not v for v in day_sched]
+        if not any(free):
+            return
+
+        used_today = {v for v in day_sched if v}
+        week_counts = Counter(v for d in week_sched for v in d if v and v != "Free and Easy")
+        candidates = build_candidates(
+            pool, day,
+            min_activity_duration=cls.config["MIN_ACTIVITY_DURATION"],
+            week_start=week_start,
+            exclusions=exclusions,
+            liked=set(preferences),
+            blocked=set(dispreferences),
+            used_titles_today=used_today,
+            week_counts=week_counts,
+        )
+        by_title = {c.title: c for c in candidates}
+
+        # greedy result as the starting point, in a throwaway trace so it doesn't log
+        greedy_day = list(day_sched)
+        with trace.tracing(trace.ScheduleTrace()):
+            cls._greedyFillDay(greedy_day, day, pid, preferred_activities, non_preferred_activites, avail_activities)
+        seed = {}
+        for i, v in enumerate(greedy_day):
+            if free[i] and v in by_title and (i == 0 or greedy_day[i - 1] != v or not free[i - 1]):
+                seed[i] = by_title[v]
+
+        result = solve_day(free, candidates, seed=seed)
+        if result.exhausted_budget:
+            logger.warning(f"Gap fill search budget hit for patient {pid} day {day}; using best found")
+
+        for start, c in sorted(result.assignment.items()):
+            for k in range(c.length):
+                day_sched[start + k] = c.title
+            trace.record(trace.STAGE_PREFERRED, pid, trace.PLACED, "preferred" if c.liked else "neutral",
+                         activity=c.title, day=day, slot=start, strategy="optimal")
+
+        rules = PatientRules(likes=set(preferences), dislikes=set(dispreferences), exclusions=dict(exclusions))
+        used_after = {v for v in day_sched if v}
+        for run_start, run_end in free_runs([not v for v in day_sched]):
+            reason = unfillable_reason(run_end - run_start, day, rules, pool, week_start,
+                                       cls.config["MIN_ACTIVITY_DURATION"], used_after)
+            for k in range(run_start, run_end):
+                day_sched[k] = "Free and Easy"
+                trace.record(trace.STAGE_PREFERRED, pid, trace.FREE_AND_EASY, reason,
+                             activity="Free and Easy", day=day, slot=k, free_run=run_end - run_start,
+                             strategy="optimal")
 
     @classmethod
     def __findActivityBySlot(

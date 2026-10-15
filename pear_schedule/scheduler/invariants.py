@@ -95,7 +95,7 @@ class FreeAndEasyReport:
         }
 
 
-def _runs(free: Sequence[bool]) -> List[Tuple[int, int]]:
+def free_runs(free: Sequence[bool]) -> List[Tuple[int, int]]:
     """[start, end) of each maximal run of True."""
     out, i, n = [], 0, len(free)
     while i < n:
@@ -110,23 +110,22 @@ def _runs(free: Sequence[bool]) -> List[Tuple[int, int]]:
     return out
 
 
-def _unavoidable_reason(run: Tuple[int, int], day: int, rules: PatientRules, inputs: RuleInputs,
-                        used_titles_today: Set[str]) -> str:
-    start, end = run
-    run_len = end - start
+def unfillable_reason(run_len: int, day: int, rules: PatientRules, pool: List[PoolActivity],
+                      week_start: datetime.datetime, min_activity_duration: int, used_titles_today: Set[str]) -> str:
+    """Why a run of run_len slots can't be filled."""
     blocked = rules.dislikes | rules.not_recommended
     eligible = [
-        a for a in inputs.pool
-        if a.activity_id not in blocked and not is_excluded(a.activity_id, rules.exclusions, day, inputs.week_start)
+        a for a in pool
+        if a.activity_id not in blocked and not is_excluded(a.activity_id, rules.exclusions, day, week_start)
     ]
     if not eligible:
         return NO_ELIGIBLE_ACTIVITIES
     unused = [a for a in eligible if a.title not in used_titles_today]
     if not unused:
         return POOL_EXHAUSTED_TODAY
-    if all(slots_for(a.min_duration, inputs.min_activity_duration) > run_len for a in unused):
+    if all(slots_for(a.min_duration, min_activity_duration) > run_len for a in unused):
         return NO_FIT_FOR_GAP_LENGTH
-    if all(a.fixed_slots for a in unused if slots_for(a.min_duration, inputs.min_activity_duration) <= run_len):
+    if all(a.fixed_slots for a in unused if slots_for(a.min_duration, min_activity_duration) <= run_len):
         return FIXED_SLOT_ELSEWHERE
     # fits, but the best fill already uses it in another gap
     return POOL_EXHAUSTED_TODAY
@@ -162,8 +161,9 @@ def analyse_free_and_easy(schedules: Mapping[Any, List[List[str]]], inputs: Rule
             used_after = used_today | {c.title for c in best.assignment.values()}
             reasons = Counter()
             slot_reasons = {s: LOGIC for s in taken}
-            for run in _runs(left):
-                reason = _unavoidable_reason(run, d, rules, inputs, used_after)
+            for run in free_runs(left):
+                reason = unfillable_reason(run[1] - run[0], d, rules, inputs.pool, inputs.week_start,
+                                           inputs.min_activity_duration, used_after)
                 reasons[reason] += run[1] - run[0]
                 slot_reasons.update({s: reason for s in range(*run)})
 

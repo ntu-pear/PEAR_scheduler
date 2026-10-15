@@ -245,6 +245,8 @@ def explain_schedule(config: Mapping[str, Any], args):
     CareCentreView.init_app(config)
     config.setdefault("GROUP_TIMESLOT_MAPPING_RAW", list(config["GROUP_TIMESLOT_MAPPING"]))
     config.update(centre_hours_config(config, read_saved_working_hours()))
+    if getattr(args, "strategy", None):
+        config["GAP_FILL_STRATEGY"] = args.strategy
     loadConfigs(config)
 
     explanation = run_explanation(config, args.patient)
@@ -318,6 +320,7 @@ def parse_args():
     explain_parser.add_argument("-c", "--config", required=True)
     explain_parser.add_argument("--patient", type=int, nargs="*", help="only show these patient IDs")
     explain_parser.add_argument("--json", help="also write the full explanation to this JSON file")
+    explain_parser.add_argument("--strategy", choices=["greedy", "optimal"], help="override GAP_FILL_STRATEGY for this run")
     explain_parser.set_defaults(func=explain_schedule)
 
     # NEW: add args for running only consumers (useful for separate consumer processes)
