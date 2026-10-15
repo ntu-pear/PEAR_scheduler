@@ -13,7 +13,7 @@ import datetime
 from pear_schedule.db_utils.writer import ScheduleWriter, MedicationScheduleWrite
 from pear_schedule.services.care_centre_util import refresh_centre_hours
 
-from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
+from pear_schedule.api.utils import AdHocRequest, dropPastDays, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
 from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -325,14 +325,21 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
         return JSONResponse(jsonable_encoder(responseData))
 
 
-    chosenDays = getDaysFromDates(data.StartDate, data.EndDate, request.app.state.config["DAY_OF_WEEK_ORDER"])
+    # past days already happened, only change today onwards
+    dates = dropPastDays(data.StartDate, data.EndDate, datetime.date.today())
+    if dates is None:
+        responseData = {"Status": "400", "Message": "Can't change days that have already passed", "Data": ""}
+        return JSONResponse(jsonable_encoder(responseData))
+    startDate, endDate = dates
+
+    chosenDays = getDaysFromDates(startDate, endDate, request.app.state.config["DAY_OF_WEEK_ORDER"])
 
     filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
     
     # replace activities
     isSuccess = replaceActivitiesInSchedule(filteredAdHocDF, oldActivityName, newActivityName, chosenDays)
     if not isSuccess:
-        responseData = {"Status": "400", "Message": f"{oldActivityName} (old activity) cannnot be found in some/all days of patient schedule for {data.StartDate.split('T')[0]} to {data.EndDate.split('T')[0]}", "Data": ""} 
+        responseData = {"Status": "400", "Message": f"{oldActivityName} (old activity) cannnot be found in some/all days of patient schedule for {startDate.split('T')[0]} to {endDate.split('T')[0]}", "Data": ""} 
         return JSONResponse(jsonable_encoder(responseData))
                 
     

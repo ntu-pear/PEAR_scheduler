@@ -28,3 +28,11 @@ class TestReformatTimeslots:
         class FakeSelf:
             config = _config()
         assert CentreActivityConsumer.reformat_timeslots(FakeSelf, "Monday 09:59") == "0-1"  # used to be "0-2"
+
+    def test_flexible_activity_without_fixed_slots_maps_to_none(self):
+        """Flexible activities come with None or "", both used to fail the message."""
+        class FakeSelf:
+            config = _config()
+        assert CentreActivityConsumer.reformat_timeslots(FakeSelf, None) is None
+        assert CentreActivityConsumer.reformat_timeslots(FakeSelf, "") is None
+        assert CentreActivityConsumer.reformat_timeslots(FakeSelf, "  ") is None
