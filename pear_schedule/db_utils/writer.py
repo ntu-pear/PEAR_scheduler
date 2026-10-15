@@ -14,7 +14,11 @@ from pear_schedule.utils import ConfigDependant, DBTABLES
 from pear_schedule.models.schedule_model import Schedule
 from pear_schedule.models.medication_schedule_model import MedicationSchedule
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
-from pear_schedule.api.utils import MedicationAlreadyAdministeredException, MedicationScheduleNotFoundException
+from pear_schedule.api.utils import (
+    MedicationAlreadyAdministeredException,
+    MedicationNotAdministeredException,
+    MedicationScheduleNotFoundException,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -318,6 +322,51 @@ class MedicationScheduleWrite(ConfigDependant):
           except Exception as e:
             logger.exception(e)
             logger.error(f"Error updating medication schedule: {traceback.format_exc()}")
+            session.rollback()
+            raise e
+
+    @classmethod
+    def undo(cls, medication_data, before_commit: Optional[Callable[[int], None]] = None) -> None:
+      """Puts a given dose back to not given. before_commit(medication_id) runs after the row is
+      updated and before the commit; if it raises, nothing is saved here."""
+      with DB.get_engine().begin() as conn:
+        with Session(bind=conn) as session:
+          try:
+            doses = session.execute(
+              select(MedicationSchedule.MedicationID, MedicationSchedule.ScheduleID)
+              .join(RefPatientMedication, MedicationSchedule.MedicationID == RefPatientMedication.MedicationID)
+              .where(
+                RefPatientMedication.PatientID == medication_data.PatientID,
+                RefPatientMedication.PrescriptionName == medication_data.PrescriptionName,
+                MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+              )
+            ).all()
+            if not doses: raise MedicationScheduleNotFoundException()
+
+            for dose in doses:
+              # Status check is part of the UPDATE, so only a given dose can be undone
+              result = session.execute(
+                update(MedicationSchedule)
+                .where(
+                  MedicationSchedule.MedicationID == dose.MedicationID,
+                  MedicationSchedule.ScheduleID == dose.ScheduleID,
+                  MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                  MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+                  MedicationSchedule.Status == '1',
+                )
+                .values(Status='0', AdministeredBy=None, ActualAdministerTime=None)
+                .execution_options(synchronize_session=False)
+              )
+              if result.rowcount == 1:
+                if before_commit is not None:
+                  before_commit(dose.MedicationID)
+                session.commit()
+                return
+            raise MedicationNotAdministeredException()
+          except Exception as e:
+            logger.exception(e)
+            logger.error(f"Error undoing medication schedule: {traceback.format_exc()}")
             session.rollback()
             raise e
 

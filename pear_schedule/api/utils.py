@@ -77,6 +77,9 @@ class MedicationScheduleNotFoundException(Exception):
 class MedicationAlreadyAdministeredException(Exception):
     pass
 
+class MedicationNotAdministeredException(Exception):
+    pass
+
 class PatientServiceUnavailableException(Exception):
     pass
 

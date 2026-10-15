@@ -243,3 +243,52 @@ class TestMarkAdministered:
         assert isinstance(result, PatientServiceUnavailableException)
         session.commit.assert_not_called()
         session.rollback.assert_called_once()
+
+
+def _undo(monkeypatch, doses, rowcounts, before_commit=None):
+    """Runs MedicationScheduleWrite.undo with the DB mocked. Returns (result or exception, session)."""
+    monkeypatch.setattr(writer_module.DB, "get_engine", lambda: MagicMock())
+    session = MagicMock()
+    lookup = MagicMock()
+    lookup.all.return_value = [SimpleNamespace(MedicationID=m, ScheduleID=5) for m in doses]
+    session.execute.side_effect = [lookup] + [SimpleNamespace(rowcount=n) for n in rowcounts]
+    session_cm = MagicMock()
+    session_cm.__enter__.return_value = session
+    monkeypatch.setattr(writer_module, "Session", lambda **k: session_cm)
+    data = SimpleNamespace(PatientID=1, PrescriptionName="Paracetamol", AdministerDate=TODAY, AdministerTime="0900")
+    try:
+        return MedicationScheduleWrite.undo(data, before_commit=before_commit), session
+    except Exception as e:
+        return e, session
+
+
+class TestUndoDose:
+    def test_only_a_given_dose_is_reset(self, monkeypatch):
+        _, session = _undo(monkeypatch, doses=[1], rowcounts=[1])
+        sql = _sql(_executed(session)[1])
+        assert sql.startswith("UPDATE [MEDICATION_SCHEDULE] SET [Status]='0'")
+        assert "[MEDICATION_SCHEDULE].[Status] = '1'" in sql
+        session.commit.assert_called_once()
+
+    def test_patient_is_undone_for_that_dose_before_commit(self, monkeypatch):
+        seen = []
+        _, session = _undo(monkeypatch, doses=[1, 2], rowcounts=[0, 1], before_commit=seen.append)
+        assert seen == [2]
+        session.commit.assert_called_once()
+
+    def test_patient_failure_saves_nothing(self, monkeypatch):
+        def patient_down(medication_id):
+            raise PatientServiceUnavailableException("down")
+
+        result, session = _undo(monkeypatch, doses=[1], rowcounts=[1], before_commit=patient_down)
+        assert isinstance(result, PatientServiceUnavailableException)
+        session.commit.assert_not_called()
+
+    def test_dose_not_given_raises(self, monkeypatch):
+        result, session = _undo(monkeypatch, doses=[1], rowcounts=[0])
+        assert isinstance(result, writer_module.MedicationNotAdministeredException)
+        session.commit.assert_not_called()
+
+    def test_missing_dose_raises_not_found(self, monkeypatch):
+        result, _ = _undo(monkeypatch, doses=[], rowcounts=[])
+        assert isinstance(result, writer_module.MedicationScheduleNotFoundException)
