@@ -9,3 +9,9 @@ class MedicationScheduleUpdate(BaseModel):
     AdministerTime: str
     Status: str = Field(pattern=r"^(0|1)$")
     AdministeredBy: Optional[str] = None  # ignored: the caller's token decides who gave the dose
+
+class MedicationScheduleUndo(BaseModel):
+    PatientID: int
+    PrescriptionName: str
+    AdministerDate: date
+    AdministerTime: str
