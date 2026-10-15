@@ -17,6 +17,7 @@ from pear_schedule.scheduler.gapFill import PoolActivity
 from pear_schedule.scheduler.invariants import (
     FREE_AND_EASY, LOGIC, PatientRules, RuleInputs, analyse_free_and_easy, base_title, check_rules,
 )
+from pear_schedule.scheduler.what_if import format_what_if, what_if
 
 STAGE_ORDER = [
     schedule_trace.STAGE_COMPULSORY, schedule_trace.STAGE_RECOMMENDED, schedule_trace.STAGE_GROUP,
@@ -137,6 +138,7 @@ def build_explanation(
     inputs: RuleInputs,
     config: Mapping[str, Any],
     patient_ids: Optional[Iterable[Any]] = None,
+    with_what_if: bool = False,
 ) -> Dict[str, Any]:
     """Schedules + trace + rule inputs -> JSON-able explanation."""
     # adhoc overrides are deliberate, skip them in the rule checks
@@ -207,7 +209,7 @@ def build_explanation(
         }
 
     total_slots = sum(len(day) for days in schedules.values() for day in days)
-    return _jsonable({
+    out = {
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "week_start": inputs.week_start.date().isoformat(),
         "open_days": open_days,
@@ -222,7 +224,10 @@ def build_explanation(
         },
         "centre_events": centre_events,
         "patients": patients_out,
-    })
+    }
+    if with_what_if:
+        out["what_if"] = what_if(schedules, inputs, config["MIN_ACTIVITY_DURATION"])
+    return _jsonable(out)
 
 
 def patient_names(config: Mapping[str, Any]) -> Dict[Any, str]:
@@ -237,14 +242,14 @@ def patient_names(config: Mapping[str, Any]) -> Dict[Any, str]:
 
 
 def run_explanation(config: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None,
-                    with_names: bool = False) -> Dict[str, Any]:
+                    with_names: bool = False, with_what_if: bool = False) -> Dict[str, Any]:
     """Builds this week's schedules under a trace, without writing, and explains them."""
     from pear_schedule.scheduler.utils import build_schedules
 
     schedules: Dict[Any, List[List[str]]] = {}
     with schedule_trace.tracing() as trace:
         build_schedules(config, schedules)
-    explanation = build_explanation(schedules, trace, collect_rule_inputs(config), config, patient_ids)
+    explanation = build_explanation(schedules, trace, collect_rule_inputs(config), config, patient_ids, with_what_if)
     explanation["source"] = "built"
     if with_names:
         add_names(explanation, patient_names(config))
@@ -292,7 +297,8 @@ def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> sc
 
 
 def explain_saved_week(config: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None,
-                       with_names: bool = False, now: Optional[datetime.datetime] = None) -> Optional[Dict[str, Any]]:
+                       with_names: bool = False, now: Optional[datetime.datetime] = None,
+                       with_what_if: bool = False) -> Optional[Dict[str, Any]]:
     """
     Explains this week's saved schedule without building it again. Adds what repair
     regenerates changed this week, and what the next one would change. None if nothing is saved yet.
@@ -322,7 +328,7 @@ def explain_saved_week(config: Mapping[str, Any], patient_ids: Optional[Iterable
         t.add(e)
     # what already passed can't change, so it's not flagged
     data.inputs.locked = {(pid, d, s) for pid in have for d, s in locked}
-    explanation = build_explanation(have, t, data.inputs, config, patient_ids)
+    explanation = build_explanation(have, t, data.inputs, config, patient_ids, with_what_if)
     explanation["source"] = "saved"
     explanation["pending"] = _jsonable(pending)
     if with_names:
@@ -351,6 +357,8 @@ def format_text(explanation: Mapping[str, Any], patient_ids: Optional[Iterable[A
     lines.append(f"Rule violations: {s['violations_by_rule'] or 'none'}")
     for e in explanation["centre_events"]:
         lines.append(f"Centre: {e['outcome']} {e['reason']} {e['activity']!r} {e['details']}")
+    if "what_if" in explanation:
+        lines.append(format_what_if(explanation["what_if"]))
 
     wanted = {str(p) for p in patient_ids} if patient_ids else None
     for pid, p in explanation["patients"].items():
