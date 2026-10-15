@@ -609,7 +609,7 @@ class DeletedMedicationView(BaseView): # Get all deleted medication records
 
 class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
     @classmethod
-    def build_query(cls, at: Optional[datetime] = None) -> Select:
+    def build_query(cls, at: Optional[datetime] = None, patient_id: Optional[int] = None) -> Select:
         logger.info("Building the weekly schedule query")
         schema = DB.schema
         
@@ -633,6 +633,8 @@ class WeeklyScheduleView(BaseView): # Get the weekly schedule for all patients
             schedule.c["EndDate"],
         ).where(schedule.c["StartDate"] <= curDateTime
         ).where(schedule.c["EndDate"] >= curDateTime)
+        if patient_id is not None:
+            query = query.where(schedule.c["PatientID"] == patient_id)
         
         return query
 class MedicationTesterView(BaseView): # Just medication table view

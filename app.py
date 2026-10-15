@@ -81,6 +81,7 @@ def create_app():
         integrity_router,
         medication_schedule_router,
         explain_router,
+        patient_schedule_router,
     )
     app = FastAPI(
         title="PEAR FYP Scheduler Service",
@@ -90,6 +91,7 @@ def create_app():
     app.include_router(integrity_router.router, prefix="/integrity")
     app.include_router(medication_schedule_router.router, prefix="/MedicationSchedule")
     app.include_router(explain_router.router, prefix="/schedule/explain")
+    app.include_router(patient_schedule_router.router, prefix="/schedule/patient")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
         "http://localhost",
