@@ -308,8 +308,9 @@ def explain_saved_week(config: Mapping[str, Any], patient_ids: Optional[Iterable
         return None
 
     # data that changed since it was saved
+    locked = locked_slots(config, week_start, now)
     with schedule_trace.tracing() as dry:
-        after = repair_week(copy.deepcopy(saved), data, locked_slots(config, week_start, now))
+        after = repair_week(copy.deepcopy(saved), data, locked)
     pending = {}
     for pid, days in after.items():
         before = saved.get(pid)
@@ -319,6 +320,8 @@ def explain_saved_week(config: Mapping[str, Any], patient_ids: Optional[Iterable
     t = saved_week_trace(saved, data)
     for e in changes_this_week(week_start.date()):
         t.add(e)
+    # what already passed can't change, so it's not flagged
+    data.inputs.locked = {(pid, d, s) for pid in have for d, s in locked}
     explanation = build_explanation(have, t, data.inputs, config, patient_ids)
     explanation["source"] = "saved"
     explanation["pending"] = _jsonable(pending)
