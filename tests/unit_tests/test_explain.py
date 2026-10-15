@@ -65,6 +65,7 @@ class TestRunExplanation:
         fe = result["summary"]["free_and_easy"]
         assert fe["total"] > 0
         assert fe["avoidable_logic"] == 0
+        assert fe["avoidable_rearranging_gap_fill"] == 0
         assert fe["unavoidable_by_reason"] == {"no_eligible_activities": fe["total"]}
         for day in result["patients"]["2"]["days"]:
             for slot in day["slots"]:

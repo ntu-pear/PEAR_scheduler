@@ -118,6 +118,16 @@ class TestAnalyseFreeAndEasy:
         report = analyse_free_and_easy({1: [["Lunch", FE, "Lunch2", "Lunch3"]]}, _inputs(pool=pool))
         assert report.unavoidable == {FIXED_SLOT_ELSEWHERE: 1}
 
+    def test_avoidable_only_by_moving_gap_fill_picks(self):
+        """Chess blocks the only 2-slot gap, nothing fits in place, but moving it fills 2 more."""
+        pool = [PoolActivity(1, "Chess", 30), PoolActivity(2, "Gardening", 60)]
+        schedules = {1: [["Chess", FE, "Lunch", FE]]}
+        inputs = _inputs(pool=pool)
+        inputs.gap_filled = {(1, 0, 0)}
+        report = analyse_free_and_easy(schedules, inputs)
+        assert report.avoidable == 0
+        assert report.avoidable_rearranged == 2
+
     def test_exempt_slots_are_not_counted(self):
         report = analyse_free_and_easy({1: [["Lunch", FE, FE, FE]]}, _inputs(exempt={(1, 0, 1), (1, 0, 2), (1, 0, 3)}))
         assert report.total == 0

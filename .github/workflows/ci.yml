@@ -29,6 +29,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # test-only, kept out of requirements.txt so the image doesn't get them
+      - name: Install test tools
+        run: pip install hypothesis==6.169.0 pytest-cov==7.1.0
+
       # logger/config.py is gitignored and never committed.
       # Any module that logs fails to import without it.
       - name: Create logger config
@@ -42,7 +46,7 @@ jobs:
       # database.py builds the engine at import time.
       # engine creation is lazy and tests never connect,
       # use db_session_mock instead.
-      - name: Run unit tests
+      - name: Run unit and property tests
         env:
           DB_USERNAME_DEV: ci
           DB_PASSWORD_DEV: ci
@@ -50,4 +54,4 @@ jobs:
           DB_DATABASE_DEV: ci
           DB_DATABASE_PORT: "1433"
           DB_DRIVER_DEV: "ODBC Driver 17 for SQL Server"
-        run: python -m pytest tests/unit_tests -q
+        run: python -m pytest tests/unit_tests tests/property_tests -q --cov=pear_schedule --cov=messaging --cov-report=term
