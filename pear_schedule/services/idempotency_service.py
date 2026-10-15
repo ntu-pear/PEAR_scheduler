@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from typing import Optional, Dict, Any, Callable, TypeVar, Union
 import json
 import logging
+import uuid
 from datetime import datetime, timedelta
 
 from ..models.processed_events_model import ProcessedEvent
@@ -10,6 +11,18 @@ from ..models.processed_events_model import ProcessedEvent
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')  # For generic return types
+
+EVENT_KEY_NAMESPACE = uuid.UUID("6f1c0b8e-3d2a-5c4e-9b7f-2a8d4e6c1f30")
+
+
+def event_key(correlation_id: str, event_type: str, aggregate_id: Any) -> str:
+    """
+    One key per event. A cascade (e.g. a centre activity delete and its preference
+    deletes) can publish several events with the same correlation_id, so keying on
+    correlation_id alone dropped all but the first. Same length as a UUID, so it fits
+    PROCESSED_EVENTS.correlation_id.
+    """
+    return str(uuid.uuid5(EVENT_KEY_NAMESPACE, f"{correlation_id}|{event_type}|{aggregate_id}"))
 
 
 class IdempotencyService:

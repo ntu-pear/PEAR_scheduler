@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +176,8 @@ class PatientConsumer:
             logger.info(
                 f"Processing {event_type} for patient {patient_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
 
+            # a cascade can reuse one correlation_id for several events, so key each event on its own
+            message_data['correlation_id'] = correlation_id = event_key(correlation_id, event_type, patient_id)
             with self.get_db_transaction() as db:
                 # For sync events, bypass duplicate check in CRUD
                 if not is_sync_event and self.is_event_already_processed(db, correlation_id):
