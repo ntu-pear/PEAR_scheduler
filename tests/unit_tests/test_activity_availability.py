@@ -99,18 +99,60 @@ class TestApplyAvailability:
         out = apply_availability(df, {2: [_w(MON | TUE, "11:00", "12:00")]}, WEEK, CONFIG)
         assert out["FixedTimeSlots"].tolist() == ["0-4,1-4"]
 
-    def test_fixed_mismatch_warns_and_uses_availability(self, caplog):
+    def test_fixed_mismatch_keeps_fixed_slots_and_warns(self, caplog):
         df = _activities([[2, "Physio", 1, "0-2", 60]])
         with caplog.at_level(logging.WARNING):
             out = apply_availability(df, {2: [_w(MON, "11:00", "12:00")]}, WEEK, CONFIG)
-        assert out["FixedTimeSlots"].tolist() == ["0-4"]
-        assert "differs from FixedTimeSlots" in caplog.text
+        assert out["FixedTimeSlots"].tolist() == ["0-2"]
+        assert "differs from FixedTimeSlots 0-2, keeping FixedTimeSlots" in caplog.text
+
+    def test_fixed_with_expired_availability_is_kept(self, caplog):
+        # staging had compulsory Vital Check AM with only expired test windows
+        df = _activities([[3, "Vital Check AM", 1, "0-4,1-4", 30]])
+        expired = [_w(MON, "09:00", "09:30", end_date=datetime.date(2024, 3, 1))]
+        with caplog.at_level(logging.WARNING):
+            out = apply_availability(df, {3: expired}, WEEK, CONFIG)
+        assert out["FixedTimeSlots"].tolist() == ["0-4,1-4"]
+        assert "none this week differs" in caplog.text
+
+    def test_fixed_without_slots_and_no_window_this_week_is_dropped(self):
+        df = _activities([[2, "Physio", 1, None, 60], [4, "Bingo", 1, "", 30]])
+        out = apply_availability(df, {2: [_w(16, "11:00", "12:00")]}, WEEK, CONFIG)
+        assert out.empty
+
+    def test_fixed_without_slots_or_rows_is_dropped(self, caplog):
+        df = _activities([[2, "Physio", 1, None, 60], [1, "Walk", 0, None, 30]])
+        with caplog.at_level(logging.WARNING):
+            out = apply_availability(df, {}, WEEK, CONFIG)
+        assert out["ActivityTitle"].tolist() == ["Walk"]
+        assert "no FixedTimeSlots and no availability" in caplog.text
 
     def test_matching_fixed_slots_no_warning(self, caplog):
         df = _activities([[2, "Physio", True, "0-4", 60]])
         with caplog.at_level(logging.WARNING):
             apply_availability(df, {2: [_w(MON, "11:00", "12:00")]}, WEEK, CONFIG)
         assert "differs" not in caplog.text
+
+    def test_staging_rows_from_15_oct_change_nothing_fixed(self):
+        """The availability on staging on 15 Oct: stale test windows that disagree with the timetable."""
+        week = datetime.datetime(2026, 10, 12)
+        six_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        config = {**CONFIG, "OPEN_DAYS": six_days, "SLOTS_PER_DAY": {d: 16 for d in six_days},
+                  "WORKING_HOURS": {d.lower(): {"open": "09:00", "close": "17:00"} for d in six_days}}
+        d = datetime.date
+        windows = {
+            2: [_w(31, "16:00", "17:00", d(2026, 1, 21), d(2026, 5, 31)), _w(0, "09:00", "10:00", d(2026, 1, 21), d(2026, 1, 31))],
+            3: [_w(1, "09:00", "10:00", d(2026, 1, 21), d(2026, 5, 31))],
+            5: [_w(3, "15:00", "16:00", d(2026, 1, 21), d(2026, 5, 31))],
+            10: [_w(0, "09:00", "10:00", d(2026, 4, 30), d(2026, 5, 31))],
+            21: [_w(31, "16:00", "16:30", d(2026, 4, 23), d(2027, 5, 31))],
+        }
+        df = _activities([
+            [2, "Breathing exercise AM", 1, "0-2,1-2,2-2,3-2,4-2,5-2", 60], [3, "Vital Check AM", 1, "0-4,1-4,2-4,3-4,4-4", 60],
+            [5, "tee break", 1, "1-12,3-12", 60], [10, "ART & CRAFT", 1, "3-14", 60], [21, "Sort Cards", 1, "2-2", 30],
+        ])
+        out = apply_availability(df, windows, week, config)
+        assert out.equals(df)
 
     def test_flexible_limited_to_its_windows(self):
         df = _activities([[1, "Walk", 0, None, 30]])
@@ -215,8 +257,9 @@ class TestViewsWithAvailability:
         # deleted Monday row ignored, Puzzles has none so stays flexible
         assert _view_data(db, views.ActivitiesView) == {"Walk": "1-0", "Puzzles": None}
 
-    def test_compulsory_view(self, db):
-        assert _view_data(db, views.CompulsoryActivitiesOnlyView) == {"Exercise": "0-2"}
+    def test_compulsory_view_keeps_its_fixed_slots(self, db):
+        # its 10:00 Monday window disagrees with 0-0, FixedTimeSlots wins
+        assert _view_data(db, views.CompulsoryActivitiesOnlyView) == {"Exercise": "0-0"}
 
     def test_flexible_group_left_alone(self, db):
         assert _view_data(db, views.GroupActivitiesOnlyView) == {"Bingo": None}
