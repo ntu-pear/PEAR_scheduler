@@ -86,7 +86,8 @@ def _run_stages(config, patientSchedules, trace, CompulsoryActivityScheduler, Re
             for j in range(activityDuration // config["MIN_ACTIVITY_DURATION"]):
                 patientSchedules[patientID][day][hour+j] = activity[0]
             schedule_trace.record(
-                schedule_trace.STAGE_GROUP, patientID, schedule_trace.PLACED, "group_timeslot",
+                schedule_trace.STAGE_GROUP, patientID, schedule_trace.PLACED,
+                schedule_trace.reason_for(("group", patientID, activity[0]), "group_timeslot"),
                 activity=activity[0], day=day, slot=hour, group_timeslot=i,
             )
     _end_stage(trace, schedule_trace.STAGE_GROUP, patientSchedules)
