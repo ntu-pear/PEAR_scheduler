@@ -80,3 +80,13 @@ class TestExplainSavedWeek:
         out = self._run(data, copy.deepcopy(week), now=WEEK + datetime.timedelta(days=1, hours=7))
         flagged = [v for v in out["patients"]["1"]["violations"] if v["rule"] == "R1"]
         assert flagged and {v["day"] for v in flagged} == {1}
+
+    def test_what_if_on_the_saved_week(self):
+        data = _data()
+        week = repair_week({p: None for p in data.patient_ids}, data, set())
+        with patch.object(repair, "load_repair_data", return_value=data), \
+             patch.object(repair, "load_saved", return_value=copy.deepcopy(week)), \
+             patch.object(repair, "changes_this_week", return_value=[]):
+            out = explain.explain_saved_week(CFG, now=WEEK, with_what_if=True)
+        assert out["what_if"]["free_and_easy"] == out["summary"]["free_and_easy"]["total"]
+        assert all(o["fills"] or o["fills_rearranged"] for o in out["what_if"]["options"])

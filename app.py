@@ -254,13 +254,14 @@ def explain_schedule(config: Mapping[str, Any], args):
     loadConfigs(config)
 
     with_names = getattr(args, "with_names", False)
+    with_what_if = getattr(args, "what_if", False)
     if getattr(args, "saved", False):
-        explanation = explain_saved_week(config, args.patient, with_names=with_names)
+        explanation = explain_saved_week(config, args.patient, with_names=with_names, with_what_if=with_what_if)
         if explanation is None:
             print("Nothing saved for this week yet, run without --saved to build one")
             return
     else:
-        explanation = run_explanation(config, args.patient, with_names=with_names)
+        explanation = run_explanation(config, args.patient, with_names=with_names, with_what_if=with_what_if)
     print(format_text(explanation, args.patient))
     if args.json:
         dump_json(explanation, args.json)
@@ -338,6 +339,7 @@ def parse_args():
     explain_parser.add_argument("--html", help="also write a single page to open in a browser")
     explain_parser.add_argument("--with-names", action="store_true", help="show patient names (off by default, the file then has names in it)")
     explain_parser.add_argument("--saved", action="store_true", help="explain the saved schedule instead of building one")
+    explain_parser.add_argument("--what-if", action="store_true", help="also show how much Free and Easy each data change would fill")
     explain_parser.set_defaults(func=explain_schedule)
 
     # NEW: add args for running only consumers (useful for separate consumer processes)

@@ -13,13 +13,13 @@ from pear_schedule.scheduler import trace
 from tests.unit_tests.test_build_schedules import SCHEDULER_CLASSES, _config, _freeze_now, _patch_all_views
 
 
-def _explain(monkeypatch, patient_ids=None):
+def _explain(monkeypatch, patient_ids=None, with_what_if=False):
     cfg = _config()
     for _, cls in SCHEDULER_CLASSES:
         monkeypatch.setattr(cls, "config", cfg, raising=False)
     with _freeze_now(monkeypatch), _patch_all_views():
         monkeypatch.setattr(explain, "current_week_start", lambda: __import__("datetime").datetime(2024, 3, 18))
-        return explain.run_explanation(cfg, patient_ids)
+        return explain.run_explanation(cfg, patient_ids, with_what_if=with_what_if)
 
 
 class TestParseSlots:
@@ -84,6 +84,13 @@ class TestRunExplanation:
         assert "Free and Easy:" in text
         assert "Patient 2" in text and "Patient 1:" not in text
         assert "DATA: no_eligible_activities" in text
+
+    def test_what_if_only_when_asked(self, monkeypatch):
+        assert "what_if" not in _explain(monkeypatch)
+        result = _explain(monkeypatch, with_what_if=True)
+        assert result["what_if"]["free_and_easy"] == result["summary"]["free_and_easy"]["total"]
+        json.dumps(result)
+        assert "What if (Free and Easy" in explain.format_text(result)
 
     def test_nan_becomes_null(self):
         import numpy as np
@@ -210,6 +217,14 @@ class TestExplainScheduleCli:
         with patch("pear_schedule.scheduler.explain.explain_saved_week", return_value=None):
             self._run(monkeypatch, {"json": None, "saved": True})
         assert "Nothing saved for this week yet" in capsys.readouterr().out
+
+    def test_what_if_flag(self, monkeypatch):
+        import app
+
+        monkeypatch.setattr("sys.argv", ["app.py", "explain_schedule", "-c", "configprod.py", "--what-if"])
+        assert app.parse_args().what_if is True
+        run = self._run(monkeypatch, {"json": None, "what_if": True})
+        assert run.call_args.kwargs["with_what_if"] is True
 
     def test_names_off_by_default(self, monkeypatch):
         import app
