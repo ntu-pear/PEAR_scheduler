@@ -3,283 +3,756 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Schedule Explainer</title>
+<title>Schedule Explained</title>
 <!--
-  Open this file in a browser and load the JSON written by:
-    python app.py explain_schedule -c configprod.py --json explain.json
-  Nothing is sent anywhere; the file is read locally.
+  Easiest: python app.py explain_schedule -c configprod.py --html schedule.html
+  (add --with-names to show patient names), then double-click schedule.html.
+  Or open this file and pick a JSON from --json. Nothing is sent anywhere.
 -->
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dfe3ea;
-    --compulsory: #e8935a; --recommended_routine: #8f6bd8; --group: #3fa58b;
-    --preferred: #4f8fe0; --adhoc: #d4577a; --medication: #b08a2e;
-    --fe-data: #c9ced8; --fe-logic: #d93b3b; --chip: #eef1f5;
+    --bg: #f5f6f8; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --border: #dfe3ea; --soft: #eef1f5;
+    --accent: #2f6fd0; --warn: #c4352f; --warn-bg: #fdecea; --ok: #2e7d4f; --ok-bg: #e7f4ec; --note-bg: #fff6e0;
+    --everyone: #e08a4f; --doctor: #8f6bd8; --routine: #6b5bb8; --group: #2f9a80;
+    --chosen: #4f8fe0; --request: #d4577a; --free: #d3d8e0; --free-text: #3b4250;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b3; --border: #2c323d;
-      --fe-data: #3a404c; --chip: #262b35;
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b3; --border: #2c323d; --soft: #252a34;
+      --accent: #6ea1f0; --warn: #f07a73; --warn-bg: #3a1f1e; --ok: #6cc592; --ok-bg: #1b3326; --note-bg: #352d17;
+      --free: #353b47; --free-text: #c9d0dc;
     }
   }
+  :root[data-theme="dark"] {
+    --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b3; --border: #2c323d; --soft: #252a34;
+    --accent: #6ea1f0; --warn: #f07a73; --warn-bg: #3a1f1e; --ok: #6cc592; --ok-bg: #1b3326; --note-bg: #352d17;
+    --free: #353b47; --free-text: #c9d0dc;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-  header h1 { font-size: 18px; margin: 0 16px 0 0; }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px 20px; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
-  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { background: var(--panel); border-bottom: 1px solid var(--border); padding: 12px 16px 0; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+  h1 { font-size: 20px; margin: 0; }
   .muted { color: var(--muted); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
-  .card .big { font-size: 22px; font-weight: 600; }
-  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--chip); margin-top: 6px; }
-  .bar span { display: block; height: 100%; }
-  .chip { display: inline-block; background: var(--chip); border-radius: 999px; padding: 1px 8px; margin: 2px 4px 2px 0; font-size: 12px; }
-  select, input[type=file] { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; }
-  .drop { border: 2px dashed var(--border); border-radius: 10px; padding: 40px; text-align: center; margin: 40px auto; max-width: 560px; }
-  .grid { display: grid; gap: 4px; overflow-x: auto; }
+  .small { font-size: 13px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; align-items: flex-end; }
+  .tabs button { font: inherit; background: none; border: 0; border-bottom: 3px solid transparent; padding: 8px 12px; color: var(--muted); cursor: pointer; }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .tabs .spacer { flex: 1; }
+  .tabs label { font-size: 13px; color: var(--muted); padding: 8px 0; cursor: pointer; }
+  .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--warn); color: #fff; font-size: 12px; text-align: center; margin-left: 4px; }
+  .page { padding: 16px; max-width: 1500px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  h2 { font-size: 17px; margin: 0 0 6px; }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  p { margin: 6px 0; }
+  ul { padding-left: 20px; margin: 6px 0; }
+  li { margin-bottom: 6px; }
+  button, input, select { font: inherit; color: inherit; }
+  .btn { background: var(--soft); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  .link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+  /* patients tab */
+  .patients { display: grid; grid-template-columns: 240px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+  .patients > *, .two > *, .cards > * { min-width: 0; }
+  .plist input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); margin-bottom: 8px; }
+  .plist ul { list-style: none; padding: 0; margin: 0; max-height: 70vh; overflow-y: auto; }
+  .plist li { margin: 0; }
+  .plist button { width: 100%; display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: 0; border-radius: 6px; padding: 7px 8px; cursor: pointer; }
+  .plist button:hover { background: var(--soft); }
+  .plist button[aria-current="true"] { background: var(--soft); font-weight: 600; }
+  .plist .free { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .lead { font-size: 15.5px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 12px; font-size: 13px; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -1px; margin-right: 5px; }
+  .gridwrap { overflow-x: auto; }
+  .grid { display: grid; gap: 3px; min-width: 560px; }
   .colhead { font-weight: 600; text-align: center; padding: 4px; }
-  .timehead { color: var(--muted); font-size: 12px; padding: 6px 4px; text-align: right; white-space: nowrap; }
-  .cell { border-radius: 6px; padding: 5px 7px; color: #fff; cursor: pointer; overflow: hidden; min-height: 34px; border: 2px solid transparent; }
+  .timehead { color: var(--muted); font-size: 12px; padding: 4px 6px 0 0; text-align: right; white-space: nowrap; }
+  .cell { border: 0; border-radius: 6px; padding: 4px 7px; color: #fff; cursor: pointer; overflow: hidden; min-height: 30px; text-align: left; display: block; width: 100%; }
   .cell:focus-visible, .cell.sel { outline: 3px solid var(--text); outline-offset: 1px; }
   .cell .t { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cell .s { font-size: 11px; opacity: .9; }
-  .cell.fe { background: var(--fe-data); color: var(--text); }
-  .cell.fe.logic { border-color: var(--fe-logic); background: repeating-linear-gradient(45deg, var(--fe-data), var(--fe-data) 6px, transparent 6px, transparent 12px); }
-  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 12px; font-size: 12px; }
-  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin-right: 4px; }
-  .timeline { border-left: 2px solid var(--border); margin: 6px 0 10px 6px; padding-left: 12px; }
-  .timeline div { margin-bottom: 6px; }
-  .reason { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-  h2 { font-size: 15px; margin: 0 0 8px; }
-  h3 { font-size: 13px; margin: 14px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
-  ul { padding-left: 18px; margin: 4px 0; }
-  .warn { color: var(--fe-logic); }
+  .cell .s { font-size: 11px; opacity: .92; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cell.free { background: var(--free); color: var(--free-text); }
+  .cell.free.avoid { background: repeating-linear-gradient(45deg, var(--free), var(--free) 6px, var(--warn-bg) 6px, var(--warn-bg) 12px); box-shadow: inset 0 0 0 2px var(--warn); }
+  .cell.bad { box-shadow: inset 0 0 0 2px var(--warn); }
+  aside.panel { position: sticky; top: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+  .tag { display: inline-block; border-radius: 999px; padding: 1px 9px; font-size: 12px; color: #fff; }
+  .why li { margin-bottom: 8px; }
+  .box { border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+  .box.warn { background: var(--warn-bg); }
+  .box.ok { background: var(--ok-bg); }
+  .box.note { background: var(--note-bg); }
+  .when { color: var(--muted); font-size: 13px; }
+
+  /* overview / data tabs */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .card .big { font-size: 26px; font-weight: 650; line-height: 1.2; margin: 2px 0 4px; }
+  .card.ok .big { color: var(--ok); }
+  .card.warn .big { color: var(--warn); }
+  .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--soft); margin: 6px 0; }
+  .bar span { display: block; height: 100%; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; white-space: nowrap; }
+  .tablewrap { overflow-x: auto; }
+  .two { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  ol.steps li { margin-bottom: 8px; }
+  .issue { border: 1px solid var(--border); border-left: 5px solid var(--warn); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; background: var(--panel); }
+  .issue.mid { border-left-color: var(--everyone); }
+  .issue.low { border-left-color: var(--muted); }
+  .issue .kind { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .issue .fix { margin-top: 6px; }
+  .issue .fix b { color: var(--ok); }
+
+  .tech-only { display: none; }
+  body.tech .tech-only { display: block; }
+  body.tech span.tech-only, body.tech code.tech-only { display: inline; }
+  code, .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+  .code { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+  .drop { border: 2px dashed var(--border); border-radius: 12px; padding: 32px 20px; text-align: center; margin: 40px auto; max-width: 560px; background: var(--panel); }
+
+  @media (max-width: 1150px) {
+    .patients { grid-template-columns: 220px minmax(0, 1fr); }
+    aside.panel { grid-column: 1 / -1; position: static; max-height: none; }
+  }
+  @media (max-width: 760px) {
+    .patients, .two { grid-template-columns: 1fr; }
+    .plist ul { max-height: 180px; }
+  }
+  @media print {
+    header .tabs, .plist, .drop { display: none; }
+    aside.panel { position: static; max-height: none; }
+  }
 </style>
 </head>
 <body>
 <header>
-  <h1>Schedule Explainer</h1>
-  <input type="file" id="file" accept="application/json">
-  <label>Patient <select id="patient" disabled></select></label>
-  <span class="muted" id="meta"></span>
+  <div class="top">
+    <h1>Schedule explained</h1>
+    <span class="muted" id="meta"></span>
+  </div>
+  <nav class="tabs" role="tablist" id="tabs" hidden>
+    <button role="tab" data-tab="patients" aria-selected="true">Patients</button>
+    <button role="tab" data-tab="overview" aria-selected="false">Centre overview</button>
+    <button role="tab" data-tab="data" aria-selected="false">Data to fix <span class="count" id="issueCount" hidden></span></button>
+    <span class="spacer"></span>
+    <label><input type="checkbox" id="tech"> Show technical details</label>
+  </nav>
 </header>
 
-<div id="empty" class="drop">
-  <p><strong>Drop an explanation JSON here</strong> or use the file picker.</p>
-  <p class="muted">Create one with<br><code>python app.py explain_schedule -c configprod.py --json explain.json</code></p>
+<div id="empty" class="drop" hidden>
+  <p><strong>Choose a schedule file to view</strong></p>
+  <p><input type="file" id="file" accept="application/json,.json"></p>
+  <p class="muted small">You can also drag the file onto this page.<br>
+    Make one with <code>python app.py explain_schedule -c configprod.py --html schedule.html</code></p>
 </div>
 
-<main id="app" hidden>
-  <section>
-    <div class="cards" id="cards"></div>
-    <div class="panel">
+<div class="page" id="tab-patients" hidden>
+  <div class="patients">
+    <nav class="panel plist" aria-label="Patients">
+      <input type="search" id="search" placeholder="Find a patient" aria-label="Find a patient">
+      <ul id="plist"></ul>
+    </nav>
+    <section class="panel">
       <h2 id="ptitle"></h2>
+      <p class="lead" id="plead"></p>
       <div class="legend" id="legend"></div>
-      <div class="grid" id="grid"></div>
-    </div>
-  </section>
-  <aside class="panel" id="detail"><p class="muted">Click a slot to see how it was decided.</p></aside>
-</main>
+      <div class="gridwrap"><div class="grid" id="grid"></div></div>
+      <p class="muted small">Click any block to see why it is there. ♥ liked · 💊 medication given · ⓘ looks unusual but follows the rules · red outline: something to check</p>
+    </section>
+    <aside class="panel" id="detail"></aside>
+  </div>
+</div>
 
+<div class="page" id="tab-overview" hidden></div>
+<div class="page" id="tab-data" hidden></div>
+
+<!-- EXPLAIN_DATA -->
 <script>
-const STAGE_LABEL = {
-  compulsory: "Compulsory", recommended_routine: "Recommended / routine", group: "Group",
-  preferred: "Gap filling (preferred)", adhoc: "Ad-hoc", medication: "Medication",
+const KIND = {
+  everyone: "For everyone", doctor: "Doctor recommended", routine: "Routine", group: "Group session",
+  chosen: "Picked to fill time", request: "Special request", free: "Free and Easy",
 };
-const REASON = {
-  fixed_slot: "Compulsory activity at its fixed slot. Compulsory applies to every patient, exclusions and preferences don't change it.",
-  out_of_bounds: "The fixed slot is outside the centre's hours that day, so it was dropped.",
-  slot_occupied: "Another compulsory activity already holds this slot.",
-  most_constrained_fixed_slot: "Recommended activity with the fewest remaining fixed slots goes first.",
-  no_valid_fixed_slot: "None of the recommended activity's fixed slots were free or allowed.",
-  expired: "Recommendation ended before this week.",
-  routine_slot: "Routine placed at its requested slot.",
-  routine_excluded: "Routine is excluded on this day.",
-  routine_out_of_bounds: "Routine slot is outside opening hours.",
-  routine_slot_held_by_higher_priority: "Slot holds something a routine can't move (e.g. compulsory).",
-  routine_cannot_reschedule_occupant: "The activity in this slot had no other free fixed slot to move to.",
-  displaced_by_routine: "Moved here to make room for a routine.",
-  first_free_run: "Flexible recommended activity in the first free stretch long enough.",
-  no_free_run: "No free stretch was long enough for this recommended activity.",
-  group_timeslot: "Group session at its group timeslot.",
-  recommended: "In this group session because a doctor recommended it.",
-  recommended_over_dislike: "A doctor recommended this, which outranks the patient's dislike (recommendation > preference).",
-  liked: "In this group session because the patient likes it.",
-  filled_to_min_size: "Added so the session reaches its minimum group size. Patients with the fewest group activities go first, never anyone excluded or who dislikes it.",
-  top_up_to_weekly_target: "Added to reach the weekly target of group activities, using a session that was already running.",
-  excluded: "Excluded on every day it could go, and an exclusion outranks a recommendation.",
-  liked_but_not_recommended: "Patient likes it, but a doctor marked it not recommended, which outranks a like.",
-  liked_but_excluded: "Patient likes it, but it's excluded for them all week.",
-  liked_but_fixed_time_taken: "Patient likes it, but it only runs at fixed times and those were already taken by higher-priority activities.",
-  liked_but_no_gap_long_enough: "Patient likes it, but no free gap this week was long enough for it.",
-  liked_but_gaps_used: "Patient likes it, but the free gaps went to other activities they like (or it was already used that day).",
-  below_min_group_size: "Not enough eligible patients to reach the minimum group size.",
-  preferred: "Activity the patient likes.",
-  neutral: "Allowed activity (neutral preference). When several fit equally, greedy picks one at random, optimal prefers what the patient had least this week.",
-  no_candidate_fits: "No eligible activity fit this gap.",
-  candidate_too_long: "The chosen activity was longer than the gap.",
-  adhoc_request: "Changed by an ad-hoc request for these days, it replaces whatever was planned here.",
-  stage_exception: "This stage crashed for the patient; see server logs.",
-  LOGIC: "Avoidable: a valid activity could have filled this slot.",
-  no_eligible_activities: "Every individual activity is excluded, disliked or not recommended today.",
-  pool_exhausted_today: "Every eligible activity is already on this day (no repeats).",
-  no_fit_for_gap_length: "Only longer activities are left; the gap is too short.",
-  fixed_slot_elsewhere: "Only activities fixed to other times would fit.",
-};
-// correct by the rule priority, but easy to mistake for a bug
+// correct by the rule order, but easy to mistake for a bug
 const OVERRIDES = new Set(["recommended_over_dislike", "filled_to_min_size", "top_up_to_weekly_target", "adhoc_request", "displaced_by_routine"]);
+const FREE_WHY = {
+  LOGIC: { what: "An allowed activity would have fit here", help: "Report to the scheduler team, this is avoidable." },
+  no_eligible_activities: { what: "Every activity is excluded, disliked or not recommended for this patient", help: "Review the patient's exclusions, dislikes and doctor's 'not recommended' list." },
+  pool_exhausted_today: { what: "Every allowed activity is already on that day", help: "Add more individual activities (the same activity is never repeated in a day)." },
+  no_fit_for_gap_length: { what: "The gap is too short for the activities left", help: "Add some 30-minute activities that can run at any time." },
+  fixed_slot_elsewhere: { what: "The activities that would fit only run at other set times", help: "Make some activities flexible (no set time), or add flexible ones." },
+};
+const RULE_NAME = {
+  R1: "Excluded activity scheduled", R2: "Not-recommended activity scheduled", R3: "Disliked activity scheduled",
+  R4: "Activity for everyone missing", R7: "Same activity twice in a day", R8: "Free and Easy that could be filled",
+  R9: "Schedule has the wrong shape",
+};
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let data = null, selected = null;
+const q = (s) => `“${esc(s)}”`;
+const list = (xs) => { xs = [...new Set([].concat(xs || []).filter(Boolean))].map(q); return xs.length < 2 ? (xs[0] || "another activity") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]; };
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+let data = null, current = null, slotMins = 30;
 
-function load(json) {
-  data = json;
-  $("empty").hidden = true; $("app").hidden = false;
-  const ids = Object.keys(data.patients).sort((a, b) => Number(a) - Number(b));
-  $("patient").innerHTML = ids.map(id => `<option value="${esc(id)}">Patient ${esc(id)}</option>`).join("");
-  $("patient").disabled = !ids.length;
-  $("meta").textContent = `Week of ${data.week_start} · generated ${data.generated_at}`;
-  renderCards();
-  renderLegend();
-  if (ids.length) renderPatient(ids[0]);
+const nameOf = (pid) => (data.patients[pid] && data.patients[pid].name) || `Patient ${pid}`;
+const hours = (slots) => { const h = slots * slotMins / 60; return h === 1 ? "1 hour" : `${Math.round(h * 10) / 10} hours`; };
+const start = (label) => (label || "").split("-")[0];
+const end = (label) => (label || "").split("-")[1] || "";
+const span = (day, s, n) => `${start(day.labels[s])}–${end(day.labels[s + n - 1])}`;
+const short = (d) => String(d).slice(0, 3);
+
+
+function sentence(e, who) {
+  const a = q(e.activity || "this activity"), d = e.details || {};
+  switch (e.reason) {
+    case "fixed_slot": return `${a} is a centre activity for everyone at this time.`;
+    case "out_of_bounds": return `${a} is set for a time the centre is closed, so it was left out.`;
+    case "slot_occupied": return `${a} is also set for everyone at this time, but ${list(d.occupied_by)} is already here. Two activities for everyone share the same time, so only one can happen. This needs fixing in the activity data.`;
+    case "most_constrained_fixed_slot": return `A doctor recommended ${a} for ${esc(who)}. It only runs at set times, so it was booked before other activities.`;
+    case "no_valid_fixed_slot": return `A doctor recommended ${a} for ${esc(who)}, but every time it runs was already taken by something more important.`;
+    case "expired": return `The recommendation for ${a} has ended, so it was not used this week.`;
+    case "routine_slot": return `${a} is part of ${esc(who)}'s routine at this time.`;
+    case "routine_excluded": return `${esc(who)}'s routine ${a} was skipped this day because it is excluded for them.`;
+    case "routine_out_of_bounds": return `${esc(who)}'s routine ${a} is set for a time the centre is closed.`;
+    case "routine_slot_held_by_higher_priority": return `${esc(who)}'s routine ${a} could not go here because ${list(d.occupied_by)} is already here and can't be moved.`;
+    case "routine_cannot_reschedule_occupant": return `${esc(who)}'s routine ${a} could not go here: ${list(d.occupied_by)} is here and had no other time to move to.`;
+    case "displaced_by_routine": return `${a} was moved to this time to make room for ${esc(who)}'s routine.`;
+    case "first_free_run": return `A doctor recommended ${a} for ${esc(who)}. It was put in the first free time long enough for it.`;
+    case "no_free_run": return `A doctor recommended ${a} for ${esc(who)}, but no free time was long enough for it.`;
+    case "group_timeslot": return `${a} is a group session at this time.`;
+    case "recommended": return `${esc(who)} is in this group session because a doctor recommended it.`;
+    case "recommended_over_dislike": return `${esc(who)} doesn't like ${a}, but a doctor recommended it. A doctor's recommendation comes before likes and dislikes.`;
+    case "liked": return `${esc(who)} is in this group session because they like it.`;
+    case "filled_to_min_size": return `${a} needs a minimum number of people to run. ${esc(who)} was added to make up the numbers. They don't dislike it and it isn't excluded for them. People with the fewest group sessions are picked first.`;
+    case "top_up_to_weekly_target": return `${esc(who)} was added to a group session that was already running, so they get enough group activities this week.`;
+    case "excluded": return `${a} is excluded for ${esc(who)}. An exclusion comes before a doctor's recommendation, so it was left out.`;
+    case "liked_but_not_recommended": return `${esc(who)} likes ${a}, but their doctor marked it as not recommended. The doctor's advice comes first.`;
+    case "liked_but_excluded": return `${esc(who)} likes ${a}, but it is excluded for them this week.`;
+    case "liked_but_fixed_time_taken": return `${esc(who)} likes ${a}, but it only runs at set times, and those were already taken by more important activities.`;
+    case "liked_but_no_gap_long_enough": return `${esc(who)} likes ${a}, but no free time this week was long enough for it.`;
+    case "liked_but_gaps_used": return `${esc(who)} likes ${a}, but the free time went to other activities they like.`;
+    case "below_min_group_size": return `${a} did not run: it needs ${d.min_people || "more"} people and not enough could join.`;
+    case "preferred": return `${esc(who)} likes ${a}, so it was picked for this free time.`;
+    case "neutral": return `${a} was picked for this free time. ${esc(who)} has no strong feeling about it and it is allowed for them.`;
+    case "no_candidate_fits": return `No allowed activity fit this free time.`;
+    case "candidate_too_long": return `The activity picked was longer than the free time.`;
+    case "adhoc_request": return `Changed by a special request: ${a} replaces ${q(d.replaced || "the planned activity")} on these days.`;
+    case "stage_exception": return `Something went wrong while planning this part of ${esc(who)}'s schedule. The scheduler team should check the server logs.`;
+    default: return `${a}: ${esc(String(e.outcome || "").toLowerCase())}.`;
+  }
 }
 
-function renderCards() {
-  const s = data.summary, fe = s.free_and_easy;
-  const pct = s.slots ? Math.round(100 * fe.total / s.slots) : 0;
-  const logicW = fe.total ? 100 * fe.avoidable_logic / fe.total : 0;
-  const reasons = Object.entries(fe.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1])
-    .map(([r, n]) => `<span class="chip" title="${esc(REASON[r] || "")}">${esc(r)}: ${n}</span>`).join("");
-  const viol = Object.entries(s.violations_by_rule || {}).map(([r, n]) => `<span class="chip warn">${esc(r)}: ${n}</span>`).join("") || "none";
-  const centre = (data.centre_events || []).map(e => `<li><span class="reason">${esc(e.reason)}</span> ${esc(e.activity)}</li>`).join("");
-  $("cards").innerHTML = `
-    <div class="card"><div class="muted">Patients · slots</div><div class="big">${s.patients} · ${s.slots}</div></div>
-    <div class="card"><div class="muted">Free and Easy</div><div class="big">${fe.total} (${pct}%)</div>
-      <div class="bar" title="avoidable vs unavoidable"><span style="width:${logicW}%;background:var(--fe-logic)"></span><span style="width:${100 - logicW}%;background:var(--fe-data)"></span></div>
-      <div class="muted">${fe.avoidable_logic} avoidable (logic) · ${fe.unavoidable_data} unavoidable (data)</div>
-      <div class="muted">${fe.avoidable_rearranging_gap_fill ?? 0} avoidable if gap filling re-arranged</div></div>
-    <div class="card"><div class="muted">Why unavoidable</div>${reasons || "none"}</div>
-    <div class="card"><div class="muted">Rule violations</div>${viol}${centre ? `<div class="muted" style="margin-top:6px">Centre-wide</div><ul>${centre}</ul>` : ""}</div>`;
+function freeSentence(reason, who, n) {
+  const len = hours(n);
+  switch (reason) {
+    case "LOGIC": return `This time could have been filled: an activity ${esc(who)} is allowed to do would fit here. Please report this to the scheduler team.`;
+    case "no_eligible_activities": return `Every activity that could go here is excluded, disliked by ${esc(who)}, or not recommended by their doctor.`;
+    case "pool_exhausted_today": return `Every activity ${esc(who)} is allowed to do is already on this day, and activities are not repeated on the same day.`;
+    case "no_fit_for_gap_length": return `This free time is only ${len} long, and the activities left need longer.`;
+    case "fixed_slot_elsewhere": return `The activities that would fit only run at other set times, so none can go here.`;
+    default: return `Nothing allowed fit this free time.`;
+  }
 }
 
-function renderLegend() {
-  $("legend").innerHTML = Object.entries(STAGE_LABEL).filter(([k]) => k !== "medication")
-    .map(([k, v]) => `<span><i style="background:var(--${k})"></i>${esc(v)}</span>`).join("") +
-    `<span><i style="background:var(--fe-data)"></i>Free and Easy (unavoidable)</span>` +
-    `<span><i style="border:2px solid var(--fe-logic)"></i>Free and Easy (avoidable)</span>`;
+function tech(e) {
+  const d = Object.keys(e.details || {}).length ? " " + JSON.stringify(e.details) : "";
+  return `<div class="code tech-only">${esc(e.stage)} · ${esc(e.outcome)} · ${esc(e.reason)}${esc(d)}</div>`;
 }
+
 
 function blocks(day) {
-  // merge consecutive identical slots, like the real schedule view
+  // merge consecutive slots of the same activity, like the real schedule
   const out = [];
   day.slots.forEach((slot, i) => {
     const prev = out[out.length - 1];
-    // same activity, even if only one half carries the medication note
-    if (prev && prev.slot.activity === slot.activity && prev.slot.placed_by === slot.placed_by && prev.slot.free_and_easy === slot.free_and_easy) {
-      prev.span += 1;
-    } else {
-      out.push({ start: i, span: 1, slot });
-    }
+    if (prev && prev.slot.activity === slot.activity && prev.slot.placed_by === slot.placed_by && prev.slot.free_and_easy === slot.free_and_easy) prev.n += 1;
+    else out.push({ s: i, n: 1, slot });
   });
   return out;
 }
 
-function renderPatient(pid) {
-  $("patient").value = pid;
-  const p = data.patients[pid];
-  const fe = p.free_and_easy;
-  $("ptitle").innerHTML = `Patient ${esc(pid)} <span class="muted">· Free and Easy ${fe.total} (${fe.avoidable_logic} avoidable)` +
-    (p.violations.length ? ` · <span class="warn">${p.violations.length} rule violation(s)</span>` : "") + `</span>`;
-  const days = p.days;
-  const rows = Math.max(...days.map(d => d.slots.length));
-  const longest = days.find(d => d.slots.length === rows);
-  const grid = $("grid");
-  grid.style.gridTemplateColumns = `80px repeat(${days.length}, minmax(120px, 1fr))`;
-  grid.style.gridTemplateRows = `auto repeat(${rows}, minmax(34px, auto))`;
-  let html = `<div></div>` + days.map((d, i) => `<div class="colhead" style="grid-column:${i + 2};grid-row:1">${esc(d.day)}</div>`).join("");
-  for (let r = 0; r < rows; r++) html += `<div class="timehead" style="grid-column:1;grid-row:${r + 2}">${esc(longest.labels[r] || "")}</div>`;
-  days.forEach((d, di) => {
-    blocks(d).forEach(b => {
-      const s = b.slot, isFe = s.activity === "Free and Easy";
-      const cls = isFe ? `cell fe ${s.free_and_easy === "LOGIC" ? "logic" : ""}` : "cell";
-      const bg = isFe ? "" : `background:var(--${s.placed_by || "preferred"})`;
-      const end = d.labels[b.start + b.span - 1] || "";
-      const time = `${(d.labels[b.start] || "").split("-")[0]}-${end.split("-")[1] || ""}`;
-      const sub = isFe ? (s.free_and_easy === "LOGIC" ? "avoidable" : (s.free_and_easy || "")) : (STAGE_LABEL[s.placed_by] || "");
-      const med = d.slots.slice(b.start, b.start + b.span).some(x => x.value.includes("Give Medication")) ? " 💊" : "";
-      const odd = d.slots.slice(b.start, b.start + b.span).some(x => x.events.some(e => OVERRIDES.has(e.reason)))
-        ? ` <span title="Follows the rules, see why">ⓘ</span>` : "";
-      html += `<div class="${cls}" tabindex="0" role="button" data-d="${di}" data-s="${b.start}" data-n="${b.span}"
-        style="grid-column:${di + 2};grid-row:${b.start + 2} / span ${b.span};${bg}"
-        aria-label="${esc(d.day)} ${esc(time)} ${esc(s.activity)}">
-        <div class="t">${esc(s.activity)}${med}${odd}</div><div class="s">${esc(time)} · ${esc(sub)}</div></div>`;
+function blockEvents(day, b) {
+  const out = [], seen = new Set();
+  for (let k = b.s; k < b.s + b.n; k++) (day.slots[k].events || []).forEach(e => {
+    const key = `${e.outcome}|${e.reason}|${e.activity}`;
+    if (!seen.has(key)) { seen.add(key); out.push({ ...e, at: k }); }
+  });
+  return out;
+}
+
+function kindOf(day, b) {
+  const s = b.slot;
+  if (s.activity === "Free and Easy") return "free";
+  const ev = blockEvents(day, b);
+  switch (s.placed_by) {
+    case "compulsory": return "everyone";
+    case "recommended_routine": return ev.some(e => e.reason === "routine_slot") ? "routine" : "doctor";
+    case "group": return "group";
+    case "adhoc": return "request";
+    default: return "chosen";
+  }
+}
+
+function meds(day, b) {
+  const out = [];
+  for (let k = b.s; k < b.s + b.n; k++) {
+    const v = day.slots[k].value || "", i = v.indexOf(" | ");
+    if (i < 0) continue;
+    v.slice(i + 3).split(/,?\s*Give Medication/).filter(Boolean).forEach(m => {
+      const [time, rest] = [m.slice(1, m.indexOf(":")), m.slice(m.indexOf(":") + 1)];
+      const [what, note] = rest.split("**");
+      out.push(`${time.length === 4 ? time.slice(0, 2) + ":" + time.slice(2) : time} ${what.trim()}${note ? ` (${note.trim()})` : ""}`);
     });
+  }
+  return [...new Set(out)];
+}
+
+function violationsAt(p, d, s, n) {
+  return p.violations.filter(v => v.day === d && (v.slot == null || (v.slot >= s && v.slot < s + n)));
+}
+
+function clashFor(p, v) {
+  // a compulsory activity missing because another compulsory one holds its time
+  const day = p.days[v.day];
+  if (!day) return null;
+  for (const slot of day.slots) for (const e of slot.events || [])
+    if (e.reason === "slot_occupied" && e.activity === v.activity) return e;
+  return null;
+}
+
+const isClash = (p, v) => v.rule === "R4" && !!clashFor(p, v);
+const realViolations = (p) => p.violations.filter(v => !isClash(p, v));
+
+function groupViolations(p) {
+  const by = new Map();
+  p.violations.forEach(v => {
+    const key = `${v.rule}|${v.activity || ""}`;
+    if (!by.has(key)) by.set(key, { ...v, where: [] });
+    const day = p.days[v.day];
+    if (day) by.get(key).where.push(`${short(day.day)}${v.slot != null ? " " + start(day.labels[v.slot]) : ""}`);
   });
+  return [...by.values()];
+}
+
+function violationSentence(p, v, who) {
+  const a = q(v.activity || "An activity");
+  switch (v.rule) {
+    case "R1": return `${a} was scheduled even though it is excluded for ${esc(who)}.`;
+    case "R2": return `${a} was scheduled even though the doctor marked it as not recommended.`;
+    case "R3": return `${a} was scheduled even though ${esc(who)} dislikes it.`;
+    case "R4": {
+      const c = clashFor(p, v);
+      return c ? `${a} should be here for everyone but is missing, because ${list(c.details && c.details.occupied_by)} is set for the same time. This is a clash in the activity data, not a scheduler fault.`
+               : `${a} should be here for everyone but is missing.`;
+    }
+    case "R7": return `${a} is scheduled more than once on the same day.`;
+    case "R8": return `Some Free and Easy time could have been filled with an allowed activity.`;
+    default: return esc(v.message);
+  }
+}
+
+
+function dot(p) {
+  if (realViolations(p).length) return `<span title="Needs attention" style="color:var(--warn)">● </span>`;
+  if (p.violations.length) return `<span title="Affected by a clash in the activity data" style="color:var(--everyone)">● </span>`;
+  return "";
+}
+
+function patientIds() {
+  return Object.keys(data.patients).sort((a, b) => Number(a) - Number(b));
+}
+
+function renderList() {
+  const term = $("search").value.trim().toLowerCase();
+  $("plist").innerHTML = patientIds()
+    .filter(pid => !term || nameOf(pid).toLowerCase().includes(term) || pid.includes(term))
+    .map(pid => {
+      const p = data.patients[pid];
+      return `<li><button data-pid="${esc(pid)}" aria-current="${pid === current}"><span>${dot(p)}${esc(nameOf(pid))}</span><span class="free">${esc(hours(p.free_and_easy.total))} free</span></button></li>`;
+    }).join("") || `<li class="muted small">No match</li>`;
+  $("plist").querySelectorAll("button").forEach(b => b.addEventListener("click", () => showPatient(b.dataset.pid)));
+}
+
+function showPatient(pid) {
+  current = pid;
+  renderList();
+  const p = data.patients[pid], who = nameOf(pid), fe = p.free_and_easy;
+  const total = p.days.reduce((n, d) => n + d.slots.length, 0);
+  const pct = total ? Math.round(100 * fe.total / total) : 0;
+  $("ptitle").innerHTML = `${esc(who)} ${p.name ? `<span class="muted small tech-only">· ID ${esc(pid)}</span>` : ""}`;
+  let lead = fe.total
+    ? `${esc(who)} has <b>${hours(fe.total)}</b> of Free and Easy this week (${pct}% of their time). `
+    : `${esc(who)} has no Free and Easy this week. `;
+  if (fe.total) lead += fe.avoidable_logic
+    ? `<span style="color:var(--warn)"><b>${hours(fe.avoidable_logic)}</b> of it could have been filled.</span> `
+    : `None of it could have been filled with this week's activity data. `;
+  if (realViolations(p).length) lead += `<span style="color:var(--warn)">Some things need attention, see the right.</span>`;
+  else if (p.violations.length) lead += `Some times are affected by a clash in the activity data, see the right.`;
+  $("plead").innerHTML = lead;
+  renderGrid(pid);
+  showSummary(pid);
+}
+
+function renderGrid(pid) {
+  const p = data.patients[pid], days = p.days;
+  const rows = Math.max(0, ...days.map(d => d.slots.length));
+  const longest = days.find(d => d.slots.length === rows) || { labels: [] };
+  const grid = $("grid");
+  grid.style.gridTemplateColumns = `52px repeat(${days.length}, minmax(96px, 1fr))`;
+  grid.style.gridTemplateRows = `auto repeat(${rows}, minmax(30px, auto))`;
+  let html = days.map((d, i) => `<div class="colhead" style="grid-column:${i + 2};grid-row:1">${esc(d.day)}</div>`).join("");
+  for (let r = 0; r < rows; r++) html += `<div class="timehead" style="grid-column:1;grid-row:${r + 2}">${esc(start(longest.labels[r]))}</div>`;
+  const used = new Set();
+  days.forEach((d, di) => blocks(d).forEach(b => {
+    const k = kindOf(d, b), ev = blockEvents(d, b), s = b.slot;
+    used.add(k);
+    const liked = ev.some(e => e.reason === "preferred" || e.reason === "liked") ? " ♥" : "";
+    const med = meds(d, b).length ? " 💊" : "";
+    const odd = ev.some(e => OVERRIDES.has(e.reason)) ? " ⓘ" : "";
+    const bad = violationsAt(p, di, b.s, b.n).length > 0;
+    const avoid = s.free_and_easy === "LOGIC";
+    const cls = `cell${k === "free" ? " free" : ""}${avoid ? " avoid" : ""}${bad ? " bad" : ""}`;
+    const bg = k === "free" ? "" : `background:var(--${k})`;
+    html += `<button class="${cls}" data-d="${di}" data-s="${b.s}" data-n="${b.n}"
+      style="grid-column:${di + 2};grid-row:${b.s + 2} / span ${b.n};${bg}"
+      aria-label="${esc(d.day)} ${esc(span(d, b.s, b.n))}: ${esc(s.activity)}, ${esc(KIND[k])}">
+      <div class="t">${esc(s.activity)}${liked}${med}${odd}</div>${k !== "free" || b.n > 1 ? `<div class="s">${esc(span(d, b.s, b.n))}</div>` : ""}</button>`;
+  }));
   grid.innerHTML = html;
-  grid.querySelectorAll(".cell").forEach(el => {
-    const open = () => showDetail(pid, Number(el.dataset.d), Number(el.dataset.s), Number(el.dataset.n), el);
-    el.addEventListener("click", open);
-    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
-  });
-  showPatientNotes(pid);
+  $("legend").innerHTML = Object.keys(KIND).filter(k => used.has(k))
+    .map(k => `<span><i style="background:var(--${k})"></i>${esc(KIND[k])}</span>`).join("");
+  grid.querySelectorAll(".cell").forEach(el => el.addEventListener("click", () => showBlock(pid, el)));
 }
 
-function showPatientNotes(pid) {
-  const p = data.patients[pid];
-  const at = v => v.day == null ? "" : `${p.days[v.day].day}${v.slot != null ? ` ${p.days[v.day].labels[v.slot] || ""}` : ""}`;
-  const viol = p.violations.map(v => `<li>${at(v) ? `<span class="muted">${esc(at(v))}</span> ` : ""}<b>${esc(v.rule)}</b> ${esc(v.message)}${v.activity ? `: <i>${esc(v.activity)}</i>` : ""}</li>`).join("");
-  // drops recorded at a slot too, not just the ones without one
-  const slotDrops = [];
-  p.days.forEach(day => day.slots.forEach((slot, i) => slot.events
-    .filter(e => e.outcome === "DROPPED" || e.outcome === "ERROR")
-    .forEach(e => slotDrops.push({ ...e, where: `${day.day} ${day.labels[i] || ""}` }))));
-  const odd = [];
-  p.days.forEach(day => day.slots.forEach((slot, i) => slot.events
-    .filter(e => OVERRIDES.has(e.reason))
-    .forEach(e => odd.push({ ...e, where: `${day.day} ${day.labels[i] || ""}` }))));
-  const liked = p.notes.filter(n => n.reason.startsWith("liked_but_"));
-  const item = n => `<li>${n.where ? `<span class="muted">${esc(n.where)}</span> ` : ""}<b>${esc(n.activity || "")}</b> <span class="reason">${esc(n.reason)}</span><div class="muted">${esc(REASON[n.reason] || "")}</div></li>`;
-  const notes = [...p.notes.filter(n => !n.reason.startsWith("liked_but_")), ...slotDrops].map(n => `<li>${n.where ? `<span class="muted">${esc(n.where)}</span> ` : ""}<span class="reason">${esc(n.outcome)} ${esc(n.reason)}</span> ${esc(n.activity || "")}${n.details && n.details.occupied_by ? ` <span class="muted">(slot held by ${esc([].concat(n.details.occupied_by).join(", "))})</span>` : ""}<div class="muted">${esc(REASON[n.reason] || "")}</div></li>`).join("");
-  const fe = Object.entries(p.free_and_easy.unavoidable_by_reason).map(([r, n]) => `<li><span class="reason">${esc(r)}</span>: ${n}<div class="muted">${esc(REASON[r] || "")}</div></li>`).join("");
-  $("detail").innerHTML = `<h2>Patient ${esc(pid)}</h2>
-    <p class="muted">Click a slot to see how it was decided.</p>
-    <h3>Rule violations</h3>${viol ? `<ul>${viol}</ul>` : `<p class="muted">None</p>`}
-    <h3>Dropped or not placed</h3>${notes ? `<ul>${notes}</ul>` : `<p class="muted">Nothing dropped</p>`}
-    <h3>Looks odd, follows the rules</h3>${odd.length ? `<ul>${odd.map(item).join("")}</ul>` : `<p class="muted">None</p>`}
-    <h3>Liked but not scheduled</h3>${liked.length ? `<ul>${liked.map(item).join("")}</ul>` : `<p class="muted">None</p>`}
-    <h3>Unavoidable Free and Easy</h3>${fe ? `<ul>${fe}</ul>` : `<p class="muted">None</p>`}`;
-}
-
-function showDetail(pid, d, s, n, el) {
+function showBlock(pid, el) {
   document.querySelectorAll(".cell.sel").forEach(c => c.classList.remove("sel"));
   el.classList.add("sel");
-  const day = data.patients[pid].days[d], slot = day.slots[s];
-  const hist = slot.history.map(h => `<div><b>${esc(STAGE_LABEL[h.stage] || h.stage)}</b> wrote <i>${esc(h.activity)}</i>${h.previous ? ` <span class="muted">(replacing ${esc(h.previous)})</span>` : ""}</div>`).join("");
-  // a block can span several slots, show decisions from all of them
-  const blockEvents = [];
-  for (let k = s; k < s + (n || 1); k++) day.slots[k].events.forEach(e => blockEvents.push({ ...e, at: n > 1 ? day.labels[k] : "" }));
-  const events = blockEvents.map(e => `<li>${e.at ? `<span class="muted">${esc(e.at)}</span> ` : ""}<span class="reason">${esc(e.outcome)} · ${esc(e.reason)}</span><div class="muted">${esc(REASON[e.reason] || "")}</div>${Object.keys(e.details || {}).length ? `<div class="reason muted">${esc(JSON.stringify(e.details))}</div>` : ""}</li>`).join("");
-  const fe = slot.free_and_easy ? `<h3>Free and Easy</h3><p class="${slot.free_and_easy === "LOGIC" ? "warn" : ""}"><span class="reason">${esc(slot.free_and_easy)}</span><br>${esc(REASON[slot.free_and_easy] || "")}</p>` : "";
-  $("detail").innerHTML = `<h2>${esc(slot.activity || "(empty)")}</h2>
-    <div class="muted">${esc(day.day)} ${esc((day.labels[s] || "").split("-")[0])}-${esc((day.labels[s + (n || 1) - 1] || "").split("-")[1] || "")} · Patient ${esc(pid)}</div>
-    ${[...new Set(day.slots.slice(s, s + (n || 1)).map(x => x.value).filter(v => v !== slot.activity))].map(v => `<p class="reason muted">${esc(v)}</p>`).join("")}
-    ${fe}
-    <h3>How this slot was filled</h3><div class="timeline">${hist || `<div class="muted">No stage wrote this slot.</div>`}</div>
-    <h3>Decisions here</h3>${events ? `<ul>${events}</ul>` : `<p class="muted">No recorded decisions at this slot.</p>`}
-    <p><a href="#" id="back">Back to patient summary</a></p>`;
-  $("back").addEventListener("click", e => { e.preventDefault(); el.classList.remove("sel"); showPatientNotes(pid); });
+  const p = data.patients[pid], who = nameOf(pid);
+  const d = Number(el.dataset.d), b = { s: Number(el.dataset.s), n: Number(el.dataset.n) };
+  const day = p.days[d];
+  b.slot = day.slots[b.s];
+  const k = kindOf(day, b), ev = blockEvents(day, b);
+  const why = [];
+  if (k === "free") {
+    const reasons = [...new Set(day.slots.slice(b.s, b.s + b.n).map(x => x.free_and_easy).filter(Boolean))];
+    reasons.forEach(r => why.push(`<li>${freeSentence(r, who, b.n)}${r === "LOGIC" ? "" : `<div class="when">This is a data limit, not a scheduler fault.</div>`}<div class="code tech-only">${esc(r)}</div></li>`));
+    if (!reasons.length) why.push(`<li>Nothing allowed fit this free time.</li>`);
+  }
+  ev.filter(e => !(k === "free" && e.outcome === "FREE_AND_EASY")).forEach(e => {
+    const at = b.n > 1 && e.at !== b.s ? `<div class="when">at ${esc(start(day.labels[e.at]))}</div>` : "";
+    why.push(`<li>${sentence(e, who)}${at}${tech(e)}</li>`);
+  });
+  if (!why.length) why.push(`<li class="muted">No decision was recorded for this time.</li>`);
+  const odd = ev.filter(e => OVERRIDES.has(e.reason));
+  const here = violationsAt(p, d, b.s, b.n);
+  const bad = groupViolations({ ...p, violations: here.filter(v => !isClash(p, v)) });
+  const clash = groupViolations({ ...p, violations: here.filter(v => isClash(p, v)) });
+  const m = meds(day, b);
+  const hist = day.slots.slice(b.s, b.s + b.n).flatMap((x, i) => (x.history || []).map(h =>
+    `${start(day.labels[b.s + i])} ${h.stage} wrote ${h.activity}${h.previous ? ` (was ${h.previous})` : ""}`));
+  $("detail").innerHTML = `
+    <p><button class="link" id="back">← ${esc(who)}'s summary</button></p>
+    <h2>${esc(b.slot.activity || "(empty)")}</h2>
+    <p class="muted">${esc(day.day)} ${esc(span(day, b.s, b.n))} · <span class="tag" style="background:var(--${k});${k === "free" ? "color:var(--free-text)" : ""}">${esc(KIND[k])}</span></p>
+    ${bad.length ? `<div class="box warn"><b>Needs attention</b><ul>${bad.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul></div>` : ""}
+    ${clash.length ? `<div class="box note"><b>Affected by a clash in the activity data</b><ul>${clash.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul></div>` : ""}
+    ${odd.length ? `<div class="box note"><b>ⓘ Looks unusual, but follows the rules.</b></div>` : ""}
+    <h3>Why is this here?</h3><ul class="why">${why.join("")}</ul>
+    ${m.length ? `<h3>💊 Medication during this time</h3><ul>${m.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    <div class="tech-only"><h3>How each step filled this time</h3><div class="code">${esc(hist.join("\n")) || "No step wrote here."}</div></div>`;
+  $("back").addEventListener("click", () => { el.classList.remove("sel"); showSummary(pid); });
+}
+
+function showSummary(pid) {
+  const p = data.patients[pid], who = nameOf(pid);
+  const where = (day, s) => `${short(day.day)} ${start(day.labels[s])}`;
+  const item = v => `<li>${violationSentence(p, v, who)}<div class="when">${esc(v.where.slice(0, 6).join(", "))}${v.where.length > 6 ? ` and ${v.where.length - 6} more` : ""}</div><span class="code tech-only">${esc(v.rule)} ${esc(v.message)}</span></li>`;
+  const bad = groupViolations({ ...p, violations: realViolations(p) }).map(item);
+  const clash = groupViolations({ ...p, violations: p.violations.filter(v => isClash(p, v)) }).map(item);
+
+  // same decision on several days shows once, with its times
+  const collect = (keep) => {
+    const out = new Map();
+    p.days.forEach(day => day.slots.forEach((slot, s) => (slot.events || []).filter(keep).forEach(e => {
+      const key = `${e.outcome}|${e.reason}|${e.activity}`;
+      if (!out.has(key)) out.set(key, { e, times: [] });
+      out.get(key).times.push(where(day, s));
+    })));
+    p.notes.filter(keep).forEach(e => out.set(`${e.outcome}|${e.reason}|${e.activity}`, { e, times: [] }));
+    return [...out.values()];
+  };
+  const odd = collect(e => OVERRIDES.has(e.reason));
+  const dropped = collect(e => e.outcome === "DROPPED" || e.outcome === "ERROR");
+  const times = (t) => t.length ? `<div class="when">${esc(t.slice(0, 5).join(", "))}${t.length > 5 ? ` and ${t.length - 5} more` : ""}</div>` : "";
+  const liked = p.notes.filter(n => (n.reason || "").startsWith("liked_but_"));
+  const free = Object.entries(p.free_and_easy.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1]);
+  if (p.free_and_easy.avoidable_logic) free.unshift(["LOGIC", p.free_and_easy.avoidable_logic]);
+  const section = (title, items, none) => `<h3>${title}</h3>${items.length ? `<ul>${items.join("")}</ul>` : `<p class="muted small">${none}</p>`}`;
+
+  $("detail").innerHTML = `
+    <h2>About ${esc(who)}'s week</h2>
+    <p class="muted small">Click any block in the schedule to see why it is there.</p>
+    ${bad.length ? `<div class="box warn"><b>Needs attention</b><ul>${bad.join("")}</ul></div>` : ""}
+    ${clash.length ? `<div class="box note"><b>Affected by a clash in the activity data</b><ul>${clash.join("")}</ul></div>` : ""}
+    ${!bad.length && !clash.length ? `<div class="box ok">All scheduling rules are followed.</div>` : ""}
+    ${section("Why the Free and Easy time", free.map(([r, n]) =>
+      `<li><b>${hours(n)}</b>: ${esc((FREE_WHY[r] || { what: r }).what)}.<span class="code tech-only"> ${esc(r)}</span></li>`), "No Free and Easy.")}
+    ${section("Looks unusual, but follows the rules", odd.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing unusual.")}
+    ${section(`Activities ${esc(who)} likes that weren't scheduled`, liked.map(e => `<li>${sentence(e, who)}${tech(e)}</li>`), "Every liked activity that was allowed got scheduled.")}
+    ${section("Planned but couldn't be added", dropped.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing was left out.")}`;
+}
+
+
+function renderOverview() {
+  const s = data.summary, fe = s.free_and_easy, n = s.patients;
+  const pct = s.slots ? Math.round(100 * fe.total / s.slots) : 0;
+  const all = Object.values(data.patients).flatMap(p => p.violations.map(v => [p, v]));
+  const real = all.filter(([p, v]) => !isClash(p, v)), clashes = all.length - real.length;
+  const viol = real.length;
+  const byRule = {};
+  real.forEach(([, v]) => { byRule[v.rule] = (byRule[v.rule] || 0) + 1; });
+  const reasons = Object.entries(fe.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1]);
+  if (fe.avoidable_logic) reasons.unshift(["LOGIC", fe.avoidable_logic]);
+  const colours = { LOGIC: "var(--warn)", fixed_slot_elsewhere: "var(--everyone)", no_fit_for_gap_length: "var(--doctor)", no_eligible_activities: "var(--request)", pool_exhausted_today: "var(--group)" };
+  const bar = reasons.map(([r, c]) => `<span title="${esc((FREE_WHY[r] || { what: r }).what)}" style="width:${100 * c / (fe.total || 1)}%;background:${colours[r] || "var(--muted)"}"></span>`).join("");
+  const rows = reasons.map(([r, c]) => `<tr>
+      <td><i style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${colours[r] || "var(--muted)"};margin-right:6px"></i>${esc((FREE_WHY[r] || { what: r }).what)}<div class="code tech-only">${esc(r)}</div></td>
+      <td class="num">${hours(c)}</td><td class="num">${fe.total ? Math.round(100 * c / fe.total) : 0}%</td>
+      <td>${esc((FREE_WHY[r] || { help: "" }).help)}</td></tr>`).join("");
+  const people = patientIds().map(pid => {
+    const p = data.patients[pid], t = p.days.reduce((a, d) => a + d.slots.length, 0);
+    const top = Object.entries(p.free_and_easy.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1])[0];
+    return { pid, p, t, top };
+  }).sort((a, b) => b.p.free_and_easy.total - a.p.free_and_easy.total);
+  const prow = people.map(({ pid, p, t, top }) => `<tr>
+      <td>${dot(p)}<button class="link" data-open="${esc(pid)}">${esc(nameOf(pid))}</button></td>
+      <td class="num">${hours(p.free_and_easy.total)}</td><td class="num">${t ? Math.round(100 * p.free_and_easy.total / t) : 0}%</td>
+      <td>${top ? esc(FREE_WHY[top[0]] ? FREE_WHY[top[0]].what : top[0]) : "—"}</td></tr>`).join("");
+
+  $("tab-overview").innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="muted">Patients this week</div><div class="big">${n}</div><div class="muted small">Week of ${esc(data.week_start)}</div></div>
+      <div class="card"><div class="muted">Free and Easy time</div><div class="big">${pct}%</div>
+        <div class="bar">${bar}</div><div class="muted small">${hours(fe.total)} in total, about ${hours(n ? fe.total / n : 0)} per patient</div></div>
+      <div class="card ${fe.avoidable_logic ? "warn" : "ok"}"><div class="muted">Could the scheduler have filled more?</div>
+        <div class="big">${fe.avoidable_logic ? "Yes" : "No"}</div>
+        <div class="muted small">${fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity.` : "Every Free and Easy slot was unavoidable with this week's activity data."}</div>
+        <div class="code tech-only">avoidable_logic=${fe.avoidable_logic}, avoidable_rearranging_gap_fill=${fe.avoidable_rearranging_gap_fill ?? 0}</div></div>
+      <div class="card ${viol ? "warn" : "ok"}"><div class="muted">Scheduling rules</div>
+        <div class="big">${viol ? plural(viol, "issue") : "All followed"}</div>
+        <div class="muted small">${viol ? Object.entries(byRule).map(([r, c]) => `${esc(RULE_NAME[r] || r)}: ${c}`).join("<br>") : "No exclusions, dislikes or doctor's advice were broken."}</div>
+        ${clashes ? `<div class="small" style="margin-top:6px">${plural(clashes, "missing slot")} for activities for everyone come from clashes in the activity data. See <button class="link" data-tab-go="data">Data to fix</button>.</div>` : ""}</div>
+    </div>
+    <div class="two">
+      <div>
+        <section class="panel"><h2>Why there is Free and Easy</h2>
+          <p class="muted small">Free and Easy is only used when nothing allowed fits. These are the reasons, and what would reduce them.</p>
+          <div class="tablewrap"><table><thead><tr><th>Reason</th><th>Time</th><th>Share</th><th>What would help</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">No Free and Easy this week.</td></tr>`}</tbody></table></div>
+        </section>
+        <section class="panel" style="margin-top:16px"><h2>Free and Easy by patient</h2>
+          <div class="tablewrap"><table><thead><tr><th>Patient</th><th>Free</th><th>Share</th><th>Main reason</th></tr></thead><tbody>${prow}</tbody></table></div>
+        </section>
+      </div>
+      <section class="panel"><h2>How the schedule is made</h2>
+        <p class="muted small">Each step can only use time the earlier steps left free.</p>
+        <ol class="steps">
+          <li><b>Exclusions always win.</b> An activity excluded for a patient is never scheduled while the exclusion lasts.</li>
+          <li><b>Activities for everyone</b> go at their set times.</li>
+          <li><b>Doctor's recommendations and routines.</b> These come before likes and dislikes. A doctor's "not recommended" is never scheduled.</li>
+          <li><b>Group sessions</b> at the group times, for patients recommended or who like it, topped up to the minimum group size.</li>
+          <li><b>Remaining free time</b> is filled with activities the patient likes first, then ones they don't mind. Never dislikes, never the same activity twice in a day.</li>
+          <li><b>Special requests</b> replace what was planned on the requested days.</li>
+          <li><b>Medication</b> is added at its time, alongside the activity.</li>
+        </ol>
+        <p>Anything still empty becomes <b>Free and Easy</b>.</p>
+        <p class="muted small">Strategy for step 5: ${esc(stepStrategy())}.</p>
+      </section>
+    </div>`;
+  $("tab-overview").querySelectorAll("[data-tab-go]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tabGo)));
+  $("tab-overview").querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => { setTab("patients"); showPatient(b.dataset.open); }));
+}
+
+function stepStrategy() {
+  for (const p of Object.values(data.patients)) for (const d of p.days) for (const s of d.slots)
+    for (const e of s.events || []) if (e.stage === "preferred" && e.details && e.details.strategy === "optimal") return "optimal, fills as much time as possible";
+  return "greedy, fills time from the start of the day";
+}
+
+
+function titleKinds() {
+  const kinds = new Map();
+  const add = (t, k) => { if (!t || t === "Free and Easy") return; if (!kinds.has(t)) kinds.set(t, new Set()); if (k) kinds.get(t).add(k); };
+  Object.values(data.patients).forEach(p => {
+    p.days.forEach(d => d.slots.forEach(s => {
+      add(s.activity, s.placed_by === "group" ? "group" : s.placed_by && s.placed_by !== "compulsory" ? "individual" : s.placed_by);
+      (s.events || []).forEach(e => { add(e.activity, null); [].concat((e.details || {}).occupied_by || []).forEach(t => add(t, null)); });
+    }));
+    p.notes.forEach(e => add(e.activity, null));
+  });
+  (data.centre_events || []).forEach(e => add(e.activity, e.stage === "group" ? "group" : null));
+  return kinds;
+}
+
+function findIssues() {
+  const issues = [], pids = patientIds(), n = pids.length;
+  const affects = (ids) => ids.length === n && n > 1 ? "all patients" : [...new Set(ids)].map(nameOf).join(", ");
+
+  // two activities for everyone at the same time
+  const clash = new Map();
+  pids.forEach(pid => data.patients[pid].days.forEach(day => day.slots.forEach((slot, s) => (slot.events || []).forEach(e => {
+    if (e.stage !== "compulsory" || (e.reason !== "slot_occupied" && e.reason !== "out_of_bounds")) return;
+    const other = [].concat((e.details || {}).occupied_by || []);
+    const key = `${e.reason}|${e.activity}|${other.join(",")}`;
+    if (!clash.has(key)) clash.set(key, { e, other, when: new Set(), who: [] });
+    clash.get(key).when.add(`${short(day.day)} ${start(day.labels[s])}`); clash.get(key).who.push(pid);
+  }))));
+  clash.forEach(c => issues.push(c.e.reason === "slot_occupied" ? {
+    level: "high", kind: "Clash",
+    text: `${q(c.e.activity)} and ${list(c.other)} are both set for everyone at the same time, so ${q(c.e.activity)} is left out.`,
+    when: [...c.when], who: affects(c.who), fix: `Move one of them to a different time.`,
+  } : {
+    level: "high", kind: "Closed time",
+    text: `${q(c.e.activity)} is set for everyone at a time the centre is closed.`,
+    when: [...c.when], who: affects(c.who), fix: `Change its set time to within opening hours.`,
+  }));
+
+  // free time most patients share, by reason
+  const byReason = new Map();
+  const need = Math.max(1, Math.ceil(n / 2));
+  const first = data.patients[pids[0]];
+  (first ? first.days : []).forEach((day, d) => day.slots.forEach((_, s) => {
+    const count = new Map();
+    pids.forEach(pid => { const r = ((data.patients[pid].days[d] || {}).slots || [])[s]; if (r && r.free_and_easy) count.set(r.free_and_easy, (count.get(r.free_and_easy) || 0) + 1); });
+    count.forEach((c, r) => {
+      if (c < need) return;
+      if (!byReason.has(r)) byReason.set(r, { slots: 0, days: new Map() });
+      const g = byReason.get(r); g.slots += c;
+      if (!g.days.has(d)) g.days.set(d, []);
+      g.days.get(d).push(s);
+    });
+  }));
+  byReason.forEach((g, r) => {
+    if (r === "no_eligible_activities") return;  // per patient, below
+    const when = [];
+    g.days.forEach((ss, d) => {
+      const day = first.days[d];
+      let a = ss[0], b = ss[0];
+      ss.slice(1).concat([null]).forEach(s => { if (s === b + 1) b = s; else { when.push(`${short(day.day)} ${start(day.labels[a])}–${end(day.labels[b])}`); a = b = s; } });
+    });
+    const text = {
+      LOGIC: `Most patients have Free and Easy here that the scheduler could have filled.`,
+      fixed_slot_elsewhere: `Most patients are Free and Easy at these times because the activities that would fit only run at other set times.`,
+      no_fit_for_gap_length: `Most patients have short gaps at these times, and the activities left are too long for them.`,
+      pool_exhausted_today: `Most patients have already done every allowed activity on these days.`,
+    }[r] || `Most patients are Free and Easy at these times.`;
+    issues.push({ level: r === "LOGIC" ? "high" : "mid", kind: "Common free time", text, when, who: `${hours(g.slots)} across patients`, fix: FREE_WHY[r] ? FREE_WHY[r].help : "", code: r });
+  });
+
+  // patients with nothing allowed
+  pids.forEach(pid => {
+    const c = (data.patients[pid].free_and_easy.unavoidable_by_reason || {}).no_eligible_activities;
+    if (c) issues.push({ level: "mid", kind: "Patient settings", text: `${esc(nameOf(pid))} has times where every activity is excluded, disliked or not recommended.`,
+      who: hours(c) + " of Free and Easy", fix: `Check ${esc(nameOf(pid))}'s exclusions, dislikes and doctor's 'not recommended' list. Some may be outdated.`, code: "no_eligible_activities" });
+  });
+
+  // doctor recommends something the patient dislikes
+  const conflict = new Map();
+  pids.forEach(pid => data.patients[pid].days.forEach(day => day.slots.forEach(slot => (slot.events || []).forEach(e => {
+    if (e.reason === "recommended_over_dislike") conflict.set(`${pid}|${e.activity}`, { pid, a: e.activity });
+  }))));
+  conflict.forEach(({ pid, a }) => issues.push({ level: "low", kind: "Conflicting entries",
+    text: `A doctor recommends ${q(a)} for ${esc(nameOf(pid))}, but ${esc(nameOf(pid))} dislikes it. The doctor's recommendation is followed.`,
+    fix: `Check whether the dislike or the recommendation is out of date.`, code: "recommended_over_dislike" }));
+
+  // groups that didn't run
+  const groups = new Map();
+  (data.centre_events || []).filter(e => e.reason === "below_min_group_size").forEach(e => groups.set(e.activity, e));
+  groups.forEach(e => issues.push({ level: "low", kind: "Group didn't run",
+    text: `${q(e.activity)} did not run: it needs ${(e.details || {}).min_people || "more"} people and not enough could join.`,
+    fix: `Lower its minimum group size, or check who is excluded from or dislikes it.`, code: "below_min_group_size" }));
+
+  // names that look like test data, typos or duplicates
+  const kinds = titleKinds(), lower = new Map();
+  kinds.forEach((k, t) => {
+    if (/test|playwright|dummy|sample/i.test(t)) issues.push({ level: "low", kind: "Test data", text: `${q(t)} looks like test data.`, fix: `Remove it, or rename it if it is real.` });
+    else if (/(\w)\1\1/i.test(t) || /\b[ap]mm\b/i.test(t)) issues.push({ level: "low", kind: "Possible typo", text: `${q(t)} looks like it has a typo.`, fix: `Check the spelling.` });
+    if (k.has("group") && k.has("individual")) issues.push({ level: "low", kind: "Same name twice", text: `${q(t)} is the name of both a group and an individual activity.`, fix: `Rename one so they can be told apart.` });
+    const key = t.toLowerCase().replace(/\s+/g, " ").trim();
+    lower.set(key, (lower.get(key) || []).concat(t));
+  });
+  lower.forEach(ts => { if (ts.length > 1) issues.push({ level: "low", kind: "Same name twice", text: `${list(ts)} only differ in capital letters or spaces.`, fix: `Check whether they are the same activity, and merge or rename.` }); });
+
+  // mostly fixed-time activities
+  const fx = (data.summary.free_and_easy.unavoidable_by_reason || {}).fixed_slot_elsewhere || 0;
+  if (fx && fx >= data.summary.free_and_easy.total / 2) issues.push({ level: "high", kind: "Too few flexible activities",
+    text: `Most Free and Easy (${hours(fx)}) is because activities only run at set times, and those times are taken or on other days.`,
+    fix: `Add a few individual activities with no set time, both 30-minute and 60-minute ones. The scheduler can then use them in any free time.`, code: "fixed_slot_elsewhere" });
+
+  const order = { high: 0, mid: 1, low: 2 };
+  return issues.sort((a, b) => order[a.level] - order[b.level]);
+}
+
+function renderData() {
+  const issues = findIssues();
+  $("issueCount").hidden = !issues.length;
+  $("issueCount").textContent = issues.length;
+  $("tab-data").innerHTML = `
+    <section class="panel" style="margin-bottom:16px"><h2>Activity data to check</h2>
+      <p class="muted">Found automatically from this week's schedule. Most important first. Fixing these is the quickest way to reduce Free and Easy.</p>
+      <p class="muted small">Send this page to whoever looks after the activity data.</p></section>
+    ${issues.length ? issues.map(i => `<div class="issue ${i.level === "high" ? "" : i.level}">
+        <div class="kind">${esc(i.kind)}</div>
+        <div>${i.text}</div>
+        ${i.when && i.when.length ? `<div class="when">When: ${esc(i.when.slice(0, 8).join(", "))}${i.when.length > 8 ? ` and ${i.when.length - 8} more` : ""}</div>` : ""}
+        ${i.who ? `<div class="when">Affects: ${esc(i.who)}</div>` : ""}
+        ${i.fix ? `<div class="fix"><b>Suggested fix:</b> ${i.fix}</div>` : ""}
+        ${i.code ? `<div class="code tech-only">${esc(i.code)}</div>` : ""}
+      </div>`).join("") : `<div class="box ok">Nothing to fix found in this week's data.</div>`}`;
+}
+
+
+function setTab(name) {
+  document.querySelectorAll("#tabs [role=tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  ["patients", "overview", "data"].forEach(t => { $("tab-" + t).hidden = t !== name; });
+  store.set("explain.tab", name);
+}
+
+function load(json) {
+  data = json;
+  slotMins = data.slot_minutes || 30;
+  $("empty").hidden = true;
+  $("tabs").hidden = false;
+  const strat = stepStrategy().split(",")[0];
+  $("meta").textContent = `Week of ${data.week_start} · ${plural(data.summary.patients, "patient")} · made ${String(data.generated_at || "").replace("T", " ")}`;
+  $("meta").title = `Gap filling: ${strat}`;
+  renderOverview();
+  renderData();
+  const ids = patientIds();
+  if (ids.length) showPatient(ids[0]);
+  const saved = store.get("explain.tab");
+  setTab(["patients", "overview", "data"].includes(saved) ? saved : "overview");
 }
 
 function readFile(file) {
   file.text().then(t => load(JSON.parse(t))).catch(err => alert(`Could not read ${file.name}: ${err.message}`));
 }
+
+document.querySelectorAll("#tabs [role=tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+$("tech").checked = store.get("explain.tech") === "1";
+document.body.classList.toggle("tech", $("tech").checked);
+$("tech").addEventListener("change", e => { document.body.classList.toggle("tech", e.target.checked); store.set("explain.tech", e.target.checked ? "1" : "0"); });
+$("search").addEventListener("input", renderList);
 $("file").addEventListener("change", e => e.target.files[0] && readFile(e.target.files[0]));
-$("patient").addEventListener("change", e => renderPatient(e.target.value));
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) readFile(f); });
 if (window.EXPLAIN_DATA) load(window.EXPLAIN_DATA);
+else $("empty").hidden = false;
 </script>
 </body>
 </html>
