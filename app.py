@@ -240,7 +240,7 @@ def generate_schedules(config: Mapping[str, Any], args):
 
 def explain_schedule(config: Mapping[str, Any], args):
     """Read-only, builds and explains this week's schedules without writing to the DB."""
-    from pear_schedule.scheduler.explain import dump_html, dump_json, format_text, run_explanation
+    from pear_schedule.scheduler.explain import dump_html, dump_json, explain_saved_week, format_text, run_explanation
 
     config = {item: getattr(config, item) for item in dir(config)}
     DB.init_app(config["DB_CONN_STR"], config)
@@ -251,7 +251,14 @@ def explain_schedule(config: Mapping[str, Any], args):
         config["GAP_FILL_STRATEGY"] = args.strategy
     loadConfigs(config)
 
-    explanation = run_explanation(config, args.patient, with_names=getattr(args, "with_names", False))
+    with_names = getattr(args, "with_names", False)
+    if getattr(args, "saved", False):
+        explanation = explain_saved_week(config, args.patient, with_names=with_names)
+        if explanation is None:
+            print("Nothing saved for this week yet, run without --saved to build one")
+            return
+    else:
+        explanation = run_explanation(config, args.patient, with_names=with_names)
     print(format_text(explanation, args.patient))
     if args.json:
         dump_json(explanation, args.json)
@@ -328,6 +335,7 @@ def parse_args():
     explain_parser.add_argument("--strategy", choices=["greedy", "optimal"], help="override GAP_FILL_STRATEGY for this run")
     explain_parser.add_argument("--html", help="also write a single page to open in a browser")
     explain_parser.add_argument("--with-names", action="store_true", help="show patient names (off by default, the file then has names in it)")
+    explain_parser.add_argument("--saved", action="store_true", help="explain the saved schedule instead of building one")
     explain_parser.set_defaults(func=explain_schedule)
 
     # NEW: add args for running only consumers (useful for separate consumer processes)

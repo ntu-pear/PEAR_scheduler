@@ -369,9 +369,44 @@ const span = (day, s, n) => `${start(day.labels[s])}–${end(day.labels[s + n - 
 const short = (d) => String(d).slice(0, 3);
 
 
+function atText(at) {
+  const t = new Date(at);
+  return isNaN(t) ? "" : `${t.toLocaleDateString("en-GB", { weekday: "short" })} ${String(at).slice(11, 16)}`;
+}
+
+// changes repair made to the saved week, or will make at the next regenerate
+function repairSentence(e, who, future) {
+  const a = q(e.activity || "An activity"), d = e.details || {};
+  const when = future ? "at the next regenerate" : d.at ? `at the regenerate on ${atText(d.at)}` : "at a regenerate this week";
+  const was = future ? "will be" : "was", w = esc(who);
+  switch (e.reason) {
+    case "excluded": return `${a} ${was} taken out ${when} because it is now excluded for ${w}.`;
+    case "not_recommended": return `${a} ${was} taken out ${when} because the doctor now advises against it.`;
+    case "disliked": return `${a} ${was} taken out ${when} because ${w} now dislikes it.`;
+    case "activity_gone": return `${a} ${was} taken out ${when} because the activity no longer runs.`;
+    case "not_at_set_time": return `${a} ${was} taken out ${when} because its set time changed.`;
+    case "duration_changed": return `${a} ${was} taken out ${when} because its length changed.`;
+    case "repeat_in_day": return `${a} ${was} taken out ${when} because it was on the same day twice.`;
+    case "displaced": return `${a} ${was} moved out ${when} to make room for something more important.`;
+    case "group_not_allowed": return `${w} ${was} taken out of ${a} ${when}: they are now excluded from it, dislike it, or their doctor advises against it.`;
+    case "group_below_min_size": return `${a} ${was} cancelled ${when}: not enough people could join.`;
+    case "compulsory_now": return `${a} ${was} added ${when} at its set time for everyone.`;
+    case "routine_now": return `${a} ${was} added ${when} as part of ${w}'s routine.`;
+    case "recommended_now": return `${a} ${was} added ${when} because a doctor now recommends it for ${w}.`;
+    case "group_joined": return `${w} ${future ? "will join" : "joined"} ${a} ${when}, because a doctor recommends it or they like it.`;
+    case "group_top_up": return `${w} ${was} added to ${a} ${when} so it still has enough people to run.`;
+    case "set_time_taken": return `${a} couldn't be added ${when}: another activity for everyone is set at the same time.`;
+    case "routine_slot_taken": return `${w}'s routine ${a} couldn't be added ${when}: something more important is at that time.`;
+    case "no_room_this_week": return `A doctor now recommends ${a}, but there is no free time left this week. It will be in next week's schedule.`;
+    default: return `${a} ${was} changed ${when}.`;
+  }
+}
+
 function sentence(e, who) {
+  if (e.stage === "repair") return repairSentence(e, who, false);
   const a = q(e.activity || "this activity"), d = e.details || {};
   switch (e.reason) {
+    case "doctor_recommended": return `A doctor recommended ${a} for ${esc(who)}.`;
     case "fixed_slot": return `${a} is a centre activity for everyone at this time.`;
     case "out_of_bounds": return `${a} is set for a time the centre is closed, so it was left out.`;
     case "slot_occupied": return `${a} is also set for everyone at this time, but ${list(d.occupied_by)} is already here. Two activities for everyone share the same time, so only one can happen. This needs fixing in the activity data.`;
@@ -656,8 +691,10 @@ function showSummary(pid) {
     p.notes.filter(keep).forEach(e => out.set(`${e.outcome}|${e.reason}|${e.activity}`, { e, times: [] }));
     return [...out.values()];
   };
-  const odd = collect(e => OVERRIDES.has(e.reason));
-  const dropped = collect(e => e.outcome === "DROPPED" || e.outcome === "ERROR");
+  const odd = collect(e => OVERRIDES.has(e.reason) && e.stage !== "repair");
+  const dropped = collect(e => (e.outcome === "DROPPED" || e.outcome === "ERROR") && e.stage !== "repair");
+  const changed = collect(e => e.stage === "repair").sort((x, y) => String(x.e.details.at).localeCompare(String(y.e.details.at)));
+  const pending = (data.pending || {})[pid] || [];
   const times = (t) => t.length ? `<div class="when">${esc(t.slice(0, 5).join(", "))}${t.length > 5 ? ` and ${t.length - 5} more` : ""}</div>` : "";
   const liked = p.notes.filter(n => (n.reason || "").startsWith("liked_but_"));
   const free = Object.entries(p.free_and_easy.unavoidable_by_reason || {}).sort((a, b) => b[1] - a[1]);
@@ -674,7 +711,11 @@ function showSummary(pid) {
       `<li><b>${hours(n)}</b>: ${esc((FREE_WHY[r] || { what: r }).what)}.<span class="code tech-only"> ${esc(r)}</span></li>`), "No Free and Easy.")}
     ${section("Looks unusual, but follows the rules", odd.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing unusual.")}
     ${section(`Activities ${esc(who)} likes that weren't scheduled`, liked.map(e => `<li>${sentence(e, who)}${tech(e)}</li>`), "Every liked activity that was allowed got scheduled.")}
-    ${section("Planned but couldn't be added", dropped.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing was left out.")}`;
+    ${section("Planned but couldn't be added", dropped.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing was left out.")}
+    ${data.source === "saved" ? section("Changed this week", changed.map(o => `<li>${sentence(o.e, who)}${times(o.times)}${tech(o.e)}</li>`), "Nothing has changed since the week was made.") : ""}
+    ${(data.pending || {})[pid] ? section("Will change at the next regenerate", pending.length
+        ? pending.map(e => `<li>${repairSentence(e, who, true)}${e.day != null && p.days[e.day] ? `<div class="when">${esc(where(p.days[e.day], e.slot || 0))}</div>` : ""}${tech(e)}</li>`)
+        : [`<li>Some free time will be filled at the next regenerate.</li>`], "") : ""}`;
 }
 
 
@@ -705,7 +746,9 @@ function renderOverview() {
       <td class="num">${hours(p.free_and_easy.total)}</td><td class="num">${t ? Math.round(100 * p.free_and_easy.total / t) : 0}%</td>
       <td>${top ? esc(FREE_WHY[top[0]] ? FREE_WHY[top[0]].what : top[0]) : "—"}</td></tr>`).join("");
 
+  const waiting = Object.keys(data.pending || {});
   $("tab-overview").innerHTML = `
+    ${waiting.length ? note("caution", "info", `<b>Data changed since this week was saved.</b> ${plural(waiting.length, "patient")} will change at the next regenerate: ${esc(waiting.slice(0, 6).map(nameOf).join(", "))}${waiting.length > 6 ? ` and ${waiting.length - 6} more` : ""}.`) : ""}
     <div class="answers">
       <div class="answer"><div class="q">Patients this week</div><div class="a">${n}</div><div class="d">Week of <time>${esc(data.week_start)}</time></div></div>
       <div class="answer"><div class="q">Free and Easy time</div><div class="a">${pct}%</div>
@@ -907,7 +950,9 @@ function load(json) {
   if (api) {
     $("live").hidden = false;
     $("liveNote").hidden = false;
-    $("liveNote").textContent = `Built at ${made.slice(11, 16)} from current data. It can differ from the saved schedule if data changed since it was generated.`;
+    $("liveNote").textContent = data.source === "saved"
+      ? `Shows the saved schedule, checked at ${made.slice(11, 16)}.`
+      : `Built at ${made.slice(11, 16)} from current data. Nothing is saved for this week yet.`;
   }
   renderOverview();
   renderData();

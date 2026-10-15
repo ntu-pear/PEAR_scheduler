@@ -18,6 +18,7 @@ from pear_schedule.scheduler.individualScheduling import PreferredActivitySchedu
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
 from pear_schedule.scheduler.repair import repair_schedules
+from pear_schedule.api import explain_router
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import DBTABLES
 
@@ -77,6 +78,7 @@ def generate_schedule(request: Request):
 
         if ScheduleWriter.write(patientSchedules, medicationScheduleRef, overwriteExisting=False) \
             and MedicationScheduleWrite.write():
+            explain_router.reset_cache()  # saved week changed
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -114,6 +116,7 @@ def generate_schedule(request: Request):
 
         if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
             MedicationScheduleWrite.write():
+            explain_router.reset_cache()  # saved week changed
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -154,6 +157,7 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
             weeklyScheduleViewDF = WeeklyScheduleView.get_data()
             weeklyScheduleViewDF.pop("ScheduleID")
             schedules_json = weeklyScheduleViewDF.to_dict(orient="records")
+            explain_router.reset_cache()  # saved week changed
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": schedules_json} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -343,6 +347,7 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
     db_tables: DBTABLES = request.app.state.config["DB_TABLES"]
     schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
     responseData = ScheduleWriter.updateDB(schedule_table, filteredAdHocDF, chosenDays)
+    explain_router.reset_cache()  # saved week changed
     
     return JSONResponse(jsonable_encoder(responseData))
 
