@@ -2,7 +2,7 @@
 
 Shows why the scheduler made each decision for this week, in plain English. Two ways to open it:
 
-- **Link**: supervisors open it in a browser and sign in. Easiest for everyone.
+- **Link**: supervisors and admins open it in a browser and sign in. Easiest for everyone.
 - **File**: run a command on the server and get one HTML file. For when the link is down, or to keep a snapshot.
 
 Both are **read-only**. They never write to the DB, never save centre hours and never touch RabbitMQ. The link reads the saved schedule, the file builds one in memory (or reads the saved one with `--saved`).
@@ -21,7 +21,7 @@ Same server and port as the scheduler's `/docs` page, with `/schedule/explain/vi
 ### Opening it
 
 1. Open the explainer link for the environment in a browser.
-2. Sign in with your PEAR username and password. Only `SUPERVISOR` accounts get in.
+2. Sign in with your PEAR username and password. Only `SUPERVISOR` and `ADMIN` accounts get in.
 3. It opens on **Centre overview**. Use **Patients** to look at one patient's week and **Data to fix** for what to change in the activity data.
 4. Close the tab or press **Sign out** when done.
 
@@ -29,7 +29,7 @@ Same server and port as the scheduler's `/docs` page, with `/schedule/explain/vi
 
 - The page itself has no data. After sign-in it calls `GET /schedule/explain/` with the token.
 - The token is always checked with the user service (`/api/v1/current_user/`), even while `AUTH_VERIFY_MODE` is shadow for the rest of the API. Forged or expired tokens get 401, other roles get 403, and if the user service is down it's 503.
-- Patient names are shown, since only verified supervisors get the data.
+- Patient names are shown, since only verified supervisors and admins get the data.
 - The token is kept for that browser tab only. Closing the tab or "Sign out" clears it.
 
 ### What it shows
@@ -192,7 +192,7 @@ Block markers: heart liked, capsule medication given, (i) looks unusual but foll
 | Problem | Fix |
 |---|---|
 | Link: "Sign-in failed" | Wrong username or password, or the account doesn't exist in the user service |
-| Link: "Only supervisors can see this page" | The account's role isn't `SUPERVISOR` |
+| Link: "Only supervisors and admins can see this page" | The account's role isn't `SUPERVISOR` or `ADMIN` |
 | Link: "The sign-in service is unavailable" | The scheduler can't reach the user service (`USER_BE_ORIGIN`). Check the user service is up |
 | Link: "The explanation couldn't be built" | Check the scheduler pod logs for the error. Use the file version meanwhile |
 | `ModuleNotFoundError: pear_schedule.logger.config` | Create the logger config as shown above |

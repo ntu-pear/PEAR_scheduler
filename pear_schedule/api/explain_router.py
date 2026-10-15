@@ -1,5 +1,5 @@
 """
-Schedule explainer at a link. Supervisors only, and the token is always checked with
+Schedule explainer at a link. Supervisors and admins only, and the token is always checked with
 the user service, even when AUTH_VERIFY_MODE is shadow. Read-only.
 """
 
@@ -18,6 +18,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Explain"])
 
+# roles that can see the explainer, it has patient names
+ALLOWED_ROLES = {"SUPERVISOR", "ADMIN"}
+
 CACHE_SECONDS = 30 * 60
 REFRESH_SECONDS = 5 * 60
 
@@ -32,7 +35,7 @@ def reset_cache() -> None:
         _cache.clear()
 
 
-def require_verified_supervisor(token: str = Depends(oauth2_scheme)) -> VerifiedUser:
+def require_verified_staff(token: str = Depends(oauth2_scheme)) -> VerifiedUser:
     try:
         verdict, user = verify_token(token)
     except Exception:
@@ -42,8 +45,8 @@ def require_verified_supervisor(token: str = Depends(oauth2_scheme)) -> Verified
         raise HTTPException(status_code=401, detail="Invalid or expired session")
     if verdict != Verdict.VALID or user is None:
         raise HTTPException(status_code=503, detail="Authentication service unavailable")
-    if user.roleName != "SUPERVISOR":
-        raise HTTPException(status_code=403, detail="Only supervisors can view the schedule explainer")
+    if user.roleName not in ALLOWED_ROLES:
+        raise HTTPException(status_code=403, detail="Only supervisors and admins can view the schedule explainer")
     return user
 
 
@@ -63,7 +66,7 @@ def cached_explanation(config, refresh: bool = False, now=time.monotonic) -> dic
 
 @router.get("/")
 def get_explanation(request: Request, refresh: bool = False,
-                    user: VerifiedUser = Depends(require_verified_supervisor)):
+                    user: VerifiedUser = Depends(require_verified_staff)):
     logger.info(f"Schedule explainer opened by {user.userId} (refresh={refresh})")
     try:
         return JSONResponse(cached_explanation(request.app.state.config, refresh))

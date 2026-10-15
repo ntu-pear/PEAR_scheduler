@@ -37,22 +37,26 @@ def _route(path):
     return next(r for r in explain_router.router.routes if r.path == path)
 
 
-class TestRequireVerifiedSupervisor:
+class TestRequireVerifiedStaff:
     def test_supervisor_allowed(self, monkeypatch):
         _verdict(monkeypatch, Verdict.VALID)
-        assert explain_router.require_verified_supervisor("t").userId == "U1"
+        assert explain_router.require_verified_staff("t").userId == "U1"
 
-    @pytest.mark.parametrize("role", ["GUARDIAN", "DOCTOR", "ADMIN", "CAREGIVER"])
+    def test_admin_allowed(self, monkeypatch):
+        _verdict(monkeypatch, Verdict.VALID, "ADMIN")
+        assert explain_router.require_verified_staff("t").userId == "U1"
+
+    @pytest.mark.parametrize("role", ["GUARDIAN", "DOCTOR", "CAREGIVER", "supervisor", ""])
     def test_other_roles_get_403(self, monkeypatch, role):
         _verdict(monkeypatch, Verdict.VALID, role)
         with pytest.raises(HTTPException) as exc:
-            explain_router.require_verified_supervisor("t")
+            explain_router.require_verified_staff("t")
         assert exc.value.status_code == 403
 
     def test_forged_or_expired_token_gets_401(self, monkeypatch):
         _verdict(monkeypatch, Verdict.REJECTED)
         with pytest.raises(HTTPException) as exc:
-            explain_router.require_verified_supervisor("t")
+            explain_router.require_verified_staff("t")
         assert exc.value.status_code == 401
 
     @pytest.mark.parametrize("verdict", [Verdict.UNAVAILABLE, Verdict.UNCONFIGURED])
@@ -60,7 +64,7 @@ class TestRequireVerifiedSupervisor:
         # unlike shadow mode, never let it through unchecked
         _verdict(monkeypatch, verdict)
         with pytest.raises(HTTPException) as exc:
-            explain_router.require_verified_supervisor("t")
+            explain_router.require_verified_staff("t")
         assert exc.value.status_code == 503
 
     def test_verifier_crash_gets_503(self, monkeypatch):
@@ -68,19 +72,19 @@ class TestRequireVerifiedSupervisor:
             raise RuntimeError("down")
         monkeypatch.setattr(explain_router, "verify_token", boom)
         with pytest.raises(HTTPException) as exc:
-            explain_router.require_verified_supervisor("t")
+            explain_router.require_verified_staff("t")
         assert exc.value.status_code == 503
 
     def test_ignores_shadow_mode(self, monkeypatch):
         monkeypatch.setenv("AUTH_VERIFY_MODE", "shadow")
         _verdict(monkeypatch, Verdict.REJECTED)
         with pytest.raises(HTTPException):
-            explain_router.require_verified_supervisor("t")
+            explain_router.require_verified_staff("t")
 
     def test_data_route_needs_it(self):
         deps = [d.call for d in _route("/").dependant.dependencies]
-        assert explain_router.require_verified_supervisor in deps
-        sub = next(d for d in _route("/").dependant.dependencies if d.call is explain_router.require_verified_supervisor)
+        assert explain_router.require_verified_staff in deps
+        sub = next(d for d in _route("/").dependant.dependencies if d.call is explain_router.require_verified_staff)
         assert oauth2_scheme in [d.call for d in sub.dependencies]
 
 
