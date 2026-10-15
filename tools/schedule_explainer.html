@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Schedule Explained</title>
 <!--
-  Link: <scheduler>/schedule/explain/view/, supervisors sign in with their PEAR account.
+  Link: <scheduler>/schedule/explain/view/, supervisors and admins sign in with their PEAR account.
   File: python app.py explain_schedule -c configprod.py --html schedule.html, then double-click it.
   Or open this file and pick a JSON from --json.
 -->
@@ -288,7 +288,7 @@
 <div id="signin" class="drop signin" hidden>
   <form id="signinForm">
     <h2>Sign in to see this week's schedules</h2>
-    <p class="muted small">Use your PEAR account. Supervisors only.</p>
+    <p class="muted small">Use your PEAR account. Supervisors and admins only.</p>
     <label>Username <input id="user" name="username" autocomplete="username" required></label>
     <label>Password <input id="pass" name="password" type="password" autocomplete="current-password" required></label>
     <p class="error small" id="signinError" role="alert" hidden></p>
@@ -1046,7 +1046,7 @@ async function fetchData(refresh) {
     try { res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); }
     catch (e) { return buildFailed("Can't reach the scheduler. Check your connection."); }
     if (res.status === 401) return signOut("Your session has ended. Sign in again.");
-    if (res.status === 403) return signOut("Only supervisors can see this page.");
+    if (res.status === 403) return signOut("Only supervisors and admins can see this page.");
     if (res.status === 503) return signOut("The sign-in service is unavailable. Try again later.");
     if (!res.ok) return buildFailed("The explanation couldn't be built. Ask the scheduler team to check the logs.");
     load(await res.json());
