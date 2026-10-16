@@ -9,7 +9,7 @@ import pandas as pd
 from sqlalchemy import Connection, Result, Select, and_, func, select
 from pear_schedule.db import DB
 
-from pear_schedule.db_utils.utils import day_timeslot_labels
+from pear_schedule.db_utils.utils import building_for, day_timeslot_labels
 from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView, DisrecommendedActivitiesView, PatientsUnpreferredView, PatientsView, RecommendedActivitiesView, ValidRoutineActivitiesView
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
@@ -34,11 +34,17 @@ def _get_max_enddate(d1, d2):
     return max(d1, d2)
 
 
+def _week_monday() -> datetime.datetime:
+    # monday of the week being built, same time of day as before
+    now = building_for() or datetime.datetime.now()
+    return now - datetime.timedelta(days=now.weekday())
+
+
 class IndividualActivityScheduler(BaseScheduler):
     @classmethod
     def _get_patient_data(cls, conn: Connection = None, week_end: datetime.datetime = None) -> Mapping[str, Mapping[str, Dict[str, str]]]:
         if not week_end:
-            today = datetime.datetime.now()
+            today = building_for() or datetime.datetime.now()
             week_end = today - datetime.timedelta(days=today.weekday()) + datetime.timedelta(days=6)
             week_end = week_end.replace(hour=23, minute=59, second=59)
 
@@ -110,7 +116,7 @@ def _no_patient_data() -> Dict:
 class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillSchedule(cls, schedules: Mapping[str, List[str]], week_start: datetime.datetime = None) -> None:
-        week_start = week_start or datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        week_start = week_start or _week_monday()
         week_end = week_start + datetime.timedelta(days=6)
         week_end = week_end.replace(hour=23, minute=59, second=59)
 
@@ -201,8 +207,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         patient_id = None,
     ):
         # set week_start to current week monday if not given
-        week_start = week_start or \
-            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        week_start = week_start or _week_monday()
         series_timeslots = activities["ProcessedTimeSlots"]
         timeslots_set = set.union(*series_timeslots) if len(series_timeslots) else set()
 
@@ -291,8 +296,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         patient_id = None,
     ):
         # set week_start to current week monday if not given
-        week_start = week_start or \
-            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        week_start = week_start or _week_monday()
         
         # consolidate routines for each time slot (if the routine is not excluded)
         routine_slots = {}
@@ -362,8 +366,7 @@ class RecommendedRoutineActivityScheduler(IndividualActivityScheduler):
         Assumed to be schedulable at any time. Iterates through schedule and fills in the first available slot.
         """
         # set week_start to current week monday if not given
-        week_start = week_start or \
-            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        week_start = week_start or _week_monday()
 
         # prevent scheduling more than necessary
         scheduled_activities = set()
@@ -415,8 +418,7 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
     @classmethod
     def fillPreferences(cls, schedules: Mapping[str, List[str]], conn: Connection = None, patients: Mapping = None, week_start: datetime.datetime = None):
         patients = patients or cls._get_patient_data(conn=conn)
-        week_start = week_start or \
-            datetime.datetime.now() - datetime.timedelta(days = datetime.datetime.now().weekday())
+        week_start = week_start or _week_monday()
 
         # consolidate activity data
         activities: pd.DataFrame = ActivitiesView.get_data(conn=conn)  # non compulsory individual activities

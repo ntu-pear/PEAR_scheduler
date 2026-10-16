@@ -2,6 +2,7 @@ import datetime
 import logging
 from typing import List, Mapping, Optional
 
+from pear_schedule.db_utils.utils import building_for
 from pear_schedule.db_utils.views import AdhocActivityView
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.scheduler import trace
@@ -30,7 +31,7 @@ class AdhocScheduler(BaseScheduler):
         if adhoc_df.empty:
             return
 
-        today = datetime.datetime.now()
+        today = building_for() or datetime.datetime.now()
         week_start = (today - datetime.timedelta(days=today.weekday())).date()
         week_end = week_start + datetime.timedelta(days=len(cls.config["OPEN_DAYS"]) - 1)
         replacements_applied = 0

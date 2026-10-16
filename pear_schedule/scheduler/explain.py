@@ -11,7 +11,7 @@ import os
 from collections import Counter, defaultdict
 from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tuple
 
-from pear_schedule.db_utils.utils import day_timeslot_labels
+from pear_schedule.db_utils.utils import building_for, building_week, day_timeslot_labels, next_week_start, schedule_day_columns
 from pear_schedule.scheduler import trace as schedule_trace
 from pear_schedule.scheduler.gapFill import PoolActivity
 from pear_schedule.scheduler.invariants import (
@@ -38,7 +38,7 @@ def parse_slots(value) -> FrozenSet[Tuple[int, int]]:
 
 def current_week_start() -> datetime.datetime:
     # same as the stages
-    now = datetime.datetime.now()
+    now = building_for() or datetime.datetime.now()
     return now - datetime.timedelta(days=now.weekday())
 
 
@@ -256,6 +256,35 @@ def run_explanation(config: Mapping[str, Any], patient_ids: Optional[Iterable[An
     return explanation
 
 
+def preview_next_week(config: Mapping[str, Any], patient_ids: Optional[Iterable[Any]] = None,
+                      with_names: bool = False, with_what_if: bool = False,
+                      now: Optional[datetime.datetime] = None) -> Dict[str, Any]:
+    """Builds next week from today's data, the way Monday's generate would. Never saved."""
+    with building_week(next_week_start(now)):
+        explanation = run_explanation(config, patient_ids, with_names, with_what_if)
+    explanation["source"] = "preview"
+    return explanation
+
+
+def schedule_rows(explanation: Mapping[str, Any], config: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """The explained week as getSchedule rows, so the calendar can show it."""
+    from pear_schedule.db_utils.writer import WEEKDAYS
+
+    start = datetime.datetime.fromisoformat(explanation["week_start"])
+    end = start + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59)
+    rows = []
+    for pid, p in explanation["patients"].items():
+        columns = schedule_day_columns([[s["value"] for s in day["slots"]] for day in p["days"]], config)
+        rows.append({
+            "PatientID": int(pid),
+            "Name": p.get("name"),
+            **{day: columns.get(day, "") for day in WEEKDAYS},
+            "StartDate": start.isoformat(),
+            "EndDate": end.isoformat(),
+        })
+    return rows
+
+
 def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> schedule_trace.ScheduleTrace:
     """Why each saved slot holds what it does, worked out from current data, as a trace."""
     from pear_schedule.scheduler.repair import _Repair, _runs
@@ -347,7 +376,8 @@ def format_text(explanation: Mapping[str, Any], patient_ids: Optional[Iterable[A
     lines = []
     s = explanation["summary"]
     fe = s["free_and_easy"]
-    lines.append(f"Week of {explanation['week_start']}: {s['patients']} patients, {s['slots']} slots")
+    preview = " (preview from today's data, not saved)" if explanation.get("source") == "preview" else ""
+    lines.append(f"Week of {explanation['week_start']}{preview}: {s['patients']} patients, {s['slots']} slots")
     pct = (100 * fe["total"] / s["slots"]) if s["slots"] else 0
     lines.append(
         f"Free and Easy: {fe['total']} slots ({pct:.0f}%), avoidable (LOGIC) {fe['avoidable_logic']}, "

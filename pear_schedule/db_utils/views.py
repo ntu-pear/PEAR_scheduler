@@ -5,7 +5,7 @@ import pandas as pd
 
 from sqlalchemy import Connection, Select, and_, func, select
 from pear_schedule.db import DB
-from pear_schedule.db_utils.utils import compile_query, get_week_end, get_week_start
+from pear_schedule.db_utils.utils import building_for, compile_query, get_week_end, get_week_start
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from sqlalchemy import literal_column
 import logging
@@ -339,7 +339,7 @@ class GroupActivitiesExclusionView(BaseView): # Just group activities preference
         activity_exclusion = schema.tables[cls.db_tables.ACTIVITY_EXCLUSION_TABLE]
 
 
-        today = datetime.now()
+        today = building_for() or datetime.now()
         start_of_week = today - timedelta(days=today.weekday(), hours=0, minutes=0, seconds=0, microseconds=0)  # Monday -> 00:00:00
         start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
@@ -752,7 +752,7 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
     def build_query(cls) -> Select:
         logger.info("Building activities excluded recommendation query")
         schema = DB.schema
-        curDateTime = datetime.now()
+        curDateTime = building_for() or datetime.now()
         start_of_week = curDateTime - timedelta(days=curDateTime.weekday(), hours=0, minutes=0, seconds=0)  # Monday -> 00:00:00
         
         activity = schema.tables[cls.db_tables.ACTIVITY_TABLE]

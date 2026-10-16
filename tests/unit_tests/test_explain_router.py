@@ -128,6 +128,22 @@ class TestCachedExplanation:
         explain_router.reset_cache()
         assert explain_router.cached_explanation({}, now=lambda: 1) == {"n": 2}
 
+    def test_next_week_is_cached_on_its_own(self, monkeypatch, run):
+        preview = MagicMock(side_effect=lambda config, with_names: {"preview": preview.call_count})
+        monkeypatch.setattr(explain, "preview_next_week", preview)
+        assert explain_router.cached_explanation({}, now=lambda: 0) == {"n": 1}
+        assert explain_router.cached_explanation({}, now=lambda: 0, week="next") == {"preview": 1}
+        assert explain_router.cached_explanation({}, now=lambda: 1, week="next") == {"preview": 1}
+        assert explain_router.cached_explanation({}, now=lambda: 1) == {"n": 1}
+        assert preview.call_args.kwargs == {"with_names": True}
+        explain_router.reset_cache()
+        assert explain_router.cached_explanation({}, now=lambda: 2, week="next") == {"preview": 2}
+
+    def test_next_week_never_uses_the_saved_week(self, monkeypatch, run):
+        monkeypatch.setattr(explain, "explain_saved_week", lambda config, with_names: {"source": "saved"})
+        monkeypatch.setattr(explain, "preview_next_week", lambda config, with_names: {"source": "preview"})
+        assert explain_router.cached_explanation({}, now=lambda: 0, week="next") == {"source": "preview"}
+
     def test_failed_build_is_not_cached(self, monkeypatch):
         calls = []
 
@@ -164,6 +180,12 @@ class TestRoutes:
             explain_router.get_explanation(self._request(), refresh=False, user=VerifiedUser("U1", "Sam", "SUPERVISOR", ""))
         assert exc.value.status_code == 500
 
+    def test_next_week(self, monkeypatch):
+        monkeypatch.setattr(explain, "preview_next_week", lambda config, with_names: {"source": "preview"})
+        user = VerifiedUser("U1", "Sam", "SUPERVISOR", "")
+        res = explain_router.get_explanation(self._request(), refresh=False, week="next", user=user)
+        assert json.loads(res.body)["source"] == "preview"
+
     def test_view_has_no_data_and_points_at_the_api(self):
         page = explain_router.view_explainer().body.decode()
         assert "window.EXPLAIN_API" in page
@@ -172,3 +194,48 @@ class TestRoutes:
 
     def test_view_needs_no_login(self):
         assert _route("/view/").dependant.dependencies == []
+
+
+class TestPreviewRoute:
+    CONFIG = {"OPEN_DAYS": ["Monday"], "MIN_ACTIVITY_DURATION": 30, "WORKING_HOURS": {"monday": {"open": "09:00"}}}
+    EXPLANATION = {
+        "source": "preview", "generated_at": "2024-03-21T15:00:00", "week_start": "2024-03-25",
+        "patients": {"1": {"name": "Ann", "days": [{"slots": [{"value": "Walk"}, {"value": ""}]}]}},
+    }
+
+    def _request(self):
+        return types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace(config=self.CONFIG)))
+
+    def _get(self):
+        return explain_router.get_preview(self._request(), refresh=False, user=VerifiedUser("U1", "Sam", "ADMIN", ""))
+
+    def test_needs_verified_staff(self):
+        route = next(r for r in explain_router.preview_router.routes if r.path == "/")
+        assert explain_router.require_verified_staff in [d.call for d in route.dependant.dependencies]
+
+    def test_calendar_rows_marked_as_preview(self, monkeypatch):
+        from pear_schedule.db_utils.writer import ScheduleWriter
+        writer = MagicMock()
+        monkeypatch.setattr(ScheduleWriter, "write", writer)
+        monkeypatch.setattr(explain, "preview_next_week", lambda config, with_names: self.EXPLANATION)
+        body = json.loads(self._get().body)
+        assert body["Preview"] is True and body["BuiltAt"] == "2024-03-21T15:00:00"
+        row = body["Data"][0]
+        assert row["PatientID"] == 1 and row["Name"] == "Ann" and row["StartDate"] == "2024-03-25T00:00:00"
+        assert json.loads(row["Monday"]) == {"09:00-09:30": "Walk", "09:30-10:00": "Free and Easy"}
+        writer.assert_not_called()
+
+    def test_shares_the_explainer_build(self, monkeypatch):
+        preview = MagicMock(return_value=self.EXPLANATION)
+        monkeypatch.setattr(explain, "preview_next_week", preview)
+        self._get()
+        explain_router.cached_explanation(self.CONFIG, week="next")
+        assert preview.call_count == 1
+
+    def test_build_error_is_500(self, monkeypatch):
+        def boom(config, with_names):
+            raise RuntimeError("db down")
+        monkeypatch.setattr(explain, "preview_next_week", boom)
+        with pytest.raises(HTTPException) as exc:
+            self._get()
+        assert exc.value.status_code == 500

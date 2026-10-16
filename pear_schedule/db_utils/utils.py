@@ -1,21 +1,44 @@
 from sqlalchemy import Select
-from datetime import datetime, timedelta
+from contextlib import contextmanager
+from contextvars import ContextVar
+import json
+from datetime import date, datetime, time, timedelta
 from typing import List, Mapping, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
+# set only while building another week, e.g. the next week preview
+_building_for: ContextVar[Optional[datetime]] = ContextVar("building_for", default=None)
+
 def compile_query(query: Select) -> str:
     # literal binds might cause errors if datetime is ever used
     return query.compile(compile_kwargs={"literal_binds": True})
 
+def building_for() -> Optional[datetime]:
+    """The time another week is being built for, None for a normal run."""
+    return _building_for.get()
+
+def next_week_start(now: Optional[datetime] = None) -> date:
+    now = now or datetime.now()
+    return (now - timedelta(days=now.weekday()) + timedelta(days=7)).date()
+
+@contextmanager
+def building_week(week_start: date):
+    # builds as if it's that Monday 00:00, when the weekly generate runs
+    token = _building_for.set(datetime.combine(week_start - timedelta(days=week_start.weekday()), time()))
+    try:
+        yield
+    finally:
+        _building_for.reset(token)
+
 def get_week_start() -> datetime:
-    today = datetime.now()
+    today = building_for() or datetime.now()
     monday = today - timedelta(days=today.weekday())
     return monday.replace(hour=0, minute=0, second=0, microsecond=0)
 
 def get_week_end() -> datetime:
-    today = datetime.now()
+    today = building_for() or datetime.now()
     days_until_sunday = 6 - today.weekday()
     sunday = today + timedelta(days=days_until_sunday)
     return sunday.replace(hour=23, minute=59, second=59, microsecond=0)
@@ -41,6 +64,14 @@ def day_timeslot_label(day: str, index: int, working_hours: Mapping, min_activit
 def day_timeslot_labels(day: str, slots_per_day: int, working_hours: Mapping, min_activity_duration: int) -> List[str]:
     """List of day_timeslot_label(), one per slot in the day"""
     return [day_timeslot_label(day, i, working_hours, min_activity_duration) for i in range(slots_per_day)]
+
+def schedule_day_columns(slots: List[List[str]], config: Mapping) -> Mapping[str, str]:
+    """One patient's week as the SCHEDULE day columns, {"Monday": '{"09:00-09:30": "..."}', ...}"""
+    columns = {}
+    for i, day in enumerate(config["OPEN_DAYS"]):
+        labels = day_timeslot_labels(day, len(slots[i]), config["WORKING_HOURS"], config["MIN_ACTIVITY_DURATION"])
+        columns[day] = json.dumps({labels[j]: activity or 'Free and Easy' for j, activity in enumerate(slots[i])})
+    return columns
 
 def decode_day_of_week_bitmask(day_of_week: Optional[int], day_of_week_order: List[str]) -> List[str]:
     """day_of_week is a bitmask, bit 1<<i = day_of_week_order[i]. Returns the matched day names."""

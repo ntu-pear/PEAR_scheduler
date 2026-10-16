@@ -7,7 +7,7 @@ from typing import Callable, Mapping, List, Dict, Optional
 
 from sqlalchemy import Connection, column, delete, select, func, literal_column, update
 from pear_schedule.db import DB
-from pear_schedule.db_utils.utils import day_timeslot_labels, get_week_start, get_week_end
+from pear_schedule.db_utils.utils import get_week_start, get_week_end, schedule_day_columns
 from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView, WeeklyScheduleView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
@@ -120,19 +120,7 @@ class ScheduleWriter(ConfigDependant):
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
             for p, slots in patientSchedules.items():
-                
-                days = cls.config["OPEN_DAYS"]
-                converted_schedule = {}
-
-                for i, day in enumerate(days):
-                    activities = {}
-                    day_labels = day_timeslot_labels(
-                        day, len(slots[i]), cls.config["WORKING_HOURS"], cls.config["MIN_ACTIVITY_DURATION"]
-                    )
-                    for j, activity in enumerate(slots[i]):
-                        key = day_labels[j]
-                        activities[key] = 'Free and Easy' if not activity else activity
-                    converted_schedule[day] = json.dumps(activities)
+                converted_schedule = schedule_day_columns(slots, cls.config)
 
                 existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
                 existing_medication_schedule = (

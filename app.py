@@ -91,6 +91,7 @@ def create_app():
     app.include_router(integrity_router.router, prefix="/integrity")
     app.include_router(medication_schedule_router.router, prefix="/MedicationSchedule")
     app.include_router(explain_router.router, prefix="/schedule/explain")
+    app.include_router(explain_router.preview_router, prefix="/schedule/preview")
     app.include_router(patient_schedule_router.router, prefix="/schedule/patient")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
@@ -242,7 +243,7 @@ def generate_schedules(config: Mapping[str, Any], args):
 
 def explain_schedule(config: Mapping[str, Any], args):
     """Read-only, builds and explains this week's schedules without writing to the DB."""
-    from pear_schedule.scheduler.explain import dump_html, dump_json, explain_saved_week, format_text, run_explanation
+    from pear_schedule.scheduler.explain import dump_html, dump_json, explain_saved_week, format_text, preview_next_week, run_explanation
 
     config = {item: getattr(config, item) for item in dir(config)}
     DB.init_app(config["DB_CONN_STR"], config)
@@ -255,7 +256,12 @@ def explain_schedule(config: Mapping[str, Any], args):
 
     with_names = getattr(args, "with_names", False)
     with_what_if = getattr(args, "what_if", False)
-    if getattr(args, "saved", False):
+    if getattr(args, "week", "this") == "next":
+        if getattr(args, "saved", False):
+            print("Nothing is saved for next week, run --week next without --saved")
+            return
+        explanation = preview_next_week(config, args.patient, with_names=with_names, with_what_if=with_what_if)
+    elif getattr(args, "saved", False):
         explanation = explain_saved_week(config, args.patient, with_names=with_names, with_what_if=with_what_if)
         if explanation is None:
             print("Nothing saved for this week yet, run without --saved to build one")
@@ -340,6 +346,7 @@ def parse_args():
     explain_parser.add_argument("--with-names", action="store_true", help="show patient names (off by default, the file then has names in it)")
     explain_parser.add_argument("--saved", action="store_true", help="explain the saved schedule instead of building one")
     explain_parser.add_argument("--what-if", action="store_true", help="also show how much Free and Easy each data change would fill")
+    explain_parser.add_argument("--week", choices=["this", "next"], default="this", help="next builds a preview of next week from today's data")
     explain_parser.set_defaults(func=explain_schedule)
 
     # NEW: add args for running only consumers (useful for separate consumer processes)

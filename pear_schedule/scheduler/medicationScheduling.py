@@ -5,7 +5,7 @@ from typing import List, Mapping, Dict
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.scheduler import trace
 from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView, ExistingScheduleView
-from pear_schedule.db_utils.utils import timeslot_index
+from pear_schedule.db_utils.utils import building_for, timeslot_index
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ class medicationScheduleData:
             # print(f"PatientID: {pid} | Medication: {row['PrescriptionName']}")
             
             # ======== Check what is the start and end date of the medication in the given week ========
-            today = datetime.datetime.now()
+            today = building_for() or datetime.datetime.now()
             start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
             start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
             end_of_week = start_of_week + datetime.timedelta(days=len(cls.config["OPEN_DAYS"]) - 1, hours=23, minutes=59, seconds=59, microseconds=0)  # last open day -> 23:59:59
