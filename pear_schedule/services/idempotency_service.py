@@ -294,6 +294,12 @@ class IdempotencyService:
             The created ProcessedEvent record
         """
         try:
+            # a redelivered sync event is already recorded, adding it again fails the flush and the whole commit
+            existing = db.get(ProcessedEvent, correlation_id)
+            if existing is not None:
+                logger.debug(f"Event {correlation_id} already recorded")
+                return existing
+
             logger.debug(f"Recording processed event {correlation_id} (no duplicate check)")
             
             processed_event = ProcessedEvent.create_from_correlation_id(
