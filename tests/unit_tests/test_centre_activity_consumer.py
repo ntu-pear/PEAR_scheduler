@@ -82,3 +82,82 @@ class TestUpdateFixedTimeSlots:
     def test_slots_not_sent_are_left_alone(self):
         _, update = self._update(self._consumer(), min_duration=60)
         assert "FixedTimeSlots" not in update.model_dump(exclude_unset=True)
+
+
+class TestActivityNotSyncedYet:
+    """A centre activity that arrives before its activity used to be dropped as a duplicate."""
+
+    CREATED = {
+        "correlation_id": "c2", "centre_activity_id": 40, "created_by": "u1",
+        "centre_activity_data": {
+            "id": 40, "activity_id": 99, "is_compulsory": False, "is_fixed": False, "is_group": False,
+            "start_date": "2026-10-01", "end_date": "2026-12-31", "min_duration": 30, "max_duration": 30,
+            "min_people_req": 1, "fixed_time_slots": None,
+            "created_date": "2026-10-16T10:00:00", "modified_date": "2026-10-16T10:00:00",
+        },
+    }
+
+    def _consumer(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from messaging import centre_activity_consumer
+        from messaging.mappers.mapper_util import map_centre_activity_create, map_centre_activity_update
+
+        sleep = MagicMock()
+        monkeypatch.setattr(centre_activity_consumer.time, "sleep", sleep)
+        consumer = CentreActivityConsumer.__new__(CentreActivityConsumer)
+        consumer.config = _config()
+        consumer.map_centre_activity_create = map_centre_activity_create
+        consumer.map_centre_activity_update = map_centre_activity_update
+        consumer.create_ref_centre_activity = MagicMock()
+        consumer.update_ref_centre_activity = MagicMock()
+        return consumer, sleep
+
+    def test_created_waits_then_retries(self, monkeypatch):
+        from pear_schedule.crud.ref_centre_activity_crud import ActivityNotSyncedError
+        from pear_schedule.models.processed_events_model import MessageProcessingResult
+
+        consumer, sleep = self._consumer(monkeypatch)
+        consumer.create_ref_centre_activity.side_effect = ActivityNotSyncedError("Activity 99 does not exist in REF_ACTIVITY yet")
+
+        assert consumer._handle_centre_activity_created(None, self.CREATED) == MessageProcessingResult.FAILED_RETRYABLE
+        sleep.assert_called_once_with(2)
+
+    def test_retry_is_requeued_not_acked(self, monkeypatch):
+        from pear_schedule.crud.ref_centre_activity_crud import ActivityNotSyncedError
+
+        consumer, _ = self._consumer(monkeypatch)
+        consumer.create_ref_centre_activity.side_effect = ActivityNotSyncedError("not yet")
+        consumer.get_db = lambda: iter([None])
+        consumer.is_event_already_processed = lambda db, key: False
+        consumer._flush_logs = lambda: None
+        message = {"data": {**self.CREATED, "event_type": "CENTRE_ACTIVITY_CREATED"}}
+
+        assert consumer._handle_message_wrapper(message) is False
+
+    def test_sync_update_of_a_missing_row_creates_it(self, monkeypatch):
+        """The fallback create used to see the update's own record and skip as a duplicate."""
+        from pear_schedule.models.processed_events_model import MessageProcessingResult
+
+        consumer, _ = self._consumer(monkeypatch)
+        consumer.update_ref_centre_activity.return_value = (None, False)
+        consumer.create_ref_centre_activity.return_value = (object(), False)
+        message = {"correlation_id": "c3", "centre_activity_id": 40, "modified_by": "u1", "is_sync_event": True,
+                   "new_data": self.CREATED["centre_activity_data"]}
+
+        assert consumer._handle_centre_activity_updated(None, message) == MessageProcessingResult.SUCCESS
+        kwargs = consumer.create_ref_centre_activity.call_args.kwargs
+        assert kwargs["skip_duplicate_check"] is True and kwargs["record_event"] is False
+
+    def test_sync_create_waits_for_the_activity_too(self, monkeypatch):
+        from pear_schedule.crud.ref_centre_activity_crud import ActivityNotSyncedError
+        from pear_schedule.models.processed_events_model import MessageProcessingResult
+
+        consumer, sleep = self._consumer(monkeypatch)
+        consumer.update_ref_centre_activity.return_value = (None, False)
+        consumer.create_ref_centre_activity.side_effect = ActivityNotSyncedError("not yet")
+        message = {"correlation_id": "c4", "centre_activity_id": 40, "modified_by": "u1", "is_sync_event": True,
+                   "new_data": self.CREATED["centre_activity_data"]}
+
+        assert consumer._handle_centre_activity_updated(None, message) == MessageProcessingResult.FAILED_RETRYABLE
+        sleep.assert_called_once_with(2)

@@ -5,6 +5,7 @@ from typing import Optional, Tuple, List
 from datetime import datetime
 import logging
 import math
+from ..models.ref_activity_model import RefActivity
 from ..models.ref_centre_activity_model import RefCentreActivity
 from ..models.processed_events_model import ProcessedEvent
 from ..schemas.ref_centre_activity import RefCentreActivityCreate, RefCentreActivityUpdate, RefCentreActivityDelete
@@ -12,12 +13,28 @@ from ..services.idempotency_service import IdempotencyService
 
 logger = logging.getLogger(__name__)
 
+
+class ActivityNotSyncedError(LookupError):
+    """The referenced activity is not in REF_ACTIVITY yet; the event should be retried."""
+
+
+def _ensure_activity_exists(db: Session, activity_id: int):
+    """
+    Check the FK target up front. Letting the insert hit the FK constraint raises an IntegrityError,
+    which IdempotencyService.process_idempotent treats as an already-processed race and would drop.
+    """
+    exists = db.query(RefActivity.ActivityID).filter(RefActivity.ActivityID == activity_id).first()
+    if not exists:
+        raise ActivityNotSyncedError(f"Activity {activity_id} does not exist in REF_ACTIVITY yet")
+
+
 def create_ref_centre_activity(
     db: Session,
     centre_activity: RefCentreActivityCreate,
     correlation_id: str,
     created_by: str,
-    skip_duplicate_check: bool = False
+    skip_duplicate_check: bool = False,
+    record_event: bool = True
 ) -> Tuple[RefCentreActivity, bool]:
     """
     Create a new centre activity with idempotency protection.
@@ -28,12 +45,14 @@ def create_ref_centre_activity(
         correlation_id: Correlation ID from outbox service for deduplication
         created_by: User/service creating the centre activity
         skip_duplicate_check: If True, bypass idempotency check (for sync events)
+        record_event: If False with skip_duplicate_check, don't record the event (the caller already did)
         
     Returns:
         Tuple of (RefCentreActivity, was_duplicate: bool)
         
     Raises:
         ValueError: If centre activity with same ID already exists (business logic error)
+        ActivityNotSyncedError: If its activity isn't in REF_ACTIVITY yet (retry later)
         Exception: For database or other errors
     """
     
@@ -43,6 +62,7 @@ def create_ref_centre_activity(
         ).first()
         if existing:
             raise ValueError(f"Centre Activity with ID {centre_activity.CentreActivityID} already exists. Use update operation instead.")
+        _ensure_activity_exists(db, centre_activity.ActivityID)
         
         logger.info(f"Creating new centre activity {centre_activity.CentreActivityID}")
         
@@ -99,16 +119,17 @@ def create_ref_centre_activity(
             result = create_operation()
             was_duplicate = False
             
-            try:
-                IdempotencyService.record_processed_event(
-                    db=db,
-                    correlation_id=correlation_id,
-                    event_type="CENTRE_ACTIVITY_CREATED",
-                    aggregate_id=str(centre_activity.CentreActivityID),
-                    processed_by=f"scheduler_service_{created_by}_sync"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
+            if record_event:
+                try:
+                    IdempotencyService.record_processed_event(
+                        db=db,
+                        correlation_id=correlation_id,
+                        event_type="CENTRE_ACTIVITY_CREATED",
+                        aggregate_id=str(centre_activity.CentreActivityID),
+                        processed_by=f"scheduler_service_{created_by}_sync"
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
         else:
             result, was_duplicate = IdempotencyService.process_idempotent(
                 db=db,
@@ -172,6 +193,9 @@ def update_ref_centre_activity(
         logger.debug(f"Updating centre activity {centre_activity_id}")
         
         update_data = centre_activity_update.model_dump(exclude_unset=True)
+        new_activity_id = update_data.get('ActivityID')
+        if new_activity_id is not None and new_activity_id != db_centre_activity.ActivityID:
+            _ensure_activity_exists(db, new_activity_id)
         for field, value in update_data.items():
             if hasattr(db_centre_activity, field) and field != 'CentreActivityID':
                 setattr(db_centre_activity, field, value)
@@ -185,14 +209,16 @@ def update_ref_centre_activity(
             result = update_operation()
             was_duplicate = False
             
+            # a redelivered sync event is already recorded, a second insert would fail the commit
             try:
-                IdempotencyService.record_processed_event(
-                    db=db,
-                    correlation_id=correlation_id,
-                    event_type="CENTRE_ACTIVITY_UPDATED",
-                    aggregate_id=str(centre_activity_id),
-                    processed_by=f"scheduler_service_{centre_activity_update.ModifiedById}_sync"
-                )
+                if not IdempotencyService.is_already_processed(db, correlation_id):
+                    IdempotencyService.record_processed_event(
+                        db=db,
+                        correlation_id=correlation_id,
+                        event_type="CENTRE_ACTIVITY_UPDATED",
+                        aggregate_id=str(centre_activity_id),
+                        processed_by=f"scheduler_service_{centre_activity_update.ModifiedById}_sync"
+                    )
             except Exception as e:
                 logger.warning(f"Failed to record sync event (non-critical): {str(e)}")
         else:
