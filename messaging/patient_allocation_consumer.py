@@ -206,6 +206,10 @@ class PatientAllocationConsumer:
                 
                 logger.debug(f"Transaction completed for {correlation_id}")
             
+            # only a success records the event, a bad payload checked here would requeue forever
+            if result != MessageProcessingResult.SUCCESS:
+                return result
+
             verification_db = next(self.get_db())
             try:
                 verified = self.is_event_already_processed(verification_db, correlation_id)
