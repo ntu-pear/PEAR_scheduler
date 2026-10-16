@@ -68,3 +68,9 @@ class TestAdhocRoute:
     def test_future_range_still_works(self, monkeypatch):
         body, update = self._run(monkeypatch, "2024-03-21", "2024-03-23")
         assert update.call_args.args[2] == ["Thursday", "Friday", "Saturday"]
+
+    def test_change_is_noted_until_its_event_arrives(self, monkeypatch):
+        from pear_schedule.scheduler import repair
+        monkeypatch.setattr(repair, "_adhoc_noted", [])
+        self._run(monkeypatch, "2024-03-18", "2024-03-22")
+        assert repair._adhoc_noted == [(1, datetime.date(2024, 3, d), "Mahjong", "Karaoke") for d in (20, 21, 22)]

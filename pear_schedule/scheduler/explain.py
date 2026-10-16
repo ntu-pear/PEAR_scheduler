@@ -340,7 +340,9 @@ def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> sc
                     t.provenance[(pid, d, k)] = [schedule_trace.SlotWrite(stage, title, "")]
                 if now and reason == "neutral":
                     reason, now = now, None
-                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s))
+                replaced = data.adhoc_replaced.get((pid, d, title)) if kind == "adhoc" else None
+                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s,
+                                                details={"replaced": replaced} if replaced else {}))
                 if now:
                     t.add(schedule_trace.TraceEvent(stage, pid, outcome, now, activity=title, day=d, slot=s))
     return t
