@@ -243,6 +243,7 @@ class TestProcessIdempotent:
 class TestRecordProcessedEvent:
 
     def test_records_without_duplicate_check(self, db_session_mock):
+        db_session_mock.get.return_value = None
         result = IdempotencyService.record_processed_event(
             db_session_mock,
             correlation_id="corr-1",
@@ -256,7 +257,25 @@ class TestRecordProcessedEvent:
         db_session_mock.flush.assert_called_once()
         assert result.correlation_id == "corr-1"
 
+    def test_already_recorded_is_not_added_again(self, db_session_mock):
+        """A redelivered sync event used to add the same key again, the flush failed and so did the commit."""
+        existing = ProcessedEvent(correlation_id="corr-1")
+        db_session_mock.get.return_value = existing
+
+        result = IdempotencyService.record_processed_event(
+            db_session_mock,
+            correlation_id="corr-1",
+            event_type="ACTIVITY_UPDATED",
+            aggregate_id="1",
+            processed_by="scheduler_service",
+        )
+
+        assert result is existing
+        db_session_mock.add.assert_not_called()
+        db_session_mock.flush.assert_not_called()
+
     def test_raises_when_flush_fails(self, db_session_mock):
+        db_session_mock.get.return_value = None
         db_session_mock.flush.side_effect = Exception("flush failed")
 
         with pytest.raises(Exception, match="flush failed"):
@@ -323,3 +342,17 @@ class TestGetProcessingStats:
 
         assert stats["error"] == "stats query failed"
         assert "stats_generated_at" in stats
+
+
+class TestRecordProcessedEventOnARealSession:
+    def test_redelivered_sync_event_still_commits(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+
+        engine = create_engine("sqlite:///:memory:")
+        ProcessedEvent.__table__.create(engine)
+        with Session(engine) as db:
+            for _ in range(2):  # first delivery, then the redelivery
+                IdempotencyService.record_processed_event(db, "corr-1", "ACTIVITY_UPDATED", "1", "scheduler_service_sync")
+                db.commit()
+            assert db.query(ProcessedEvent).count() == 1

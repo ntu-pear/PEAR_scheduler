@@ -430,6 +430,7 @@ class RecommendedActivitiesView(BaseView):
         ).where(
             recommendations.c["IsDeleted"] == False,
             recommendations.c["DoctorRecommendation"] > 0,
+            centre_activity.c["IsDeleted"] == False,
             centre_activity.c["IsGroup"] == False,
             centre_activity.c["StartDate"] <= get_week_end(),
             centre_activity.c["EndDate"] >= get_week_start(),
