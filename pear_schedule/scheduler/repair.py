@@ -52,6 +52,7 @@ class RepairData:
     group_recommended: Dict[str, Set[Any]] = field(default_factory=dict)
     group_liked: Dict[str, Set[Any]] = field(default_factory=dict)
     adhoc_new: Set[Tuple[Any, int, str]] = field(default_factory=set)  # (pid, day, title) an adhoc request put there
+    adhoc_replaced: Dict[Tuple[Any, int, str], str] = field(default_factory=dict)  # (pid, day, new title) -> old title
 
 
 def _runs(day: List[str]) -> List[Tuple[int, int, str]]:
@@ -466,7 +467,29 @@ def load_repair_data(config: Mapping[str, Any], week_start: datetime.datetime) -
             date = (week_start + datetime.timedelta(days=d)).date()
             if pd.Timestamp(start).date() <= date <= pd.Timestamp(end).date():
                 data.adhoc_new.add((r["PatientID"], d, new))
+                if r.get("OldActivityTitle"):
+                    data.adhoc_replaced[(r["PatientID"], d, new)] = r["OldActivityTitle"]
+    add_noted_adhoc(data, week_start, len(config["OPEN_DAYS"]))
     return data
+
+
+# adhoc changes made through /schedule/adhoc/ that REF_ADHOC doesn't have yet (it comes with ADHOC_CREATED).
+# In memory, so a restart before the event arrives forgets it
+_adhoc_noted: List[Tuple[Any, datetime.date, str, str]] = []
+
+
+def note_adhoc(pid, start: datetime.date, end: datetime.date, old: str, new: str) -> None:
+    cutoff = datetime.date.today() - datetime.timedelta(days=7)
+    _adhoc_noted[:] = [n for n in _adhoc_noted if n[1] >= cutoff]
+    _adhoc_noted.extend((pid, start + datetime.timedelta(days=i), old, new) for i in range((end - start).days + 1))
+
+
+def add_noted_adhoc(data: RepairData, week_start: datetime.datetime, open_days: int) -> None:
+    for pid, date, old, new in _adhoc_noted:
+        d = (date - week_start.date()).days
+        if 0 <= d < open_days:
+            data.adhoc_new.add((pid, d, new))
+            data.adhoc_replaced.setdefault((pid, d, new), old)
 
 
 # what repair regenerates changed this week, for the explainer. In memory, so a restart forgets it

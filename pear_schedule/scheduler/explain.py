@@ -13,7 +13,7 @@ from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tupl
 
 from pear_schedule.db_utils.utils import building_for, building_week, day_timeslot_labels, next_week_start, schedule_day_columns
 from pear_schedule.scheduler import trace as schedule_trace
-from pear_schedule.scheduler.gapFill import PoolActivity, is_excluded
+from pear_schedule.scheduler.gapFill import PoolActivity, gap_fill_strategy, is_excluded
 from pear_schedule.scheduler.invariants import (
     FREE_AND_EASY, LOGIC, PatientRules, RuleInputs, analyse_free_and_easy, base_title, check_rules,
 )
@@ -214,6 +214,7 @@ def build_explanation(
         "week_start": inputs.week_start.date().isoformat(),
         "open_days": open_days,
         "slot_minutes": config["MIN_ACTIVITY_DURATION"],
+        "gap_fill_strategy": gap_fill_strategy(config),
         "stages": STAGE_ORDER,
         "summary": {
             "patients": len(schedules),
@@ -340,7 +341,9 @@ def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> sc
                     t.provenance[(pid, d, k)] = [schedule_trace.SlotWrite(stage, title, "")]
                 if now and reason == "neutral":
                     reason, now = now, None
-                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s))
+                replaced = data.adhoc_replaced.get((pid, d, title)) if kind == "adhoc" else None
+                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s,
+                                                details={"replaced": replaced} if replaced else {}))
                 if now:
                     t.add(schedule_trace.TraceEvent(stage, pid, outcome, now, activity=title, day=d, slot=s))
     return t

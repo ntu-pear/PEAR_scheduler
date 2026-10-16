@@ -119,3 +119,67 @@ class TestExplainSavedWeek:
             out = explain.explain_saved_week(CFG, now=WEEK, with_what_if=True)
         assert out["what_if"]["free_and_easy"] == out["summary"]["free_and_easy"]["total"]
         assert all(o["fills"] or o["fills_rearranged"] for o in out["what_if"]["options"])
+
+
+class TestAdhocBeforeItsEvent:
+    """/schedule/adhoc/ changes the saved week before ADHOC_CREATED fills REF_ADHOC."""
+
+    def _run(self, data, saved):
+        with patch.object(repair, "load_repair_data", return_value=data), \
+             patch.object(repair, "load_saved", return_value=saved), \
+             patch.object(repair, "changes_this_week", return_value=[]):
+            return explain.explain_saved_week(CFG, now=WEEK)
+
+    def _week(self):
+        data = _data()
+        data.inputs.patients[1].dislikes.add(2)  # Reading
+        saved = {1: [["Exercise", "Reading", FE, FE, FE, FE], ["Exercise", FE, FE, FE, FE, FE]], 2: None, 3: None}
+        return data, saved
+
+    def test_noted_adhoc_is_not_a_rule_break(self, monkeypatch):
+        monkeypatch.setattr(repair, "_adhoc_noted", [])
+        data, saved = self._week()
+        def broken(out):
+            return [v["rule"] for v in out["patients"]["1"]["violations"] if v["rule"] != "R8"]
+
+        assert broken(self._run(copy.deepcopy(data), saved)) == ["R3"]  # what it used to show
+
+        repair.note_adhoc(1, WEEK.date(), WEEK.date(), "Puzzles", "Reading")
+        repair.add_noted_adhoc(data, WEEK, 2)
+        out = self._run(data, saved)
+        assert broken(out) == []
+        events = out["patients"]["1"]["days"][0]["slots"][1]["events"]
+        assert [(e["reason"], e["details"]) for e in events] == [("adhoc_request", {"replaced": "Puzzles"})]
+
+    def test_noted_adhoc_outside_the_week_is_ignored(self, monkeypatch):
+        monkeypatch.setattr(repair, "_adhoc_noted", [])
+        data, _ = self._week()
+        repair.note_adhoc(1, WEEK.date() - datetime.timedelta(days=7), WEEK.date() - datetime.timedelta(days=1), "Puzzles", "Reading")
+        repair.add_noted_adhoc(data, WEEK, 2)
+        assert data.adhoc_new == set()
+
+    def test_ref_adhoc_names_the_replaced_activity(self):
+        data, saved = self._week()
+        data.adhoc_new.add((1, 0, "Reading"))
+        data.adhoc_replaced[(1, 0, "Reading")] = "Puzzles"
+        e = next(e for e in explain.saved_week_trace(saved, data).events if e.patient_id == 1 and e.slot == 1)
+        assert e.details == {"replaced": "Puzzles"}
+
+
+class TestGapFillStrategy:
+    """The page used to guess the strategy from events, a saved week has none so it said greedy."""
+
+    def _run(self, strategy):
+        data = _data()
+        week = repair_week({p: None for p in data.patient_ids}, data, set())
+        with patch.object(repair, "load_repair_data", return_value=data), \
+             patch.object(repair, "load_saved", return_value=week), \
+             patch.object(repair, "changes_this_week", return_value=[]):
+            return explain.explain_saved_week({**CFG, "GAP_FILL_STRATEGY": strategy}, now=WEEK)
+
+    def test_strategy_comes_from_the_config(self):
+        assert self._run("optimal")["gap_fill_strategy"] == "optimal"
+        assert self._run("greedy")["gap_fill_strategy"] == "greedy"
+
+    def test_unknown_strategy_is_greedy(self):
+        assert self._run("optimial")["gap_fill_strategy"] == "greedy"

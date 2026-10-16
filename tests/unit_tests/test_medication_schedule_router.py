@@ -137,6 +137,23 @@ class TestCaregiverMedicationList:
         assert self._patients("SUPERVISOR") == [1, 2, 3]
 
 
+class TestNotGivenDoses:
+    def test_not_given_dose_is_null_not_nat(self, monkeypatch):
+        """Once one dose today is given the column is datetimes, the others used to come back as "NaT"."""
+        r = medication_schedule_router
+        given = datetime.datetime(2026, 10, 16, 9, 5)
+        monkeypatch.setattr(r.medicationScheduler, "generateTodayMedSchedule", lambda: {"x": 1})
+        monkeypatch.setattr(r.MedicationScheduleWrite, "write", lambda schedules: True)
+        monkeypatch.setattr(r.TodayMedicationScheduleView, "get_data", lambda *a, **k: pd.DataFrame({
+            "PatientID": [1, 1], "AdministerDate": pd.to_datetime(["2026-10-16", "2026-10-16"]),
+            "ActualAdministerTime": pd.to_datetime([given, None]), "AdministeredBy": ["u1", None],
+        }))
+        rows = json.loads(r.get_medication_schedule(None, _user("SUPERVISOR")).body)
+        assert rows[0]["ActualAdministerTime"] == "2026-10-16T09:05:00"
+        assert rows[1]["ActualAdministerTime"] is None
+        assert rows[1]["AdministerDate"] == "2026-10-16T00:00:00"
+
+
 def _undo_body():
     return MedicationScheduleUndo(PatientID=1, PrescriptionName="Paracetamol",
                                   AdministerDate=datetime.date(2026, 10, 15), AdministerTime="0900")

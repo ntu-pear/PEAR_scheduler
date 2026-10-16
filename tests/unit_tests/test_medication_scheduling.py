@@ -309,3 +309,44 @@ class TestMedicationSchedulerFillSchedule:
             medicationScheduler.fillSchedule(patient_schedules)  # should not raise
 
         assert patient_schedules[1] == [["" for _ in range(8)] for _ in range(5)]
+
+
+class TestAdministerTimes:
+    """A space after the comma used to make strptime raise and fail the whole stage."""
+
+    def test_spaced_times_are_all_placed(self, monkeypatch):
+        monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
+        patient_schedules = _patient_schedule()
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=_medication_row(administer_time="0900, 1100")), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()):
+            medicationScheduler.fillSchedule(patient_schedules)
+
+        for day in range(5):
+            assert "Give Medication@0900" in patient_schedules[1][day][0]
+            assert "Give Medication@1100" in patient_schedules[1][day][4]
+
+    def test_bad_time_only_skips_that_dose(self, monkeypatch):
+        monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
+        patient_schedules = {1: [["" for _ in range(8)] for _ in range(5)], 2: [["" for _ in range(8)] for _ in range(5)]}
+        rows = pd.concat([_medication_row(administer_time="9:30,1000"), _medication_row(patient_id=2, medication_id=2)])
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=rows), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()):
+            medicationScheduler.fillSchedule(patient_schedules)
+
+        assert "Give Medication@1000" in patient_schedules[1][0][2]
+        assert not any("9:30" in slot for day in patient_schedules[1] for slot in day)
+        assert "Give Medication@0900" in patient_schedules[2][0][0]
+
+    def test_today_schedule_strips_times(self, monkeypatch):
+        monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=_medication_row(administer_time="0900, 1100")), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()), \
+             patch("pear_schedule.db_utils.views.ExistingScheduleView.get_data", return_value=pd.DataFrame()):
+            schedules = medicationScheduler.generateTodayMedSchedule()
+
+        assert [m["AdministerTime"] for m in schedules[1]] == ["0900", "1100"]

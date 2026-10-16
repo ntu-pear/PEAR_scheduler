@@ -480,7 +480,8 @@ class MedicationScheduleWrite(ConfigDependant):
 
         # check for administerTime changes for the day, delete any records with changes
         # inserting medication schedules for only one day. Records with duplicate medID, different administer times
-        subquery = select(column("value")) \
+        # trimmed, times can be sent as "0930, 1300"
+        subquery = select(func.ltrim(func.rtrim(column("value")))) \
             .select_from(func.string_split(RefPatientMedication.AdministerTime, ",")) \
             .scalar_subquery()
         
