@@ -107,6 +107,7 @@ jobs:
           echo "REGENERATE_MODE=${{ vars.REGENERATE_MODE }}" >> .env
           echo "PATIENT_SERVICE_URL=${{ vars.PATIENT_SERVICE_URL }}" >> .env
           echo "USE_ACTIVITY_AVAILABILITY=${{ vars.USE_ACTIVITY_AVAILABILITY || 'false' }}" >> .env
+          echo "EXPLAIN_PEAR_URL=${{ vars.EXPLAIN_PEAR_URL || 'off' }}" >> .env
           echo "ENVIRONMENT=${{ inputs.environment }}" >> .env
 
       # A var or secret missing from the environment resolves to an empty string

@@ -100,6 +100,11 @@ async def generateAccessToken_onLogin(form_data: OAuth2PasswordRequestForm) -> T
     )
     
     access_token = response.get("access_token")
+    if not access_token:
+        # accounts with two-step sign-in get {"msg": "2FA required"} and no token
+        if "2FA" in str(response.get("msg", "")):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="2FA required")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="The user service returned no token")
 
     return Token(
         access_token = access_token,
