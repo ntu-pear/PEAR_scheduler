@@ -313,6 +313,10 @@ class PatientMedicationConsumer:
 
             logger.debug(f"Mapped update data: {mapped_update_data}")
 
+            # the mapper drops None on updates, but a None end date means it no longer ends, so clear it
+            if 'EndDate' in medication_data:
+                mapped_update_data['EndDateTime'] = mapped_update_data.get('EndDateTime')
+
             from pear_schedule.schemas.ref_patient_medication import (
                 RefPatientMedicationUpdate,
             )
