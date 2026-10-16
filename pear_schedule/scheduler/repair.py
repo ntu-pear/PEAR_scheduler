@@ -10,6 +10,7 @@ freed slots get re-filled. Past days and slots already started today never chang
 import datetime
 import json
 import logging
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple
@@ -476,16 +477,20 @@ def load_repair_data(config: Mapping[str, Any], week_start: datetime.datetime) -
 # adhoc changes made through /schedule/adhoc/ that REF_ADHOC doesn't have yet (it comes with ADHOC_CREATED).
 # In memory, so a restart before the event arrives forgets it
 _adhoc_noted: List[Tuple[Any, datetime.date, str, str]] = []
+_adhoc_noted_lock = threading.Lock()  # sync routes run on a thread pool
 
 
 def note_adhoc(pid, start: datetime.date, end: datetime.date, old: str, new: str) -> None:
     cutoff = datetime.date.today() - datetime.timedelta(days=7)
-    _adhoc_noted[:] = [n for n in _adhoc_noted if n[1] >= cutoff]
-    _adhoc_noted.extend((pid, start + datetime.timedelta(days=i), old, new) for i in range((end - start).days + 1))
+    with _adhoc_noted_lock:
+        _adhoc_noted[:] = [n for n in _adhoc_noted if n[1] >= cutoff]
+        _adhoc_noted.extend((pid, start + datetime.timedelta(days=i), old, new) for i in range((end - start).days + 1))
 
 
 def add_noted_adhoc(data: RepairData, week_start: datetime.datetime, open_days: int) -> None:
-    for pid, date, old, new in _adhoc_noted:
+    with _adhoc_noted_lock:
+        noted = list(_adhoc_noted)
+    for pid, date, old, new in noted:
         d = (date - week_start.date()).days
         if 0 <= d < open_days:
             data.adhoc_new.add((pid, d, new))
