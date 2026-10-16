@@ -119,3 +119,83 @@ class TestExplainSavedWeek:
             out = explain.explain_saved_week(CFG, now=WEEK, with_what_if=True)
         assert out["what_if"]["free_and_easy"] == out["summary"]["free_and_easy"]["total"]
         assert all(o["fills"] or o["fills_rearranged"] for o in out["what_if"]["options"])
+
+
+class TestAdhocNotInTableYet:
+    """The schedule has the request before activity service's ADHOC_CREATED reaches the ADHOC table."""
+
+    def _load(self, adhoc_rows):
+        import pandas as pd
+        from pear_schedule.db_utils import views
+
+        empty = pd.DataFrame()
+        cols = {
+            "RecommendedActivitiesView": empty, "ValidRoutineActivitiesView": empty,
+            "GroupActivitiesOnlyView": empty, "GroupActivitiesExclusionView": empty,
+            "GroupActivitiesRecommendationView": empty, "GroupActivitiesPreferenceView": empty,
+            "PatientsOnlyView": pd.DataFrame({"PatientID": [1, 2, 3]}),
+            "AdhocActivityView": pd.DataFrame(adhoc_rows),
+        }
+        patches = [patch.object(getattr(views, n), "get_data", return_value=df) for n, df in cols.items()]
+        patches.append(patch.object(explain, "collect_rule_inputs", return_value=_data().inputs))
+        for p in patches:
+            p.start()
+        try:
+            return repair.load_repair_data(CFG, WEEK)
+        finally:
+            for p in patches:
+                p.stop()
+
+    def setup_method(self):
+        repair._pending_adhoc.clear()
+
+    def teardown_method(self):
+        repair._pending_adhoc.clear()
+
+    def test_pending_request_counts_as_adhoc(self):
+        repair.record_adhoc(1, "Reading", "Music", WEEK.date() + datetime.timedelta(days=1), WEEK.date() + datetime.timedelta(days=1))
+        data = self._load([])
+        assert data.adhoc_new == {(1, 1, "Music")}
+        assert data.adhoc_old[(1, 1, "Music")] == "Reading"
+
+    def test_pending_request_is_not_a_rule_break(self):
+        repair.record_adhoc(1, "Reading", "Music", WEEK.date() + datetime.timedelta(days=1), WEEK.date() + datetime.timedelta(days=1))
+        data = self._load([])
+        data.inputs.patients[1].dislikes.add(4)  # Music
+        saved = {1: [["Exercise", FE, FE, FE, FE, FE], ["Exercise", "Music", FE, FE, FE, FE]], 2: None, 3: None}
+        t = explain.saved_week_trace(saved, data)
+        out = explain.build_explanation({1: saved[1]}, t, data.inputs, CFG)
+        assert [v for v in out["patients"]["1"]["violations"] if v["activity"] == "Music"] == []
+        event = next(e for e in t.events if e.reason == "adhoc_request")
+        assert event.details == {"replaced": "Reading"}
+
+    def test_dropped_once_the_table_has_it(self):
+        day = WEEK + datetime.timedelta(days=1)
+        repair.record_adhoc(1, "Reading", "Music", day.date(), day.date())
+        self._load([{"PatientID": 1, "OldActivityTitle": "Reading", "NewActivityTitle": "Music", "StartDate": day, "EndDate": day}])
+        assert repair._pending_adhoc == []
+
+    def test_past_requests_are_forgotten(self):
+        last_week = WEEK.date() - datetime.timedelta(days=7)
+        repair.record_adhoc(1, "Reading", "Music", last_week, last_week)
+        assert self._load([]).adhoc_new == set()
+        assert repair._pending_adhoc == []
+
+    def test_replaced_title_from_the_table(self):
+        day = WEEK + datetime.timedelta(days=1)
+        data = self._load([{"PatientID": 1, "OldActivityTitle": "Reading", "NewActivityTitle": "Music", "StartDate": day, "EndDate": day}])
+        assert data.adhoc_old == {(1, 1, "Music"): "Reading"}
+
+
+class TestGapFillStrategy:
+    def test_saved_week_says_the_configured_strategy(self):
+        data = _data()
+        saved = {1: [["Exercise", FE, FE, FE, FE, FE], ["Exercise", FE, FE, FE, FE, FE]]}
+        t = explain.saved_week_trace(saved, data)
+        cfg = make_scheduler_config(OPEN_DAYS=["Monday", "Tuesday"], SLOTS_PER_DAY={"Monday": 6, "Tuesday": 6},
+                                    GAP_FILL_STRATEGY="optimal")
+        assert explain.build_explanation(saved, t, data.inputs, cfg)["gap_fill_strategy"] == "optimal"
+
+    def test_unknown_strategy_reads_as_greedy(self):
+        assert explain.gap_fill_strategy({"GAP_FILL_STRATEGY": "fast"}) == "greedy"
+        assert explain.gap_fill_strategy({}) == "greedy"

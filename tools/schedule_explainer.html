@@ -1039,6 +1039,8 @@ function renderOverview() {
 }
 
 function stepStrategy() {
+  // a saved week has no gap fill events to tell from, the server says which it uses
+  if (data.gap_fill_strategy) return data.gap_fill_strategy === "optimal" ? "optimal, fills as much time as possible" : "greedy, fills time from the start of the day";
   for (const p of Object.values(data.patients)) for (const d of p.days) for (const s of d.slots)
     for (const e of s.events || []) if (e.stage === "preferred" && e.details && e.details.strategy === "optimal") return "optimal, fills as much time as possible";
   return "greedy, fills time from the start of the day";

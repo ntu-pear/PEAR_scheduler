@@ -52,6 +52,7 @@ class RepairData:
     group_recommended: Dict[str, Set[Any]] = field(default_factory=dict)
     group_liked: Dict[str, Set[Any]] = field(default_factory=dict)
     adhoc_new: Set[Tuple[Any, int, str]] = field(default_factory=set)  # (pid, day, title) an adhoc request put there
+    adhoc_old: Dict[Tuple[Any, int, str], str] = field(default_factory=dict)  # same key -> the title it replaced
 
 
 def _runs(day: List[str]) -> List[Tuple[int, int, str]]:
@@ -458,15 +459,54 @@ def load_repair_data(config: Mapping[str, Any], week_start: datetime.datetime) -
         data.group_blocked[t] = excluded.get(t, set()) | not_rec.get(t, set()) | (disliked.get(t, set()) - rec)
 
     # adhoc requests this week, same date handling as the adhoc stage
+    def add_adhoc(pid, old, new, start, end) -> Set[Tuple[Any, int, str]]:
+        keys = set()
+        for d in range(len(config["OPEN_DAYS"])):
+            date = (week_start + datetime.timedelta(days=d)).date()
+            if pd.Timestamp(start).date() <= date <= pd.Timestamp(end).date():
+                keys.add((pid, d, new))
+                if old:
+                    data.adhoc_old[(pid, d, new)] = old
+        data.adhoc_new.update(keys)
+        return keys
+
+    in_table = set()
     for _, r in AdhocActivityView.get_data().iterrows():
         new, start, end = r.get("NewActivityTitle"), r.get("StartDate"), r.get("EndDate")
         if not new or start is None or end is None or pd.isna(start) or pd.isna(end):
             continue
-        for d in range(len(config["OPEN_DAYS"])):
-            date = (week_start + datetime.timedelta(days=d)).date()
-            if pd.Timestamp(start).date() <= date <= pd.Timestamp(end).date():
-                data.adhoc_new.add((r["PatientID"], d, new))
+        in_table |= add_adhoc(r["PatientID"], r.get("OldActivityTitle"), new, start, end)
+
+    # requests the schedule already has but the ADHOC table doesn't yet
+    for p in pending_adhoc(week_start.date()):
+        keys = add_adhoc(p.patient_id, p.old_title, p.new_title, p.start, p.end)
+        if keys and keys <= in_table and p in _pending_adhoc:
+            _pending_adhoc.remove(p)  # the table has it now
     return data
+
+
+@dataclass(frozen=True)
+class PendingAdhoc:
+    patient_id: Any
+    old_title: str
+    new_title: str
+    start: datetime.date
+    end: datetime.date
+
+
+# adhoc requests written to the schedule, until activity service's ADHOC_CREATED event reaches
+# the ADHOC table. In memory like _changes below
+_pending_adhoc: List[PendingAdhoc] = []
+
+
+def record_adhoc(patient_id, old_title: str, new_title: str, start: datetime.date, end: datetime.date) -> None:
+    _pending_adhoc.append(PendingAdhoc(patient_id, old_title, new_title, start, end))
+
+
+def pending_adhoc(week_start: datetime.date) -> List[PendingAdhoc]:
+    """Pending requests that reach this week or later."""
+    _pending_adhoc[:] = [p for p in _pending_adhoc if p.end >= week_start]
+    return list(_pending_adhoc)
 
 
 # what repair regenerates changed this week, for the explainer. In memory, so a restart forgets it

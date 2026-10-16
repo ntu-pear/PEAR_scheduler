@@ -122,6 +122,12 @@ def _jsonable(value):
     return str(value)
 
 
+def gap_fill_strategy(config: Mapping[str, Any]) -> str:
+    """The strategy the preferred stage uses, same fallback as it."""
+    strategy = config.get("GAP_FILL_STRATEGY", "greedy")
+    return strategy if strategy in ("greedy", "optimal") else "greedy"
+
+
 def gap_filled_slots(trace: schedule_trace.ScheduleTrace) -> set:
     """(pid, day, slot) whose activity was decided by gap filling."""
     out = set()
@@ -214,6 +220,7 @@ def build_explanation(
         "week_start": inputs.week_start.date().isoformat(),
         "open_days": open_days,
         "slot_minutes": config["MIN_ACTIVITY_DURATION"],
+        "gap_fill_strategy": gap_fill_strategy(config),
         "stages": STAGE_ORDER,
         "summary": {
             "patients": len(schedules),
@@ -316,8 +323,12 @@ def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> sc
                 kind = r.kind(pid, d, s)
                 aid = data.inputs.activity_id(title)
                 outcome = schedule_trace.PLACED
+                details = {}
                 if kind == "adhoc":
                     stage, outcome, reason = schedule_trace.STAGE_ADHOC, schedule_trace.REPLACED, "adhoc_request"
+                    replaced = data.adhoc_old.get((pid, d, title))
+                    if replaced:
+                        details = {"replaced": replaced}
                 elif kind == "compulsory":
                     stage, reason = schedule_trace.STAGE_COMPULSORY, "fixed_slot"
                 elif kind == "routine":
@@ -340,7 +351,7 @@ def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> sc
                     t.provenance[(pid, d, k)] = [schedule_trace.SlotWrite(stage, title, "")]
                 if now and reason == "neutral":
                     reason, now = now, None
-                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s))
+                t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s, details=details))
                 if now:
                     t.add(schedule_trace.TraceEvent(stage, pid, outcome, now, activity=title, day=d, slot=s))
     return t

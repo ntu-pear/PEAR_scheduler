@@ -10,6 +10,7 @@ import pandas as pd
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
 import datetime
+from dateutil.parser import parse
 from pear_schedule.db_utils.writer import ScheduleWriter, MedicationScheduleWrite
 from pear_schedule.services.care_centre_util import refresh_centre_hours
 
@@ -17,7 +18,7 @@ from pear_schedule.api.utils import AdHocRequest, dropPastDays, activitiesExclud
 from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
-from pear_schedule.scheduler.repair import repair_schedules
+from pear_schedule.scheduler.repair import record_adhoc, repair_schedules
 from pear_schedule.api import explain_router
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import DBTABLES
@@ -351,6 +352,9 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
     db_tables: DBTABLES = request.app.state.config["DB_TABLES"]
     schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
     responseData = ScheduleWriter.updateDB(schedule_table, filteredAdHocDF, chosenDays)
+    # the ADHOC table only gets this once activity service's event arrives, till then
+    # repair and the explainer would read the new activity as breaking the rules
+    record_adhoc(data.PatientID, oldActivityName, newActivityName, parse(startDate).date(), parse(endDate).date())
     explain_router.reset_cache()  # saved week changed
     
     return JSONResponse(jsonable_encoder(responseData))
