@@ -51,7 +51,7 @@ class medicationScheduleData:
 
             
             # ======== Inserting medication into the scheduler ========
-            slots = administerTime.split(",")
+            slots = administer_times(administerTime)
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
             assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId'] or allocation_row.iloc[0]['supervisorId']) if not allocation_row.empty \
                 else "UNASSIGNED"
@@ -172,7 +172,7 @@ class medicationScheduler(BaseScheduler):
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
             assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId'] or allocation_row.iloc[0]['supervisorId']) if not allocation_row.empty \
                 else "UNASSIGNED"
-            administerTimes: list = administerTimes.split(",")
+            administerTimes: list = administer_times(administerTimes)
             for time in administerTimes:
                 qualified_day = today.strftime("%A")
                 if qualified_day not in cls.config["OPEN_DAYS"]:
@@ -191,6 +191,13 @@ class medicationScheduler(BaseScheduler):
         return medicationSchedules
 
 
+def administer_times(value) -> List[str]:
+    """'0930, 1300' -> ['0930', '1300']; the times are typed in by hand, so spaces around commas happen."""
+    if value is None or pd.isna(value):
+        return []
+    return [t.strip() for t in str(value).split(",") if t.strip()]
+
+
 def getTimeSlot(cls, day, time):
     """
     getTimeSlot() returns the index of the time slot based on the given time.
@@ -203,7 +210,13 @@ def getTimeSlot(cls, day, time):
         Index of time slot, -1 if invalid time-slot, >len(cls.config["DAY_TIMESLOTS"]) if beyond closing hours, both would be out of bounds on access
         E.g. 1730 administration time returns 8, 0830 returns -1
     """
-    if (not time.strip()): return -1
-    parsed_time = datetime.datetime.strptime(time, "%H%M")
+    time = time.strip()
+    if not time: return -1
+    try:
+        parsed_time = datetime.datetime.strptime(time, "%H%M")
+    except ValueError:
+        # one bad time shouldn't stop every other patient's schedule
+        logger.warning(f"Skipping medication time {time!r}, expected HHMM")
+        return -1
     timeDiff_fromOpening: datetime.timedelta = parsed_time-datetime.datetime.strptime(cls.config["WORKING_HOURS"].get(day.lower()).get("open"), "%H:%M")
     return timeslot_index(timeDiff_fromOpening, cls.config["MIN_ACTIVITY_DURATION"])

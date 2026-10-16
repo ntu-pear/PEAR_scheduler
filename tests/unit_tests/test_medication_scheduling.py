@@ -13,6 +13,7 @@ import pandas as pd
 from pear_schedule.scheduler.medicationScheduling import (
     medicationScheduleData,
     medicationScheduler,
+    administer_times,
     getTimeSlot,
 )
 from tests.utils.scheduler_config import make_scheduler_config
@@ -103,7 +104,56 @@ class TestGetTimeSlot:
             assert getTimeSlot(FakeCls, "monday", time) == expected_slot, f"time={time}"
 
 
+    def test_spaces_around_the_time_are_ignored(self):
+        cfg = _config()
+
+        class FakeCls:
+            config = cfg
+
+        assert getTimeSlot(FakeCls, "monday", " 1000 ") == 2
+
+    def test_unreadable_time_is_skipped_not_raised(self):
+        cfg = _config()
+
+        class FakeCls:
+            config = cfg
+
+        assert getTimeSlot(FakeCls, "monday", "10am") == -1
+
+
+class TestAdministerTimes:
+    def test_space_after_comma(self):
+        assert administer_times("0930, 1300") == ["0930", "1300"]
+
+    def test_empty_parts_and_missing_value(self):
+        assert administer_times("0930,,") == ["0930"]
+        assert administer_times(None) == []
+
+
 class TestMedicationSchedulerFillSchedule:
+    def test_times_with_a_space_after_the_comma_are_all_placed(self, monkeypatch):
+        monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
+        patient_schedules = _patient_schedule()
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=_medication_row(administer_time="0900, 1000")), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()):
+            medicationScheduler.fillSchedule(patient_schedules)
+
+        assert "Give Medication@0900" in patient_schedules[1][0][0]
+        assert "Give Medication@1000" in patient_schedules[1][0][2]
+
+    def test_today_schedule_strips_the_times(self, monkeypatch):
+        monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
+
+        with _freeze_now(monkeypatch), \
+             patch("pear_schedule.db_utils.views.MedicationView.get_data", return_value=_medication_row(administer_time="0900, 1000")), \
+             patch("pear_schedule.db_utils.views.CaregiverAllocatedView.get_data", return_value=_empty_caregiver_df()), \
+             patch("pear_schedule.db_utils.views.ExistingScheduleView.get_data", return_value=pd.DataFrame()):
+            schedules = medicationScheduler.generateTodayMedSchedule()
+
+        assert [m["AdministerTime"] for m in schedules[1]] == ["0900", "1000"]
+
     def test_medication_scheduled_across_all_active_days_at_correct_slot(self, monkeypatch):
         monkeypatch.setattr(medicationScheduler, "config", _config(), raising=False)
         patient_schedules = _patient_schedule()
