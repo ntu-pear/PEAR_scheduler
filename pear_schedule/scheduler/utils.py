@@ -82,7 +82,7 @@ def _run_stages(config, patientSchedules, trace, CompulsoryActivityScheduler, Re
                 continue
             day,hour = config["GROUP_TIMESLOT_MAPPING"][i]
             logger.debug(f"Scheduling group activity {activity[0]} for patient {patientID} on day {day} at hour {hour}")
-            activityDuration = groupActivityDF.query(f"ActivityTitle == '{activity[0]}'").iloc[0]["MinDuration"]
+            activityDuration = groupActivityDF[groupActivityDF["ActivityTitle"] == activity[0]].iloc[0]["MinDuration"]
             for j in range(activityDuration // config["MIN_ACTIVITY_DURATION"]):
                 patientSchedules[patientID][day][hour+j] = activity[0]
             schedule_trace.record(

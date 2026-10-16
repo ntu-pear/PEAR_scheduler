@@ -14,6 +14,7 @@ class RefCentreActivityBase(BaseModel):
     MaxDuration: int = Field(default=60, json_schema_extra={"example": 60})
     MinPeopleReq: int = Field(default=1, json_schema_extra={"example": 1})
     FixedTimeSlots: Optional[str] = None
+    Name: Optional[str] = None
 
 
 class RefCentreActivityCreate(RefCentreActivityBase):
@@ -36,6 +37,7 @@ class RefCentreActivityUpdate(BaseModel):
     MaxDuration: Optional[int] = None
     MinPeopleReq: Optional[int] = None
     FixedTimeSlots: Optional[str] = None
+    Name: Optional[str] = None
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "activity_service"})
 
