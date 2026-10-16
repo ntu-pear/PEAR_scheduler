@@ -43,3 +43,9 @@ class TestBadPayload:
         consumer.map_patient_allocation_create = lambda data: {"ok": True}
         consumer._handle_patient_allocation_created = MagicMock(return_value=MessageProcessingResult.SUCCESS)
         assert consumer._process_patient_allocation_message(_message({})) == MessageProcessingResult.FAILED_RETRYABLE
+
+    def test_data_that_is_not_an_object_is_acked(self):
+        consumer = _consumer()
+        assert consumer._handle_message_wrapper({"data": None}) is True
+        assert consumer._handle_message_wrapper({"data": "oops"}) is True
+        assert consumer._handle_message_wrapper(["not", "a", "dict"]) is True

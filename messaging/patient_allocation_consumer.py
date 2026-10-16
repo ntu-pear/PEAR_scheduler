@@ -127,7 +127,8 @@ class PatientAllocationConsumer:
     def _handle_message_wrapper(self, message: Dict[str, Any]) -> bool:
         """Wrapper for message handling with proper acknowledgment logic."""
         try:
-            message_correlation = message.get('data', {}).get('correlation_id', 'UNKNOWN')
+            data = message.get('data') if isinstance(message, dict) else None
+            message_correlation = data.get('correlation_id', 'UNKNOWN') if isinstance(data, dict) else 'UNKNOWN'
             logger.debug(f"RECEIVED MESSAGE: correlation_id={message_correlation}")
             
             if self.shutdown_event and self.shutdown_event.is_set():
@@ -232,7 +233,10 @@ class PatientAllocationConsumer:
     def _parse_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse and validate message structure."""
         try:
-            message_data = message.get('data', {})
+            message_data = message.get('data') if isinstance(message, dict) else None
+            if not isinstance(message_data, dict):
+                logger.error("Message has no data object")
+                return None
             
             required_fields = ['correlation_id', 'event_type', 'allocation_id']
             for field in required_fields:
