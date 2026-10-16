@@ -85,13 +85,13 @@
   .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
   .mark { font-size: 13px; font-weight: 750; letter-spacing: 0.06em; color: var(--brand); }
   #meta { color: var(--muted); font-size: 13px; }
-  .live { margin-left: auto; display: flex; gap: 12px; align-items: center; font-size: 13px; }
+  .live { margin-left: auto; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 12px; align-items: center; font-size: 13px; }
   #liveNote { margin: 4px 0 0; }
   .bar2 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; }
   .tabs { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--r); padding: 2px; background: var(--surface); }
   .tabs button { background: none; border: 0; border-radius: 3px; padding: 5px 14px; color: var(--ink-2); cursor: pointer; font-weight: 550; transition: background-color .15s, color .15s; display: inline-flex; align-items: center; gap: 6px; }
   .tabs button:hover { background: var(--surface-2); }
-  .tabs button[aria-selected="true"] { background: var(--select); color: var(--on-select); }
+  .tabs button[aria-selected="true"], .tabs button[aria-pressed="true"] { background: var(--select); color: var(--on-select); }
   .count { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 3px; background: var(--warn); color: var(--on-warn); font-size: 11.5px; font-weight: 650; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
   .toggle { margin-left: auto; font-size: 13px; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 
@@ -263,6 +263,10 @@
     <span id="meta"></span>
     <span class="live" id="live" hidden>
       <span class="muted" id="liveMsg" role="status"></span>
+      <span class="tabs" id="weeks" role="group" aria-label="Week">
+        <button data-week="this" aria-pressed="true">This week</button>
+        <button data-week="next" aria-pressed="false" title="Built from today's data, not saved">Next week</button>
+      </span>
       <button class="btn" id="refresh" title="Build again from current data">Refresh</button>
       <button class="link" id="signout">Sign out</button>
     </span>
@@ -413,7 +417,7 @@ function sentence(e, who) {
     case "slot_occupied": return `${a} is also set for everyone at this time, but ${list(d.occupied_by)} is already here. Two activities for everyone share the same time, so only one can happen. This needs fixing in the activity data.`;
     case "most_constrained_fixed_slot": return `A doctor recommended ${a} for ${esc(who)}. It only runs at set times, so it was booked before other activities.`;
     case "no_valid_fixed_slot": return `A doctor recommended ${a} for ${esc(who)}, but every time it runs was already taken by something more important.`;
-    case "expired": return `The recommendation for ${a} has ended, so it was not used this week.`;
+    case "expired": return `The recommendation for ${a} has ended, so it was not used ${thisWeek()}.`;
     case "routine_slot": return `${a} is part of ${esc(who)}'s routine at this time.`;
     case "routine_excluded": return `${esc(who)}'s routine ${a} was skipped this day because it is excluded for them.`;
     case "routine_out_of_bounds": return `${esc(who)}'s routine ${a} is set for a time the centre is closed.`;
@@ -430,9 +434,9 @@ function sentence(e, who) {
     case "top_up_to_weekly_target": return `${esc(who)} was added to a group session that was already running, so they get enough group activities this week.`;
     case "excluded": return `${a} is excluded for ${esc(who)}. An exclusion comes before a doctor's recommendation, so it was left out.`;
     case "liked_but_not_recommended": return `${esc(who)} likes ${a}, but their doctor marked it as not recommended. The doctor's advice comes first.`;
-    case "liked_but_excluded": return `${esc(who)} likes ${a}, but it is excluded for them this week.`;
+    case "liked_but_excluded": return `${esc(who)} likes ${a}, but it is excluded for them ${thisWeek()}.`;
     case "liked_but_fixed_time_taken": return `${esc(who)} likes ${a}, but it only runs at set times, and those were already taken by more important activities.`;
-    case "liked_but_no_gap_long_enough": return `${esc(who)} likes ${a}, but no free time this week was long enough for it.`;
+    case "liked_but_no_gap_long_enough": return `${esc(who)} likes ${a}, but no free time ${thisWeek()} was long enough for it.`;
     case "liked_but_gaps_used": return `${esc(who)} likes ${a}, but the free time went to other activities they like.`;
     case "below_min_group_size": return `${a} did not run: it needs ${d.min_people || "more"} people and not enough could join.`;
     case "preferred": return `${esc(who)} likes ${a}, so it was picked for this free time.`;
@@ -585,11 +589,11 @@ function showPatient(pid) {
   const pct = total ? Math.round(100 * fe.total / total) : 0;
   $("ptitle").innerHTML = `${esc(who)} ${p.name ? `<span class="muted small tech-only">· ID ${esc(pid)}</span>` : ""}`;
   let lead = fe.total
-    ? `${esc(who)} has <b>${hours(fe.total)}</b> of Free and Easy this week (${pct}% of their time). `
-    : `${esc(who)} has no Free and Easy this week. `;
+    ? `${esc(who)} has <b>${hours(fe.total)}</b> of Free and Easy ${thisWeek()} (${pct}% of their time). `
+    : `${esc(who)} has no Free and Easy ${thisWeek()}. `;
   if (fe.total) lead += fe.avoidable_logic
     ? `<span class="error"><b>${hours(fe.avoidable_logic)}</b> of it could have been filled.</span> `
-    : `None of it could have been filled with this week's activity data. `;
+    : `None of it could have been filled with ${thisWeek()}'s activity data. `;
   if (realViolations(p).length) lead += `<span class="error">Some things need attention, see “About ${esc(who)}'s week”.</span>`;
   else if (p.violations.length) lead += `Some times are affected by a clash in the activity data, see “About ${esc(who)}'s week”.`;
   $("plead").innerHTML = lead;
@@ -752,12 +756,12 @@ function renderOverview() {
   $("tab-overview").innerHTML = `
     ${waiting.length ? note("caution", "info", `<b>Data changed since this week was saved.</b> ${plural(waiting.length, "patient")} will change at the next regenerate: ${esc(waiting.slice(0, 6).map(nameOf).join(", "))}${waiting.length > 6 ? ` and ${waiting.length - 6} more` : ""}.`) : ""}
     <div class="answers">
-      <div class="answer"><div class="q">Patients this week</div><div class="a">${n}</div><div class="d">Week of <time>${esc(data.week_start)}</time></div></div>
+      <div class="answer"><div class="q">Patients ${thisWeek()}</div><div class="a">${n}</div><div class="d">Week of <time>${esc(data.week_start)}</time></div></div>
       <div class="answer"><div class="q">Free and Easy time</div><div class="a">${pct}%</div>
         <div class="stack" role="img" aria-label="${pct}% of all time is Free and Easy, split by reason"><div style="display:flex;width:${pct}%">${bar}</div></div><div class="d">${hours(fe.total)} in total, about ${hours(n ? fe.total / n : 0)} per patient</div></div>
       <div class="answer ${fe.avoidable_logic ? "warn" : "ok"}"><div class="q">Could the scheduler have filled more?</div>
         <div class="a">${fe.avoidable_logic ? "Yes" : "No"}</div>
-        <div class="d">${fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity.` : "Every Free and Easy slot was unavoidable with this week's activity data."}</div>
+        <div class="d">${fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity.` : `Every Free and Easy slot was unavoidable with ${thisWeek()}'s activity data.`}</div>
         <div class="code tech-only">avoidable_logic=${fe.avoidable_logic}, avoidable_rearranging_gap_fill=${fe.avoidable_rearranging_gap_fill ?? 0}</div></div>
       <div class="answer ${viol ? "warn" : "ok"}"><div class="q">Scheduling rules</div>
         <div class="a">${viol ? plural(viol, "issue") : "All followed"}</div>
@@ -768,7 +772,7 @@ function renderOverview() {
       <div>
         <section class="panel"><h2>Why there is Free and Easy</h2>
           <p class="muted small">Free and Easy is only used when nothing allowed fits. These are the reasons, and what would reduce them.</p>
-          <div class="tablewrap"><table><thead><tr><th>Reason</th><th class="num">Time</th><th class="num">Share</th><th>What would help</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">No Free and Easy this week.</td></tr>`}</tbody></table></div>
+          <div class="tablewrap"><table><thead><tr><th>Reason</th><th class="num">Time</th><th class="num">Share</th><th>What would help</th></tr></thead><tbody>${rows || `<tr><td colspan="4" class="muted">No Free and Easy ${thisWeek()}.</td></tr>`}</tbody></table></div>
         </section>
         <section class="panel"><h2>Free and Easy by patient</h2>
           <div class="tablewrap"><table><thead><tr><th>Patient</th><th class="num">Free</th><th class="num">Share</th><th>Main reason</th></tr></thead><tbody>${prow}</tbody></table></div>
@@ -920,7 +924,7 @@ function renderData() {
   const level = { high: "High", mid: "Medium", low: "Low" };
   $("tab-data").innerHTML = `
     <div class="lead" style="margin:0 0 16px"><h2>Activity data to check</h2>
-      <p>Found automatically from this week's schedule, most important first. Fixing these is the quickest way to reduce Free and Easy. Send this page to whoever looks after the activity data.</p></div>
+      <p>Found automatically from ${thisWeek()}'s schedule, most important first. Fixing these is the quickest way to reduce Free and Easy. Send this page to whoever looks after the activity data.</p></div>
     ${issues.length ? `<div class="issues">${issues.map(i => `<div class="issue">
         <div class="sev"><span class="${i.level}">${level[i.level]}</span><small>${esc(i.kind)}</small></div>
         <div>
@@ -930,7 +934,7 @@ function renderData() {
           ${i.fix ? `<div class="fix"><b>Suggested fix:</b> ${i.fix}</div>` : ""}
           ${i.code ? `<div class="code tech-only">${esc(i.code)}</div>` : ""}
         </div>
-      </div>`).join("")}</div>` : note("ok", "check", "Nothing to fix found in this week's data.")}`;
+      </div>`).join("")}</div>` : note("ok", "check", `Nothing to fix found in ${thisWeek()}'s data.`)}`;
 }
 
 
@@ -954,6 +958,8 @@ function load(json) {
     $("liveNote").hidden = false;
     $("liveNote").textContent = data.source === "saved"
       ? `Shows the saved schedule, checked at ${made.slice(11, 16)}.`
+      : data.source === "preview"
+      ? `Preview of next week, built at ${made.slice(11, 16)} from today's data. Not saved, it can change until Monday's schedule is made.`
       : `Built at ${made.slice(11, 16)} from current data. Nothing is saved for this week yet.`;
   }
   renderOverview();
@@ -971,6 +977,10 @@ const session = {
   set(t) { try { t ? sessionStorage.setItem("explain.token", t) : sessionStorage.removeItem("explain.token"); } catch (e) {} },
 };
 let token = null;
+let week = "this";
+
+// the preview is next week, everything else is the week it was made for
+function thisWeek() { return data && data.source === "preview" ? "next week" : "this week"; }
 
 function screen(name) {
   ["empty", "signin", "loading"].forEach(id => { $(id).hidden = id !== name; });
@@ -1031,12 +1041,21 @@ function buildFailed(msg) {
   $("retry").hidden = false;
 }
 
+function setWeek(w) {
+  if (w === week) return;
+  week = w;
+  document.querySelectorAll("#weeks button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.week === w)));
+  data = null;
+  fetchData(false);
+}
+
 async function fetchData(refresh) {
   const before = data && data.generated_at;
+  document.querySelectorAll("#weeks button").forEach(b => { b.disabled = true; });
   if (data) { $("refresh").disabled = true; $("refresh").textContent = "Refreshing…"; $("liveMsg").textContent = ""; }
   else {
     screen("loading");
-    $("loadingTitle").textContent = "Building this week's explanation…";
+    $("loadingTitle").textContent = week === "next" ? "Building next week's preview…" : "Building this week's explanation…";
     $("loadingText").textContent = "This takes a few seconds.";
     $("retry").hidden = true;
     $("skel").hidden = false;
@@ -1044,6 +1063,7 @@ async function fetchData(refresh) {
   try {
     const url = new URL(api.data, location.href);
     if (refresh) url.searchParams.set("refresh", "1");
+    if (week === "next") url.searchParams.set("week", "next");
     let res;
     try { res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } }); }
     catch (e) { return buildFailed("Can't reach the scheduler. Check your connection."); }
@@ -1056,6 +1076,7 @@ async function fetchData(refresh) {
   } finally {
     $("refresh").disabled = false;
     $("refresh").textContent = "Refresh";
+    document.querySelectorAll("#weeks button").forEach(b => { b.disabled = false; });
   }
 }
 
@@ -1072,6 +1093,7 @@ if (window.EXPLAIN_DATA) load(window.EXPLAIN_DATA);
 else if (api) {
   $("signinForm").addEventListener("submit", signIn);
   $("refresh").addEventListener("click", () => fetchData(true));
+  document.querySelectorAll("#weeks button").forEach(b => b.addEventListener("click", () => setWeek(b.dataset.week)));
   $("signout").addEventListener("click", () => signOut(""));
   $("retry").addEventListener("click", () => fetchData(false));
   token = session.get();

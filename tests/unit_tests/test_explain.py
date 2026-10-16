@@ -226,6 +226,30 @@ class TestExplainScheduleCli:
         run = self._run(monkeypatch, {"json": None, "what_if": True})
         assert run.call_args.kwargs["with_what_if"] is True
 
+    def test_week_next_builds_the_preview(self, monkeypatch, tmp_path):
+        import app
+
+        monkeypatch.setattr("sys.argv", ["app.py", "explain_schedule", "-c", "configprod.py", "--week", "next"])
+        assert app.parse_args().week == "next"
+        out_file = tmp_path / "next.json"
+        with patch("pear_schedule.scheduler.explain.preview_next_week", return_value={"source": "preview", "patients": {}}) as preview:
+            run = self._run(monkeypatch, {"json": str(out_file), "week": "next"})
+        run.assert_not_called()
+        assert preview.called
+        assert json.loads(out_file.read_text())["source"] == "preview"
+
+    def test_week_defaults_to_this(self, monkeypatch):
+        import app
+
+        monkeypatch.setattr("sys.argv", ["app.py", "explain_schedule", "-c", "configprod.py"])
+        assert app.parse_args().week == "this"
+
+    def test_week_next_with_saved_says_so(self, monkeypatch, capsys):
+        with patch("pear_schedule.scheduler.explain.preview_next_week") as preview:
+            self._run(monkeypatch, {"json": None, "week": "next", "saved": True})
+        preview.assert_not_called()
+        assert "Nothing is saved for next week" in capsys.readouterr().out
+
     def test_names_off_by_default(self, monkeypatch):
         import app
 

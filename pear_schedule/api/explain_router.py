@@ -1,22 +1,25 @@
 """
-Schedule explainer at a link. Supervisors and admins only, and the token is always checked with
-the user service, even when AUTH_VERIFY_MODE is shadow. Read-only.
+Schedule explainer at a link, and next week's preview. Supervisors and admins only, and the token
+is always checked with the user service, even when AUTH_VERIFY_MODE is shadow. Read-only.
 """
 
 import logging
 import threading
 import time
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from pear_schedule.api.auth_util import oauth2_scheme
 from pear_schedule.api.token_verifier import Verdict, VerifiedUser, verify_token
+from pear_schedule.db_utils.utils import next_week_start
 from pear_schedule.scheduler import explain
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Explain"])
+preview_router = APIRouter(tags=["Explain"])
 
 # roles that can see the explainer, it has patient names
 ALLOWED_ROLES = {"SUPERVISOR", "ADMIN"}
@@ -50,29 +53,54 @@ def require_verified_staff(token: str = Depends(oauth2_scheme)) -> VerifiedUser:
     return user
 
 
-def cached_explanation(config, refresh: bool = False, now=time.monotonic) -> dict:
+def cached_explanation(config, refresh: bool = False, now=time.monotonic, week: str = "this") -> dict:
     with _lock:
-        week = explain.current_week_start().date()
-        if _cache and _cache["week"] == week:
-            age = now() - _cache["built"]
+        start = next_week_start() if week == "next" else explain.current_week_start().date()
+        hit = _cache.get(week)
+        if hit and hit["week"] == start:
+            age = now() - hit["built"]
             # refresh still reuses a very recent build so it can't be spammed
             if age < (REFRESH_SECONDS if refresh else CACHE_SECONDS):
-                return _cache["data"]
-        # the saved week as it is, else a fresh build if nothing is saved yet
-        data = explain.explain_saved_week(config, with_names=True) or explain.run_explanation(config, with_names=True)
-        _cache.update(week=week, built=now(), data=data)
+                return hit["data"]
+        if week == "next":
+            # nothing is saved for next week, always a fresh build
+            data = explain.preview_next_week(config, with_names=True)
+        else:
+            # the saved week as it is, else a fresh build if nothing is saved yet
+            data = explain.explain_saved_week(config, with_names=True) or explain.run_explanation(config, with_names=True)
+        _cache[week] = {"week": start, "built": now(), "data": data}
         return data
 
 
 @router.get("/")
-def get_explanation(request: Request, refresh: bool = False,
+def get_explanation(request: Request, refresh: bool = False, week: Literal["this", "next"] = "this",
                     user: VerifiedUser = Depends(require_verified_staff)):
-    logger.info(f"Schedule explainer opened by {user.userId} (refresh={refresh})")
+    logger.info(f"Schedule explainer opened by {user.userId} (week={week}, refresh={refresh})")
     try:
-        return JSONResponse(cached_explanation(request.app.state.config, refresh))
+        return JSONResponse(cached_explanation(request.app.state.config, refresh, week=week))
     except Exception as e:
         logger.exception(e)
         raise HTTPException(status_code=500, detail="Could not build the explanation, check the scheduler logs")
+
+
+@preview_router.get("/")
+def get_preview(request: Request, refresh: bool = False,
+                user: VerifiedUser = Depends(require_verified_staff)):
+    # next week in the getSchedule shape, for the calendar. Not saved, can change until Monday
+    logger.info(f"Next week preview opened by {user.userId} (refresh={refresh})")
+    try:
+        config = request.app.state.config
+        data = cached_explanation(config, refresh, week="next")
+        return JSONResponse({
+            "Status": "200",
+            "Message": "Preview of next week, not saved",
+            "Preview": True,
+            "BuiltAt": data["generated_at"],
+            "Data": explain.schedule_rows(data, config),
+        })
+    except Exception as e:
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail="Could not build the preview, check the scheduler logs")
 
 
 @router.get("/view/", response_class=HTMLResponse, include_in_schema=False)
