@@ -354,7 +354,8 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
     responseData = ScheduleWriter.updateDB(schedule_table, filteredAdHocDF, chosenDays)
     # the ADHOC table only gets this once activity service's event arrives, till then
     # repair and the explainer would read the new activity as breaking the rules
-    record_adhoc(data.PatientID, oldActivityName, newActivityName, parse(startDate).date(), parse(endDate).date())
+    if responseData.get("Status") == "200":
+        record_adhoc(data.PatientID, oldActivityName, newActivityName, parse(startDate).date(), parse(endDate).date())
     explain_router.reset_cache()  # saved week changed
     
     return JSONResponse(jsonable_encoder(responseData))

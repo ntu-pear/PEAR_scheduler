@@ -10,6 +10,7 @@ freed slots get re-filled. Past days and slots already started today never chang
 import datetime
 import json
 import logging
+import threading
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple
@@ -480,8 +481,10 @@ def load_repair_data(config: Mapping[str, Any], week_start: datetime.datetime) -
     # requests the schedule already has but the ADHOC table doesn't yet
     for p in pending_adhoc(week_start.date()):
         keys = add_adhoc(p.patient_id, p.old_title, p.new_title, p.start, p.end)
-        if keys and keys <= in_table and p in _pending_adhoc:
-            _pending_adhoc.remove(p)  # the table has it now
+        if keys and keys <= in_table:
+            with _pending_lock:
+                if p in _pending_adhoc:
+                    _pending_adhoc.remove(p)  # the table has it now
     return data
 
 
@@ -497,16 +500,19 @@ class PendingAdhoc:
 # adhoc requests written to the schedule, until activity service's ADHOC_CREATED event reaches
 # the ADHOC table. In memory like _changes below
 _pending_adhoc: List[PendingAdhoc] = []
+_pending_lock = threading.Lock()  # sync routes run on a thread pool
 
 
 def record_adhoc(patient_id, old_title: str, new_title: str, start: datetime.date, end: datetime.date) -> None:
-    _pending_adhoc.append(PendingAdhoc(patient_id, old_title, new_title, start, end))
+    with _pending_lock:
+        _pending_adhoc.append(PendingAdhoc(patient_id, old_title, new_title, start, end))
 
 
 def pending_adhoc(week_start: datetime.date) -> List[PendingAdhoc]:
     """Pending requests that reach this week or later."""
-    _pending_adhoc[:] = [p for p in _pending_adhoc if p.end >= week_start]
-    return list(_pending_adhoc)
+    with _pending_lock:
+        _pending_adhoc[:] = [p for p in _pending_adhoc if p.end >= week_start]
+        return list(_pending_adhoc)
 
 
 # what repair regenerates changed this week, for the explainer. In memory, so a restart forgets it

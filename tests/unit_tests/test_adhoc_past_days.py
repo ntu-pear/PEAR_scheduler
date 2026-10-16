@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 from pear_schedule.api import schedule_router
+from pear_schedule.scheduler import repair
 from pear_schedule.api.utils import AdHocRequest, dropPastDays
 from tests.utils.scheduler_config import make_scheduler_config
 
@@ -33,7 +34,13 @@ class TestDropPastDays:
 
 
 class TestAdhocRoute:
-    def _run(self, monkeypatch, start, end):
+    def setup_method(self):
+        repair._pending_adhoc.clear()
+
+    def teardown_method(self):
+        repair._pending_adhoc.clear()
+
+    def _run(self, monkeypatch, start, end, status="200"):
         fake_dt = types.SimpleNamespace(date=types.SimpleNamespace(today=lambda: WEDNESDAY), datetime=datetime.datetime)
         monkeypatch.setattr(schedule_router, "datetime", fake_dt)
         week = pd.DataFrame([{
@@ -42,7 +49,7 @@ class TestAdhocRoute:
             **{d: json.dumps({"09:00-10:00": "Mahjong"}) for d in DAYS},
         }])
         names = {1: "Mahjong", 2: "Karaoke"}
-        update = MagicMock(return_value={"Status": "200", "Message": "ok", "Data": ""})
+        update = MagicMock(return_value={"Status": status, "Message": "ok", "Data": ""})
         request = types.SimpleNamespace(app=types.SimpleNamespace(state=types.SimpleNamespace(config={**make_scheduler_config(), "DB_TABLES": MagicMock()})))
         with patch.object(schedule_router.ActivityNameView, "get_data",
                           side_effect=lambda arg1: pd.DataFrame({"ActivityTitle": [names[arg1]]})), \
@@ -68,3 +75,12 @@ class TestAdhocRoute:
     def test_future_range_still_works(self, monkeypatch):
         body, update = self._run(monkeypatch, "2024-03-21", "2024-03-23")
         assert update.call_args.args[2] == ["Thursday", "Friday", "Saturday"]
+
+    def test_change_is_remembered_until_the_adhoc_table_has_it(self, monkeypatch):
+        self._run(monkeypatch, "2024-03-18", "2024-03-22")
+        assert repair._pending_adhoc == [
+            repair.PendingAdhoc(1, "Mahjong", "Karaoke", WEDNESDAY, datetime.date(2024, 3, 22))]
+
+    def test_failed_write_is_not_remembered(self, monkeypatch):
+        self._run(monkeypatch, "2024-03-21", "2024-03-23", status="500")
+        assert repair._pending_adhoc == []
