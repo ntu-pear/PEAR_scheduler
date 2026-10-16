@@ -67,7 +67,7 @@ def _make_fake_schema() -> MetaData:
         Column("IsDeleted", Boolean),
         Column("IsCompulsory", Boolean),
         Column("IsFixed", Boolean),
-        Column("FixedTimeSlots", String),
+        Column("FixedTimeSlots", String), Column("Name", String),
         Column("MinDuration", Integer),
         Column("MaxDuration", Integer),
         Column("MinPeopleReq", Integer),

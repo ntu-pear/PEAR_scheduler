@@ -283,6 +283,7 @@ class MapperUtil:
                     'max_duration': 'MaxDuration',
                     'min_people_req': 'MinPeopleReq',
                     'fixed_time_slots': 'FixedTimeSlots',
+                    'name': 'Name',
                     'created_date': 'CreatedDateTime',
                     'modified_date': 'UpdatedDateTime',
                     'created_by_id': 'CreatedById',

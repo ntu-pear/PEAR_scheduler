@@ -206,7 +206,7 @@ def db(monkeypatch):
         "REF_CENTRE_ACTIVITY", schema,
         Column("CentreActivityID", Integer, primary_key=True), Column("ActivityID", Integer),
         Column("IsGroup", Boolean), Column("IsDeleted", Boolean), Column("IsCompulsory", Boolean),
-        Column("IsFixed", Boolean), Column("FixedTimeSlots", String), Column("MinDuration", Integer),
+        Column("IsFixed", Boolean), Column("FixedTimeSlots", String), Column("Name", String), Column("MinDuration", Integer),
         Column("MaxDuration", Integer), Column("MinPeopleReq", Integer), Column("StartDate", Date), Column("EndDate", Date),
     )
     availability = Table(

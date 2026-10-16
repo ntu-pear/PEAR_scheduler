@@ -245,7 +245,7 @@ class GroupActivityScheduler(BaseScheduler):
             while toAdd != 0 and canBeScheduledSet:
                 activity = canBeScheduledSet.pop()
                 activitySlot = activityToTimeSlotMap[activity]
-                activityDuration = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]["MinDuration"]
+                activityDuration = groupActivityDF[groupActivityDF["ActivityTitle"] == activity].iloc[0]["MinDuration"]
                 i = 0
                 bin: list = secondTimeTable[pid][activitySlot]
                 slots = activityDuration // cls.config["MIN_ACTIVITY_DURATION"]
@@ -295,7 +295,7 @@ class GroupActivityScheduler(BaseScheduler):
         If the activity is not fixed, then it is assumed to be schedulable in any group time slot.
         """
         def get_possible_slots(activity):
-            row = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]
+            row = groupActivityDF[groupActivityDF["ActivityTitle"] == activity].iloc[0]
             if int(row['IsFixed']) == 1:
                 return cls.getFixedTimeArr(row['FixedTimeSlots'])
             else:
@@ -358,7 +358,7 @@ class GroupActivityScheduler(BaseScheduler):
                 list(activityMap.keys()),
                 key=lambda a: (
                     slot_count(a[0]),
-                    int(groupActivityDF.query(f"ActivityTitle == '{a[0]}'").iloc[0]['IsFixed']) == 0,  # fixed
+                    int(groupActivityDF[groupActivityDF["ActivityTitle"] == a[0]].iloc[0]['IsFixed']) == 0,  # fixed
                 )
             )
 

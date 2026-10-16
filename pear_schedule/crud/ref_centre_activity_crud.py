@@ -72,11 +72,11 @@ def create_ref_centre_activity(
             
             INSERT INTO [REF_CENTRE_ACTIVITY] (
                 CentreActivityID, ActivityID, IsDeleted, IsCompulsory, IsFixed, IsGroup,
-                StartDate, EndDate, MinDuration, MaxDuration, MinPeopleReq, FixedTimeSlots,
+                StartDate, EndDate, MinDuration, MaxDuration, MinPeopleReq, FixedTimeSlots, Name,
                 CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
             ) VALUES (
                 :CentreActivityID, :ActivityID, :IsDeleted, :IsCompulsory, :IsFixed, :IsGroup,
-                :StartDate, :EndDate, :MinDuration, :MaxDuration, :MinPeopleReq, :FixedTimeSlots,
+                :StartDate, :EndDate, :MinDuration, :MaxDuration, :MinPeopleReq, :FixedTimeSlots, :Name,
                 :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
             );
             
@@ -96,6 +96,7 @@ def create_ref_centre_activity(
             "MaxDuration": centre_activity.MaxDuration,
             "MinPeopleReq": centre_activity.MinPeopleReq,
             "FixedTimeSlots": centre_activity.FixedTimeSlots,
+            "Name": centre_activity.Name,
             "CreatedDateTime": centre_activity.CreatedDateTime,
             "UpdatedDateTime": centre_activity.UpdatedDateTime,
             "CreatedById": created_by,

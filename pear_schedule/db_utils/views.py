@@ -14,6 +14,17 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 
+def _activity_title(activity, centre_activity, label="ActivityTitle"):
+    # the centre activity's own name if it has one, else the activity title
+    name = func.nullif(func.ltrim(func.rtrim(centre_activity.c["Name"])), "")
+    return func.coalesce(name, activity.c["ActivityTitle"]).label(label)
+
+
+def _activity_columns(activity, centre_activity):
+    # all the activity columns, with the title swapped for the name
+    return [_activity_title(activity, centre_activity) if c.name == "ActivityTitle" else c for c in activity.c]
+
+
 class BaseView(ConfigDependant):
     db_tables: DBTABLES
     # FixedTimeSlots here are centre activity slots, availability may replace them
@@ -81,7 +92,7 @@ class AllActivitiesView(BaseView):
        
 
         query: Select = select(
-            activity,
+            *_activity_columns(activity, centre_activity),
             centre_activity.c["CentreActivityID"],
             centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
@@ -113,7 +124,7 @@ class ActivitiesView(BaseView):
         # routine = schema.tables[cls.db_tables.ROUTINE_TABLE]
 
         query: Select = select(
-            activity,
+            *_activity_columns(activity, centre_activity),
             centre_activity.c["CentreActivityID"],
             centre_activity.c["IsFixed"].label("IsFixed"),
             centre_activity.c["FixedTimeSlots"].label("FixedTimeSlots"),
@@ -251,7 +262,7 @@ class GroupActivitiesOnlyView(BaseView): # Just group activities only
         query: Select = select(
             centre_activity.c["ActivityID"],
             centre_activity.c["CentreActivityID"],
-            activity.c["ActivityTitle"],
+            _activity_title(activity, centre_activity),
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinPeopleReq"],
@@ -374,7 +385,7 @@ class CompulsoryActivitiesOnlyView(BaseView): # Just compulsory activities only
         query: Select = select(
             # centre_activity.c["ActivityID"],
             centre_activity.c["CentreActivityID"],
-            activity.c["ActivityTitle"],
+            _activity_title(activity, centre_activity),
             centre_activity.c["IsFixed"],
             centre_activity.c["FixedTimeSlots"],
             centre_activity.c["MinDuration"],
@@ -408,7 +419,7 @@ class RecommendedActivitiesView(BaseView):
             centre_activity.c["CentreActivityID"],
             centre_activity.c["IsFixed"],
             centre_activity.c["MinDuration"], # assume that MinDuration is equal to MaxDuration
-            activity.c["ActivityTitle"],
+            _activity_title(activity, centre_activity),
             centre_activity.c["FixedTimeSlots"],
             recommendations.c["PatientID"],
             centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
@@ -440,7 +451,7 @@ class DisrecommendedActivitiesView(BaseView):
         query: Select = select(
             centre_activity.c["ActivityID"],
             centre_activity.c["IsFixed"],
-            activity.c["ActivityTitle"],
+            _activity_title(activity, centre_activity),
             recommendations.c["PatientID"],
             centre_activity.c["EndDate"].label("ActivityEndDate") #EndDate has been moved from ActivityTable to CentreActivity Table
         ).join(
@@ -707,7 +718,7 @@ class CentreActivityPreferenceView(BaseView): # Get the centre activities prefer
             centre_activity.c["IsCompulsory"],
             centre_activity.c["IsFixed"],
             centre_activity.c["IsGroup"],
-            activity.c["ActivityTitle"]
+            _activity_title(activity, centre_activity)
         ).join(
             centre_activity_preference, centre_activity.c["CentreActivityID"] == centre_activity_preference.c["CentreActivityID"] 
         ).join(
@@ -737,7 +748,7 @@ class CentreActivityRecommendationView(BaseView): # Get the centre activities re
             centre_activity.c["IsCompulsory"],
             centre_activity.c["IsFixed"],
             centre_activity.c["IsGroup"],
-            activity.c["ActivityTitle"]
+            _activity_title(activity, centre_activity)
         ).join(
             centre_activity_recommendation, centre_activity.c["CentreActivityID"] == centre_activity_recommendation.c["CentreActivityID"] 
         ).join(
@@ -765,7 +776,7 @@ class ActivitiesExcludedView(BaseView): # Get the activities excluded for all pa
             activities_excluded.c["PatientID"],
             activities_excluded.c["ExclusionRemarks"],
             activities_excluded.c["EndDateTime"],
-            activity.c["ActivityTitle"]
+            _activity_title(activity, centre_activity)
         ).join(
             centre_activity, centre_activity.c["CentreActivityID"] == activities_excluded.c["CentreActivityID"]
         ).join(
@@ -832,7 +843,7 @@ class ActivityAndCentreActivityView(BaseView): # Get all the activities and cent
         centre_activity = schema.tables[cls.db_tables.CENTRE_ACTIVITY_TABLE]
         
         query: Select = select(
-            activity,
+            *_activity_columns(activity, centre_activity),
             centre_activity
         ).join(
             centre_activity, activity.c["ActivityID"] == centre_activity.c["ActivityID"]
@@ -865,9 +876,9 @@ class AdhocActivityView(BaseView):
                 adhoc.c["PatientID"],
                 patient.c["Name"].label("PatientName"),
                 adhoc.c["OldCentreActivityID"],
-                old_activity.c["ActivityTitle"].label("OldActivityTitle"),
+                _activity_title(old_activity, old_centre_activity, "OldActivityTitle"),
                 adhoc.c["NewCentreActivityID"],
-                new_activity.c["ActivityTitle"].label("NewActivityTitle"),
+                _activity_title(new_activity, new_centre_activity, "NewActivityTitle"),
                 adhoc.c["StartDate"],
                 adhoc.c["EndDate"],
                 adhoc.c["Status"],
