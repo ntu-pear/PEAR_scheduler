@@ -7,6 +7,7 @@ from fastapi.encoders import jsonable_encoder
 from dateutil.parser import parse
 import datetime
 from pear_schedule.db_utils.utils import day_timeslot_label
+from pear_schedule.scheduler.medicationScheduling import administer_times
 from pear_schedule.db_utils.views import WeeklyScheduleView, CentreActivityPreferenceView, CentreActivityRecommendationView, ActivitiesExcludedView, RoutineView, MedicationTesterView, ActivityAndCentreActivityView
 import pandas as pd
 import re
@@ -208,7 +209,7 @@ def prepareMedicationSchedule(medications, schedule_start_datetime, schedule_end
         
         for index, medication_row in medications.iterrows():
             if medication_row['StartDateTime'] <= date <= medication_row['EndDateTime']:
-                slots = medication_row['AdministerTime'].split(",")
+                slots = administer_times(medication_row['AdministerTime'])
                 for slot in slots:
                     if medication_row['Instruction'] is None or medication_row['Instruction'].strip() == "" or medication_row['Instruction'] in ["Nil", "nil" "-"]:
                         medication_schedule[date.weekday()].append(f"Give Medication@{slot}: {medication_row['PrescriptionName']}({medication_row['Dosage']})")
