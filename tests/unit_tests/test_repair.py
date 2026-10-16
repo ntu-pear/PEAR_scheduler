@@ -262,3 +262,27 @@ class TestHelpers:
         cfg = make_scheduler_config(OPEN_DAYS=["Monday"], SLOTS_PER_DAY={"Monday": 2})
         row = {"Monday": '{"09:00-09:30": "Walk", "09:30-10:00": "Free and Easy"}'}
         assert saved_grid(row, cfg) == [["Walk", FE]]
+
+
+class TestLoadSaved:
+    def test_row_with_no_days_is_not_a_saved_week(self, monkeypatch):
+        """The medication rounds insert a SCHEDULE row with only medication, it used to read as a blank saved week."""
+        from unittest.mock import MagicMock
+
+        import pandas as pd
+
+        from pear_schedule.db import DB
+        from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
+        from pear_schedule.scheduler.repair import load_saved
+
+        cfg = make_scheduler_config(OPEN_DAYS=["Monday", "Tuesday"], SLOTS_PER_DAY={"Monday": 2, "Tuesday": 2})
+        rows = pd.DataFrame([
+            {"PatientID": 1, "Monday": '{"09:00-09:30": "Walk"}', "Tuesday": ""},
+            {"PatientID": 2, "Monday": None, "Tuesday": ""},
+        ])
+        monkeypatch.setattr(DB, "get_engine", lambda: MagicMock(), raising=False)
+        monkeypatch.setattr(PreferredActivityScheduler, "getMostUpdatedSchedules", lambda ids, conn, day: rows)
+
+        saved = load_saved(cfg, [1, 2], datetime.datetime(2024, 3, 19, 10))
+        assert saved[1][0][0] == "Walk"
+        assert saved[2] is None

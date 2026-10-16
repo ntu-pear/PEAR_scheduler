@@ -492,9 +492,14 @@ def load_saved(config: Mapping[str, Any], patient_ids: List[Any], now: datetime.
     with DB.get_engine().begin() as conn:
         rows = PreferredActivityScheduler.getMostUpdatedSchedules(patient_ids, conn, now.date())
     for _, row in rows.iterrows():
-        if row["PatientID"] in saved:
+        # the medication rounds insert a row with no days, that's not a saved week
+        if row["PatientID"] in saved and any(_has_day(row.get(day)) for day in config["OPEN_DAYS"]):
             saved[row["PatientID"]] = saved_grid(row, config)
     return saved
+
+
+def _has_day(value) -> bool:
+    return isinstance(value, str) and bool(value.strip())
 
 
 def repair_schedules(config: Mapping[str, Any], patientSchedules: Dict, now: Optional[datetime.datetime] = None):
