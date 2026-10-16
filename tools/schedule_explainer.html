@@ -3,73 +3,55 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Schedule Explained</title>
+<title>Schedule explained</title>
 <!--
   Link: <scheduler>/schedule/explain/view/, supervisors and admins sign in with their PEAR account.
   File: python app.py explain_schedule -c configprod.py --html schedule.html, then double-click it.
   Or open this file and pick a JSON from --json.
 -->
 <style>
+  /* same tokens as the Supervisor View, PEAR_WebFE src/App.css */
   :root {
-    --ground: #f4f5f7; --surface: #ffffff; --surface-2: #f8f9fb; --ink: #111827; --ink-2: #374151; --muted: #5f6775;
-    --rule: #e3e6eb; --rule-strong: #cfd4db;
-    --brand: #15803d; --brand-strong: #166534; --brand-tint: #e9f5ee; --on-brand: #ffffff; --select: #111827; --on-select: #ffffff;
-    --warn: #b42318; --warn-tint: #fdf0ee; --warn-line: #f1b8b0; --caution: #9a4a06; --caution-tint: #fdf5e7; --caution-line: #ecc98f;
-    --ok: #15803d; --ok-tint: #ecf6f0; --ok-line: #a8d5b9;
-    --everyone-bg: #fdf0e3; --everyone-line: #efb47c; --everyone-ink: #7a3b0c;
-    --doctor-bg: #f2eefb; --doctor-line: #c3b3ea; --doctor-ink: #4b2c8f;
-    --routine-bg: #eceffa; --routine-line: #b3bde6; --routine-ink: #2e3f80;
-    --group-bg: #e6f4ec; --group-line: #9ccdb0; --group-ink: #14532d;
-    --chosen-bg: #f3f4f6; --chosen-line: #b8bec8; --chosen-ink: #1f2937;
-    --request-bg: #fcecf2; --request-line: #eab0c5; --request-ink: #8b1d45;
-    --free-bg: #ffffff; --free-line: #b9c0ca; --free-ink: #5f6775;
-    --s-warn: #c4352f; --s-1: #5b6b82; --s-2: #b0893a; --s-3: #7d6aa6; --s-4: #4d8a7e; --s-other: #8a93a1;
-    --r: 4px; --r-cell: 2px; --on-warn: #ffffff;
+    --ground: #f3f4f6; --surface: #ffffff; --surface-2: #f1f5f9; --ink: #020817; --ink-2: #334155; --muted: #556377;
+    --rule: #e2e8f0; --rule-strong: #cbd5e1; --input-line: #7c879b;
+    --primary: #0f172a; --on-primary: #f8fafc; --ring: #020817; --select: #0f172a; --on-select: #f8fafc;
+    --warn: #b91c1c; --warn-tint: #fee2e2; --warn-line: #f87171; --fault: #b91c1c;
+    --caution: #854d0e; --caution-tint: #fefce8; --caution-line: #fde68a; --clash: #a16207;
+    --ok: #15803d; --ok-tint: #f0fdf4; --ok-line: #86efac;
+    --today: #2563eb; --today-tint: #eff6ff; --on-flag: #ffffff; --badge-edge: #020817;
+    /* activity blocks, orange for every activity and blue for Free and Easy like Patient Schedule */
+    --sched-bg: #fb923c; --sched-line: #ea580c; --sched-ink: #000000;
+    --free-bg: #60a5fa; --free-line: #2563eb; --free-ink: #000000;
+    --s-warn: #dc2626; --s-1: #64748b; --s-2: #d97706; --s-3: #7c3aed; --s-4: #0d9488; --s-other: #94a3b8;
+    --r: 8px; --r-md: 6px; --r-sm: 4px; --on-warn: #ffffff; --row: 36px;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .05);
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --ground: #0f1217; --surface: #161a21; --surface-2: #1b2029; --ink: #e7eaf0; --ink-2: #c7ccd6; --muted: #a3abb8;
-      --rule: #2a303a; --rule-strong: #3a414d;
-      --brand: #3fb871; --brand-strong: #5cc988; --brand-tint: #17301f; --on-brand: #08140c; --select: #e7eaf0; --on-select: #0f1217;
-      --warn: #f2877d; --warn-tint: #331a18; --warn-line: #7a3a33; --caution: #f0b866; --caution-tint: #2f2412; --caution-line: #6b5124;
-      --ok: #5cc988; --ok-tint: #142a1c; --ok-line: #2f6a45;
-      --everyone-bg: #33231a; --everyone-line: #84542d; --everyone-ink: #f6c9a1;
-      --doctor-bg: #241f36; --doctor-line: #5b4b8f; --doctor-ink: #d6c9fa;
-      --routine-bg: #1d2338; --routine-line: #485b9a; --routine-ink: #c8d2f6;
-      --group-bg: #15291f; --group-line: #2f6a4a; --group-ink: #b6e6c9;
-      --chosen-bg: #1f242d; --chosen-line: #3f4652; --chosen-ink: #dfe3ea;
-      --request-bg: #33182a; --request-line: #7d3657; --request-ink: #f6c2d6;
-      --free-bg: #161a21; --free-line: #4a525f; --free-ink: #a3abb8; --on-warn: #1a0806;
+      --ground: #020817; --surface: #0f172a; --surface-2: #1e293b; --ink: #f8fafc; --ink-2: #cbd5e1; --muted: #94a3b8;
+      --rule: #1e293b; --rule-strong: #334155; --input-line: #64748b;
+      --primary: #f8fafc; --on-primary: #0f172a; --ring: #cbd5e1; --select: #f8fafc; --on-select: #0f172a;
+      --warn: #f87171; --warn-tint: #2a0f12; --warn-line: #7f1d1d; --fault: #f87171;
+      --caution: #fde68a; --caution-tint: #2a1f07; --caution-line: #713f12; --clash: #facc15;
+      --ok: #4ade80; --ok-tint: #0f2a1a; --ok-line: #166534;
+      --today: #93c5fd; --today-tint: #172554; --on-flag: #0f172a; --badge-edge: #0f172a;
+      --s-1: #94a3b8; --s-other: #64748b; --on-warn: #1a0806;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / .4);
       color-scheme: dark;
     }
   }
-  :root[data-theme="dark"] {
-    --ground: #0f1217; --surface: #161a21; --surface-2: #1b2029; --ink: #e7eaf0; --ink-2: #c7ccd6; --muted: #a3abb8;
-    --rule: #2a303a; --rule-strong: #3a414d;
-    --brand: #3fb871; --brand-strong: #5cc988; --brand-tint: #17301f; --on-brand: #08140c; --select: #e7eaf0; --on-select: #0f1217;
-    --warn: #f2877d; --warn-tint: #331a18; --warn-line: #7a3a33; --caution: #f0b866; --caution-tint: #2f2412; --caution-line: #6b5124;
-    --ok: #5cc988; --ok-tint: #142a1c; --ok-line: #2f6a45;
-    --everyone-bg: #33231a; --everyone-line: #84542d; --everyone-ink: #f6c9a1;
-    --doctor-bg: #241f36; --doctor-line: #5b4b8f; --doctor-ink: #d6c9fa;
-    --routine-bg: #1d2338; --routine-line: #485b9a; --routine-ink: #c8d2f6;
-    --group-bg: #15291f; --group-line: #2f6a4a; --group-ink: #b6e6c9;
-    --chosen-bg: #1f242d; --chosen-line: #3f4652; --chosen-ink: #dfe3ea;
-    --request-bg: #33182a; --request-line: #7d3657; --request-ink: #f6c2d6;
-    --free-bg: #161a21; --free-line: #4a525f; --free-ink: #a3abb8; --on-warn: #1a0806;
-    color-scheme: dark;
-  }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
-  html { scrollbar-color: var(--rule-strong) transparent; accent-color: var(--brand); }
-  body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
-  ::selection { background: var(--brand-tint); color: var(--ink); }
-  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-  input, textarea { caret-color: var(--brand); }
+  html { scrollbar-color: var(--rule-strong) transparent; accent-color: var(--primary); }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 14px/1.5 ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; -webkit-font-smoothing: antialiased; }
+  ::selection { background: var(--today-tint); color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+  input, textarea { caret-color: var(--ink); }
   h1, h2, h3 { letter-spacing: -0.01em; text-wrap: balance; }
-  h1 { font-size: 19px; font-weight: 650; margin: 0; }
-  h2 { font-size: 16px; font-weight: 650; margin: 0 0 4px; }
-  h3 { font-size: 14px; font-weight: 650; margin: 20px 0 6px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0; line-height: 1.3; }
+  h2 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+  h3 { font-size: 14px; font-weight: 600; margin: 20px 0 6px; }
   p { margin: 6px 0; }
   ul { padding-left: 18px; margin: 6px 0; }
   li { margin-bottom: 6px; }
@@ -79,109 +61,162 @@
   button, input, select { font: inherit; color: inherit; }
   .i { width: 14px; height: 14px; flex: none; vertical-align: -2px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
   .i.fill { fill: currentColor; stroke: none; }
+  .i.fault { color: var(--warn); }
+  .i.clash { color: var(--clash); }
+  .vh { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .skip { position: absolute; left: 12px; top: -48px; z-index: 10; background: var(--primary); color: var(--on-primary); padding: 8px 14px; border-radius: var(--r-md); font-weight: 500; text-decoration: none; }
+  .skip:focus { top: 12px; }
+  .vh-focus { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .vh-focus:focus { position: static; width: auto; height: auto; clip: auto; display: inline-block; margin: 0 0 8px; padding: 6px 10px; border-radius: var(--r-md); background: var(--primary); color: var(--on-primary); font-weight: 500; }
 
   /* header */
-  header { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 14px 24px 12px; }
-  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; }
-  .mark { font-size: 13px; font-weight: 750; letter-spacing: 0.06em; color: var(--brand); }
+  header { background: var(--surface); border-bottom: 1px solid var(--rule); padding: 12px 24px; }
+  .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; min-height: 56px; }
+  .logo { height: 40px; width: auto; display: block; }
+  .titles { display: flex; flex-direction: column; min-width: 0; }
   #meta { color: var(--muted); font-size: 13px; }
   .live { margin-left: auto; max-width: 100%; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px 12px; align-items: center; font-size: 13px; }
-  #liveNote { margin: 4px 0 0; }
+  #liveNote { margin: 10px 0 0; font-size: 13px; }
+  #liveNote.banner { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--caution-line); background: var(--caution-tint); color: var(--caution); border-radius: var(--r); padding: 10px 14px; font-size: 14px; font-weight: 500; }
+  #liveNote.banner .i { margin-top: 3px; width: 16px; height: 16px; }
   .bar2 { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; }
-  .tabs { display: inline-flex; border: 1px solid var(--rule-strong); border-radius: var(--r); padding: 2px; background: var(--surface); }
-  .tabs button { background: none; border: 0; border-radius: 3px; padding: 5px 14px; color: var(--ink-2); cursor: pointer; font-weight: 550; transition: background-color .15s, color .15s; display: inline-flex; align-items: center; gap: 6px; }
-  .tabs button:hover { background: var(--surface-2); }
-  .tabs button[aria-selected="true"], .tabs button[aria-pressed="true"] { background: var(--select); color: var(--on-select); }
-  .count { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 3px; background: var(--warn); color: var(--on-warn); font-size: 11.5px; font-weight: 650; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
-  .toggle { margin-left: auto; font-size: 13px; color: var(--ink-2); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  /* view tabs, like shadcn Tabs */
+  .tabs { display: inline-flex; align-items: center; background: var(--surface-2); border-radius: var(--r-md); padding: 4px; gap: 2px; color: var(--muted); }
+  .tabs button { background: none; border: 0; border-radius: var(--r-sm); min-height: 32px; padding: 6px 12px; color: inherit; cursor: pointer; font-size: 14px; font-weight: 500; transition: background-color .15s, color .15s, box-shadow .15s; display: inline-flex; align-items: center; gap: 6px; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+  /* week toggle, like the Daily/Weekly toggle in Patient Schedule */
+  .seg { display: inline-flex; background: var(--surface-2); border-radius: var(--r-md); padding: 4px; gap: 2px; }
+  .seg button { background: none; border: 0; border-radius: var(--r-sm); min-height: 28px; padding: 4px 12px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink-2); transition: background-color .15s, color .15s; }
+  .seg button:hover { color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--select); color: var(--on-select); }
+  .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--rule-strong); font-size: 12px; font-weight: 600; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+  .count.high { background: var(--warn); border-color: var(--warn); color: var(--on-warn); }
+  .toggle { margin-left: auto; font-size: 14px; color: var(--ink-2); display: inline-flex; gap: 8px; align-items: center; cursor: pointer; min-height: 32px; }
+  .toggle input { width: 16px; height: 16px; margin: 0; }
 
   /* shared surfaces and controls */
-  .page { padding: 20px 24px 32px; max-width: 1520px; margin: 0 auto; }
-  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 16px 18px; }
-  .btn { background: var(--surface); border: 1px solid var(--rule-strong); border-radius: var(--r); padding: 6px 12px; cursor: pointer; font-weight: 550; color: var(--ink); transition: background-color .15s, border-color .15s; }
-  .btn:hover { background: var(--surface-2); border-color: var(--muted); }
-  .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
-  .btn.primary:hover { background: var(--brand-strong); border-color: var(--brand-strong); }
-  .btn:disabled { opacity: .55; cursor: default; }
-  .link { background: none; border: 0; padding: 0; color: var(--brand); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; font-weight: 550; }
-  .link:hover { color: var(--brand-strong); }
+  main { display: block; }
+  .page { padding: 16px 24px 32px; max-width: 1560px; margin: 0 auto; }
+  .panel { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); padding: 16px 18px; box-shadow: var(--shadow-sm); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; background: var(--surface); border: 1px solid var(--input-line); border-radius: var(--r-md); padding: 6px 14px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--ink); transition: background-color .15s, border-color .15s; }
+  .btn:hover { background: var(--surface-2); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); min-height: 40px; }
+  .btn.primary:hover { opacity: .9; }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .55; cursor: default; }
+  .link { background: none; border: 0; padding: 3px 0; color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 4px; font-weight: 500; text-align: left; }
+  .link:hover { text-decoration-color: currentColor; }
+  #signout { min-height: 36px; padding: 0 8px; border-radius: var(--r-md); text-decoration: none; }
+  #signout:hover { background: var(--surface-2); }
+  a.pear-go { display: inline-flex; align-items: center; gap: 4px; padding: 3px 0; color: var(--ink); font-weight: 500; text-decoration: underline; text-decoration-color: var(--muted); text-underline-offset: 4px; white-space: nowrap; }
+  a.pear-go:hover { text-decoration-color: currentColor; }
+  a.pear-go .i { width: 13px; height: 13px; }
   .error { color: var(--warn); }
+  #signinError:empty { margin: 0; }
   .when { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .note { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--rule); border-radius: var(--r); padding: 10px 12px; margin: 10px 0; background: var(--surface-2); }
   .note > .i { margin-top: 3px; }
   .note > div { min-width: 0; flex: 1; }
   .note ul { margin-bottom: 0; }
+  .note .gap { margin: 8px 0 0; font-weight: 500; }
   .note.warn { background: var(--warn-tint); border-color: var(--warn-line); }
   .note.warn > .i, .note.warn b { color: var(--warn); }
   .note.caution { background: var(--caution-tint); border-color: var(--caution-line); }
   .note.caution > .i, .note.caution b { color: var(--caution); }
   .note.ok { background: var(--ok-tint); border-color: var(--ok-line); color: var(--ink); }
   .note.ok > .i { color: var(--ok); }
-  .label { display: inline-block; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--r-cell); padding: 0 6px; font-size: 12px; font-weight: 600; line-height: 20px; }
-  .sq { display: inline-block; width: 11px; height: 11px; border-radius: 1px; border: 1px solid var(--c-line); background: var(--c-bg); vertical-align: -1px; margin-right: 6px; }
+  .label { display: inline-block; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 600; line-height: 20px; }
+  .sq { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--c-line); background: var(--c-bg); vertical-align: -1px; margin-right: 6px; flex: none; }
 
   /* patients tab */
-  .patients { display: grid; grid-template-columns: 236px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+  .patients { display: grid; grid-template-columns: 248px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
   .patients > *, .two > * { min-width: 0; }
-  .plist { padding: 12px; background: var(--surface); }
-  .plist input { width: 100%; padding: 7px 10px; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); margin-bottom: 8px; }
+  .plist { padding: 12px; }
+  .plist input { width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--input-line); border-radius: var(--r-md); background: var(--surface); margin-bottom: 8px; }
   .plist input::placeholder { color: var(--muted); }
-  .plist ul { list-style: none; padding: 0; margin: 0; max-height: 70vh; overflow-y: auto; }
-  .plist li { margin: 0; }
-  .plist button { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; background: none; border: 0; border-radius: 3px; padding: 7px 8px; cursor: pointer; transition: background-color .15s; }
-  .plist button:hover { background: var(--surface-2); }
-  .plist button[aria-current="true"] { background: var(--brand-tint); font-weight: 650; }
-  .pname { white-space: nowrap; }
-  .plist .free { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .sortbar { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 13px; color: var(--ink-2); }
+  .sortbar button { min-height: 28px; padding: 2px 10px; font-size: 13px; }
+  .sortbar button[aria-pressed="true"] { background: var(--select); border-color: var(--select); color: var(--on-select); }
+  .plist ul { list-style: none; padding: 0 3px; margin: 0 -3px; max-height: 70vh; overflow-y: auto; }
+  .plist li { margin: 0; padding: 2px 0; }
+  .plist button.p { width: 100%; display: grid; grid-template-columns: 16px minmax(0, 1fr); column-gap: 6px; align-items: start; text-align: left; background: none; border: 0; border-radius: var(--r-md); padding: 7px 8px; min-height: 40px; cursor: pointer; transition: background-color .15s; }
+  .plist button.p:hover { background: var(--surface-2); }
+  .plist button.p:focus-visible { outline-offset: -2px; }
+  .plist button.p[aria-current="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--rule-strong); font-weight: 600; }
+  .plist .nm { overflow-wrap: anywhere; }
+  .pname { overflow-wrap: anywhere; }
+  .plist .free { grid-column: 2; color: var(--muted); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
   .flag { display: inline-block; width: 14px; margin-right: 6px; }
+  .plist .flag { margin: 2px 0 0; }
   .flag .i { width: 13px; height: 13px; vertical-align: -2px; }
-  .lead { font-size: 14.5px; max-width: 75ch; color: var(--ink-2); }
-  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0; font-size: 12.5px; color: var(--ink-2); }
+  .lead { font-size: 14.5px; max-width: 65ch; color: var(--ink-2); }
+  .lead h2 { color: var(--ink); }
+  .ptitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .ptitle h2 { margin: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 12px 0 4px; font-size: 13px; color: var(--ink-2); align-items: center; }
+  .legend .flagkey { display: inline-flex; gap: 6px; align-items: center; }
+  #onlyFlagged { margin-left: auto; min-height: 28px; padding: 2px 10px; font-size: 13px; }
+  #onlyFlagged[aria-pressed="true"] { background: var(--select); border-color: var(--select); color: var(--on-select); }
+  .legend span, .legend-fills { display: inline-flex; align-items: center; }
+  .legend-fills { gap: 6px 16px; flex-wrap: wrap; }
   .gridwrap { overflow-x: auto; border-top: 1px solid var(--rule); }
-  .grid { display: grid; min-width: 600px; }
-  .colhead { font-weight: 650; font-size: 13px; padding: 8px 4px; border-bottom: 1px solid var(--rule-strong); }
-  .timehead { color: var(--muted); font-size: 11.5px; padding: 2px 10px 0 0; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .grid { display: grid; min-width: 540px; }
+  .colhead { font-weight: 500; font-size: 14px; padding: 8px 4px; border-bottom: 1px solid var(--rule-strong); text-align: center; line-height: 1.25; }
+  .colhead .dt { display: block; font-size: 12px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  .colhead.today { color: var(--today); background: var(--today-tint); border-radius: var(--r-md) var(--r-md) 0 0; }
+  .colhead.today .dt { color: inherit; }
+  .corner, .timehead { position: sticky; left: 0; z-index: 3; background: var(--surface); }
+  .timehead { color: var(--muted); font-size: 12px; padding: 2px 10px 0 0; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .timehead.half { color: transparent; }
   .slot { border-top: 1px solid var(--rule-strong); border-left: 1px solid var(--rule); }
-  .slot.half { border-top-color: var(--rule); }
+  .slot.half { border-top-color: var(--rule); border-top-style: dotted; }
   .timehead:not(.half) { border-top: 1px solid var(--rule-strong); }
-  .slot.half { border-top-style: dotted; }
-  .cell { position: relative; z-index: 1; margin: 2px 3px; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--r-cell); padding: 2px 6px; cursor: pointer; overflow: hidden; min-height: 0; text-align: left; display: block; width: auto; line-height: 1.3; transition: border-color .15s, background-color .15s; }
-  .cell .t { font-weight: 650; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
+  .cell { position: relative; z-index: 1; margin: 2px 3px; border: 1px solid var(--c-line); background: var(--c-bg); color: var(--c-ink); border-radius: var(--r-md); padding: 3px 6px; cursor: pointer; overflow: hidden; min-height: 0; text-align: left; display: block; width: auto; line-height: 1.3; box-shadow: var(--shadow-sm); transition: border-color .15s, filter .15s; }
+  .cell .t { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 4px; }
   .cell .t span { overflow: hidden; text-overflow: ellipsis; }
   .cell .t .i { width: 12px; height: 12px; }
-  .cell .s { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-  .cell.free { border-style: dashed; font-weight: 500; }
-  .cell.free .t { font-weight: 550; }
-  .cell.free.avoid { border-color: var(--warn); color: var(--warn); }
-  .cell.bad { box-shadow: inset 0 0 0 1px var(--warn); border-color: var(--warn); }
-  .cell.clash { box-shadow: inset 0 0 0 1px var(--caution-line); border-color: var(--caution-line); }
-  .cell:hover { border-color: var(--ink-2); }
-  .cell.free:hover { border-color: var(--muted); }
-  .cell:focus-visible { z-index: 2; }
-  .cell.sel { outline: 2px solid var(--ink); outline-offset: 1px; }
-  .keyline { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin-top: 12px; }
+  .cell .s { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .cell .s.k { font-weight: 500; }
+  .cell.free { border-style: dashed; }
+  .cell.free .t { font-weight: 500; }
+  /* flagged blocks, a ring with a gap so it shows on any fill, and a badge */
+  .cell.bad, .cell.avoid { --flag: var(--fault); }
+  .cell.clash { --flag: var(--clash); }
+  .cell.flag { border: 2px solid var(--flag); box-shadow: inset 0 0 0 2px var(--surface), var(--shadow-sm); padding: 3px 6px; }
+  .badge { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; border-radius: 999px; background: var(--flag); color: var(--on-flag); box-shadow: 0 0 0 1.5px var(--badge-edge); }
+  .badge .i, .cell .t .badge .i { width: 11px; height: 11px; stroke-width: 2.25; }
+  .badge.fault { --flag: var(--fault); }
+  .badge.clash { --flag: var(--clash); }
+  .grid.only-flagged .cell:not(.flag) { opacity: .3; }
+  .grid.only-flagged .cell:not(.flag):hover, .grid.only-flagged .cell:not(.flag):focus-visible { opacity: 1; }
+  .cell:hover { filter: brightness(1.06); }
+  .cell:focus-visible { z-index: 2; outline-offset: 1px; }
+  .cell.sel { outline: 2px solid var(--ring); outline-offset: 2px; z-index: 2; }
+  .keyline { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 0 0 10px; }
   .keyline span { display: inline-flex; gap: 5px; align-items: center; }
   aside.panel { position: sticky; top: 12px; }
+  aside.panel:focus { outline: none; }
   .back { margin: 0 0 10px; }
   .why li { margin-bottom: 10px; }
+  .go { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 0; font-size: 13px; }
   .fade { animation: fade .16s ease-out; }
   @keyframes fade { from { opacity: .4; transform: translateY(2px); } to { opacity: 1; transform: none; } }
 
   /* overview / data tabs */
-  .answers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); margin-bottom: 16px; }
+  .answers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); margin-bottom: 16px; box-shadow: var(--shadow-sm); }
   .answer { padding: 14px 18px; border-left: 1px solid var(--rule); min-width: 0; }
   .answer:first-child { border-left: 0; }
   .answer .q { color: var(--muted); font-size: 13px; }
-  .answer .a { font-size: 23px; font-weight: 650; letter-spacing: -0.01em; margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
+  .answer .a { font-size: 24px; font-weight: 600; letter-spacing: -0.01em; margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
   .answer.ok .a { color: var(--ok); }
   .answer.warn .a { color: var(--warn); }
+  .answer.caution .a { color: var(--caution); }
   .answer .d { font-size: 13px; color: var(--ink-2); }
-  .stack { display: flex; height: 6px; overflow: hidden; background: var(--rule); margin: 8px 0 6px; }
+  .stack { display: flex; height: 6px; overflow: hidden; background: var(--rule); margin: 8px 0 6px; border-radius: 999px; }
   .stack span { display: block; height: 100%; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
-  th { font-size: 12.5px; color: var(--muted); font-weight: 600; border-bottom-color: var(--rule-strong); }
+  th { font-size: 13px; color: var(--muted); font-weight: 500; border-bottom-color: var(--rule-strong); }
   td.num, th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   tbody tr:last-child td { border-bottom: 0; }
   .tablewrap { overflow-x: auto; }
@@ -190,16 +225,25 @@
   ol.steps { padding-left: 20px; }
   ol.steps li { margin-bottom: 9px; padding-left: 2px; }
   ol.steps li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
-  .issues { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); }
+  .issues { background: var(--surface); border: 1px solid var(--rule); border-radius: var(--r); box-shadow: var(--shadow-sm); }
   .issue { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 16px; padding: 14px 18px; border-top: 1px solid var(--rule); }
   .issue:first-child { border-top: 0; }
-  .issue .sev { font-size: 13px; font-weight: 650; display: flex; flex-direction: column; gap: 2px; }
-  .issue .sev small { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .issue .sev { font-size: 13px; font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
+  .issue .sev small { font-size: 13px; font-weight: 400; color: var(--muted); }
   .issue .sev .high { color: var(--warn); }
   .issue .sev .mid { color: var(--caution); }
   .issue .sev .low { color: var(--muted); }
   .issue .fix { margin-top: 6px; }
-  .issue .fix b { color: var(--ink); font-weight: 650; }
+  .issue .fix b { color: var(--ink); font-weight: 600; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 12px; }
+  .filters .btn { min-height: 32px; padding: 4px 12px; }
+  .filters .btn .num { color: var(--muted); margin-left: 2px; }
+  .filters .btn[aria-pressed="true"] { background: var(--select); border-color: var(--select); color: var(--on-select); }
+  .filters .btn[aria-pressed="true"] .num { color: inherit; }
+  details.group { margin-top: 8px; }
+  details.group summary { cursor: pointer; font-weight: 500; min-height: 24px; }
+  details.group ul { margin-top: 8px; }
+  details.group li { padding: 6px 0; border-top: 1px solid var(--rule); margin: 0; }
 
   .tech-only { display: none; }
   body.tech .tech-only { display: block; }
@@ -209,61 +253,82 @@
 
   /* empty, sign-in and loading */
   .drop { border: 1px dashed var(--rule-strong); border-radius: var(--r); padding: 32px 24px; text-align: center; margin: 48px auto; max-width: 560px; background: var(--surface); }
-  .signin { border-style: solid; border-color: var(--rule); max-width: 380px; text-align: left; padding: 24px; }
-  .signin h2 { margin-bottom: 2px; }
-  .signin label { display: block; margin: 14px 0; font-size: 13px; font-weight: 600; color: var(--ink-2); }
-  .signin input { display: block; width: 100%; margin-top: 5px; padding: 8px 10px; border: 1px solid var(--rule-strong); border-radius: var(--r); background: var(--surface); font-weight: 400; transition: border-color .15s; }
-  .signin input:focus-visible { outline: 2px solid var(--brand); outline-offset: 0; border-color: var(--brand); }
-  .signin .btn { width: 100%; padding: 9px; margin-top: 4px; }
-  #file::file-selector-button { font: inherit; font-weight: 550; padding: 6px 12px; margin-right: 10px; border: 1px solid var(--brand); border-radius: var(--r); background: var(--brand); color: var(--on-brand); cursor: pointer; }
+  .signin { border-style: solid; border-color: var(--rule); max-width: 400px; text-align: left; padding: 24px; box-shadow: var(--shadow-sm); }
+  .signin h2 { margin-bottom: 2px; font-size: 18px; }
+  .signin label { display: block; margin: 14px 0; font-size: 14px; font-weight: 500; color: var(--ink); }
+  .signin input { display: block; width: 100%; min-height: 40px; margin-top: 6px; padding: 8px 12px; border: 1px solid var(--input-line); border-radius: var(--r-md); background: var(--surface); font-weight: 400; transition: border-color .15s; }
+  .signin .btn { width: 100%; margin-top: 4px; }
+  #file::file-selector-button { font: inherit; font-weight: 500; min-height: 36px; padding: 6px 14px; margin-right: 10px; border: 1px solid var(--primary); border-radius: var(--r-md); background: var(--primary); color: var(--on-primary); cursor: pointer; }
   .loading { max-width: 1100px; text-align: left; border-style: solid; border-color: var(--rule); }
   .skel { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 18px; }
-  .skel i { display: block; height: 30px; background: var(--surface-2); border: 1px solid var(--rule); border-radius: var(--r-cell); }
+  .skel i { display: block; height: 30px; background: var(--surface-2); border: 1px solid var(--rule); border-radius: var(--r-md); }
   .skel i:nth-child(3n) { height: 62px; }
   @media (prefers-reduced-motion: no-preference) { .skel i { animation: pulse 1.4s ease-in-out infinite alternate; } }
   @keyframes pulse { to { opacity: .45; } }
   @media (prefers-reduced-motion: reduce) { .fade { animation: none; } * { transition: none !important; } }
 
+  @media (max-width: 1320px) {
+    .patients { grid-template-columns: 216px minmax(0, 1fr) 288px; }
+  }
   @media (max-width: 1150px) {
-    .patients { grid-template-columns: 220px minmax(0, 1fr); }
-    aside.panel { grid-column: 1 / -1; position: static; max-height: none; }
+    .patients { grid-template-columns: 232px minmax(0, 1fr); }
+    aside.panel { grid-column: 1 / -1; position: static; }
     .answers { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .answer:nth-child(3) { border-left: 0; }
     .answer:nth-child(n+3) { border-top: 1px solid var(--rule); }
   }
+  @media (max-width: 900px) {
+    .two { grid-template-columns: 1fr; }
+  }
   @media (max-width: 760px) {
-    header { padding: 12px 16px; }
+    header { padding: 10px 16px; }
     .page { padding: 16px; }
+    .drop { margin: 24px 16px; }
     .patients, .two { grid-template-columns: 1fr; }
-    .plist ul { max-height: 180px; }
+    .plist ul { max-height: 260px; }
     .issue { grid-template-columns: 1fr; gap: 6px; }
     .answers { grid-template-columns: 1fr; }
     .answer { border-left: 0; }
     .answer + .answer { border-top: 1px solid var(--rule); }
     .toggle { margin-left: 0; }
+    .live { margin-left: 0; justify-content: flex-start; }
+  }
+  /* touch screens get 44px targets */
+  @media (pointer: coarse) {
+    :root { --row: 48px; }
+    .tabs button, .seg button, .btn, #signout, .toggle, .sortbar button, .filters .btn, details.group summary { min-height: 44px; }
+    .plist button.p, .plist input, .btn.primary, .signin input, #onlyFlagged, #attnFirst { min-height: 44px; }
+    .link, a.pear-go { min-height: 44px; display: inline-flex; align-items: center; }
+    .toggle input { width: 20px; height: 20px; }
   }
   @media print {
-    header .bar2, .plist, .drop { display: none; }
-    aside.panel { position: static; max-height: none; }
+    header .bar2, header .live, .plist, .drop, .skip, .pear-go, .go, .filters { display: none; }
+    .issue[hidden] { display: grid !important; }
+    aside.panel { position: static; }
   }
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="logo" viewBox="0 0 134 80"><image href="data:image/png;base64,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" width="134" height="80"/></symbol>
   <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20Z"/></symbol>
   <symbol id="i-pill" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="19" height="9" rx="4.5"/><path d="M12 7.5v9"/></symbol>
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5h.01"/></symbol>
   <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-clash" viewBox="0 0 24 24"><rect x="3" y="3" width="12" height="12" rx="2"/><rect x="9" y="9" width="12" height="12" rx="2"/></symbol>
+  <symbol id="i-out" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-request" viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m14 5 3 3-3 3"/><path d="M20 16H7"/><path d="m10 13-3 3 3 3"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12.5 2.8 2.8L16 10"/></symbol>
 </svg>
+<a class="skip" href="#main">Skip to content</a>
+<div class="vh" id="announce" aria-live="polite"></div>
 <header>
   <div class="top">
-    <span class="mark">PEAR</span>
-    <h1>Schedule explained</h1>
-    <span id="meta"></span>
+    <svg class="logo" role="img" aria-label="PEAR" viewBox="0 0 134 80" width="67" height="40"><use href="#logo"/></svg>
+    <div class="titles"><h1>Schedule explained</h1><span id="meta"></span></div>
     <span class="live" id="live" hidden>
       <span class="muted" id="liveMsg" role="status"></span>
-      <span class="tabs" id="weeks" role="group" aria-label="Week">
+      <span class="seg" id="weeks" role="group" aria-label="Week">
         <button data-week="this" aria-pressed="true">This week</button>
         <button data-week="next" aria-pressed="false" title="Built from today's data, not saved">Next week</button>
       </span>
@@ -271,13 +336,13 @@
       <button class="link" id="signout">Sign out</button>
     </span>
   </div>
-  <p class="muted small" id="liveNote" hidden></p>
+  <div class="muted" id="liveNote" hidden></div>
   <div class="bar2" id="tabs" hidden>
-    <nav class="tabs" role="tablist" aria-label="Views">
-      <button role="tab" data-tab="patients" aria-selected="true">Patients</button>
-      <button role="tab" data-tab="overview" aria-selected="false">Centre overview</button>
-      <button role="tab" data-tab="data" aria-selected="false">Data to fix <span class="count" id="issueCount" hidden></span></button>
-    </nav>
+    <div class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" id="tabbtn-patients" aria-controls="tab-patients" data-tab="patients" aria-selected="true">Patients</button>
+      <button role="tab" id="tabbtn-overview" aria-controls="tab-overview" data-tab="overview" aria-selected="false" tabindex="-1">Centre overview</button>
+      <button role="tab" id="tabbtn-data" aria-controls="tab-data" data-tab="data" aria-selected="false" tabindex="-1">Data to fix <span class="count" id="issueCount" hidden></span></button>
+    </div>
     <label class="toggle"><input type="checkbox" id="tech"> Show technical details</label>
   </div>
 </header>
@@ -293,9 +358,9 @@
   <form id="signinForm">
     <h2>Sign in to see this week's schedules</h2>
     <p class="muted small">Use your PEAR account. Supervisors and admins only.</p>
-    <label>Username <input id="user" name="username" autocomplete="username" required></label>
+    <label>Email <input id="user" name="username" autocomplete="username" inputmode="email" spellcheck="false" required></label>
     <label>Password <input id="pass" name="password" type="password" autocomplete="current-password" required></label>
-    <p class="error small" id="signinError" role="alert" hidden></p>
+    <p class="error small" id="signinError" role="alert"></p>
     <button class="btn primary" type="submit" id="signinBtn">Sign in</button>
   </form>
 </div>
@@ -307,30 +372,38 @@
   <div class="skel" id="skel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 </div>
 
-<div class="page" id="tab-patients" hidden>
+<main id="main" tabindex="-1">
+<div class="page" id="tab-patients" role="tabpanel" aria-labelledby="tabbtn-patients" hidden>
+  <div class="drop" id="nopatients" hidden><p><strong id="nopatientsTitle"></strong></p><p class="muted small">They appear here once the week's schedule is made.</p></div>
   <div class="patients">
     <nav class="panel plist" aria-label="Patients">
       <input type="search" id="search" placeholder="Find a patient" aria-label="Find a patient">
+      <div class="sortbar"><button class="btn" id="attnFirst" aria-pressed="false">Needs attention first</button></div>
       <ul id="plist"></ul>
     </nav>
     <section class="panel">
-      <h2 id="ptitle"></h2>
+      <h2 id="ptitle" tabindex="-1"></h2>
       <p class="lead" id="plead"></p>
-      <div class="legend" id="legend"></div>
+      <div id="pgo"></div>
+      <div class="legend"><span id="legend" class="legend-fills"></span>
+        <span class="flagkey"><span class="badge fault"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg></span>needs attention</span>
+        <span class="flagkey"><span class="badge clash"><svg class="i" aria-hidden="true"><use href="#i-clash"/></svg></span>clash in the activity data</span>
+        <button class="btn" id="onlyFlagged" aria-pressed="false" hidden>Show only flagged</button></div>
+      <p class="keyline muted small">Click any block to see why it is there.<span class="vh"> Arrow keys move between blocks.</span>
+        <span><svg class="i" aria-hidden="true"><use href="#i-heart"/></svg>liked</span>
+        <span><svg class="i" aria-hidden="true"><use href="#i-pill"/></svg>medication given</span>
+        <span><svg class="i" aria-hidden="true"><use href="#i-info"/></svg>looks unusual, follows the rules</span>
+        <span><svg class="i" aria-hidden="true"><use href="#i-request"/></svg>special request</span></p>
+      <a class="vh-focus" href="#detail">Skip past the schedule to the explanation</a>
       <div class="gridwrap"><div class="grid" id="grid"></div></div>
-      <p class="keyline muted small">Click any block to see why it is there.
-        <span><svg class="i"><use href="#i-heart"/></svg>liked</span>
-        <span><svg class="i"><use href="#i-pill"/></svg>medication given</span>
-        <span><svg class="i"><use href="#i-info"/></svg>looks unusual, follows the rules</span>
-        <span><svg class="i" style="color:var(--warn)"><use href="#i-alert"/></svg>needs attention</span>
-        <span><svg class="i" style="color:var(--caution)"><use href="#i-alert"/></svg>clash in the activity data</span></p>
     </section>
-    <aside class="panel" id="detail"></aside>
+    <aside class="panel" id="detail" tabindex="-1" aria-label="Explanation"></aside>
   </div>
 </div>
 
-<div class="page" id="tab-overview" hidden></div>
-<div class="page" id="tab-data" hidden></div>
+<div class="page" id="tab-overview" role="tabpanel" aria-labelledby="tabbtn-overview" hidden></div>
+<div class="page" id="tab-data" role="tabpanel" aria-labelledby="tabbtn-data" hidden></div>
+</main>
 
 <!-- EXPLAIN_DATA -->
 <script>
@@ -339,8 +412,12 @@ const KIND = {
   chosen: "Picked to fill time", request: "Special request", free: "Free and Easy",
 };
 const icon = (name, extra = "") => `<svg class="i" aria-hidden="true"${extra}><use href="#i-${name}"/></svg>`;
+// block colours as supervisors see them in Patient Schedule, every activity orange and Free and Easy blue
+const CAT = { free: "free" };
+const CAT_NAME = { sched: "Scheduled activity", free: "Free and Easy" };
+const catOf = (k) => CAT[k] || "sched";
 // vars, not properties, so .avoid/.bad/:hover can still override them
-const kindStyle = (k) => `--c-bg:var(--${k}-bg);--c-line:var(--${k}-line);--c-ink:var(--${k}-ink)`;
+const kindStyle = (k) => { const c = catOf(k); return `--c-bg:var(--${c}-bg);--c-line:var(--${c}-line);--c-ink:var(--${c}-ink)`; };
 const note = (tone, ic, body) => `<div class="note ${tone}">${icon(ic)}<div>${body}</div></div>`;
 // correct by the rule order, but easy to mistake for a bug
 const OVERRIDES = new Set(["recommended_over_dislike", "filled_to_min_size", "top_up_to_weekly_target", "adhoc_request", "displaced_by_routine"]);
@@ -365,6 +442,10 @@ const list = (xs) => { xs = [...new Set([].concat(xs || []).filter(Boolean))].ma
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
 let data = null, current = null, slotMins = 30;
+const announce = (msg) => { $("announce").textContent = ""; setTimeout(() => { $("announce").textContent = msg; }, 60); };
+// after a re-render or screen swap, put focus somewhere sensible instead of <body>
+const focusLost = () => { const a = document.activeElement; return !a || a === document.body || !a.isConnected || a.closest("[hidden]"); };
+const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const nameOf = (pid) => (data.patients[pid] && data.patients[pid].name) || `Patient ${pid}`;
 const hours = (slots) => { const h = slots * slotMins / 60; return h === 1 ? "1 hour" : `${Math.round(h * 10) / 10} hours`; };
@@ -372,11 +453,24 @@ const start = (label) => (label || "").split("-")[0];
 const end = (label) => (label || "").split("-")[1] || "";
 const span = (day, s, n) => `${start(day.labels[s])}–${end(day.labels[s + n - 1])}`;
 const short = (d) => String(d).slice(0, 3);
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+function dateOf(name) {
+  const i = DAY_NAMES.indexOf(name), m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(data.week_start || ""));
+  return i < 0 || !m ? null : new Date(Date.UTC(+m[1], m[2] - 1, +m[3] + i));
+}
+const fmtDate = (t, year) => t.toLocaleDateString("en-US", { month: "short", day: "2-digit", ...(year ? { year: "numeric" } : {}), timeZone: "UTC" });
+const isoDate = (t) => t.toISOString().slice(0, 10);
+function weekRange() {
+  const ds = (data.open_days || []).map(dateOf).filter(Boolean);
+  if (!ds.length) return esc(data.week_start);
+  const a = ds[0], b = ds[ds.length - 1];
+  return `<time datetime="${esc(data.week_start)}">${fmtDate(a)} – ${fmtDate(b, true)}</time>`;
+}
 
 
 function atText(at) {
   const t = new Date(at);
-  return isNaN(t) ? "" : `${t.toLocaleDateString("en-GB", { weekday: "short" })} ${String(at).slice(11, 16)}`;
+  return isNaN(t) ? "" : `${t.toLocaleDateString("en-GB", { weekday: "short" })} ${esc(String(at).slice(11, 16))}`;
 }
 
 // changes repair made to the saved week, or will make at the next regenerate
@@ -438,9 +532,12 @@ function sentence(e, who) {
     case "liked_but_fixed_time_taken": return `${esc(who)} likes ${a}, but it only runs at set times, and those were already taken by more important activities.`;
     case "liked_but_no_gap_long_enough": return `${esc(who)} likes ${a}, but no free time ${thisWeek()} was long enough for it.`;
     case "liked_but_gaps_used": return `${esc(who)} likes ${a}, but the free time went to other activities they like.`;
-    case "below_min_group_size": return `${a} did not run: it needs ${d.min_people || "more"} people and not enough could join.`;
+    case "below_min_group_size": return `${a} did not run: it needs ${esc(d.min_people || "more")} people and not enough could join.`;
     case "preferred": return `${esc(who)} likes ${a}, so it was picked for this free time.`;
     case "neutral": return `${a} was picked for this free time. ${esc(who)} has no strong feeling about it and it is allowed for them.`;
+    case "now_disliked": return `${esc(who)} now dislikes ${a}, but it was already in the saved week.`;
+    case "now_excluded": return `${a} is now excluded for ${esc(who)}, but it was already in the saved week.`;
+    case "now_not_recommended": return `The doctor now advises against ${a} for ${esc(who)}, but it was already in the saved week.`;
     case "no_candidate_fits": return `No allowed activity fit this free time.`;
     case "candidate_too_long": return `The activity picked was longer than the free time.`;
     case "adhoc_request": return `Changed by a special request: ${a} replaces ${q(d.replaced || "the planned activity")} on these days.`;
@@ -528,6 +625,21 @@ function clashFor(p, v) {
   return null;
 }
 
+// links into the Supervisor View, only when the scheduler says where it is
+function pearHref(path) {
+  const base = api && typeof api.pear === "string" && /^https?:\/\//i.test(api.pear) ? api.pear.replace(/\/+$/, "") : "";
+  return base && supervisorView() ? base + path : "";
+}
+// the fix screens are under /supervisor/, which PEAR only opens for supervisors
+const supervisorView = () => !data || !data.viewer_role || data.viewer_role === "SUPERVISOR";
+const pearLink = (path, text) => { const h = pearHref(path); return h ? `<a class="pear-go" href="${esc(h)}" target="_blank" rel="noopener">${esc(text)}${icon("out")}<span class="vh"> (opens PEAR in a new tab)</span></a>` : ""; };
+const patientPath = (pid, tab) => `/supervisor/view-patient/${encodeURIComponent(pid)}${tab ? `?tab=${tab}` : ""}`;
+const prefsLink = (pid) => pearLink(patientPath(pid, "activity-preference"), "Activity preferences");
+const exclLink = (pid) => pearLink(patientPath(pid, "activity-exclusion"), "Activity exclusions");
+const ACTIVITIES = () => pearLink("/supervisor/manage-activities", "Activities in PEAR");
+const CENTRE = () => pearLink("/supervisor/manage-centre-activities", "Centre activities in PEAR");
+const goRow = (links) => { links = links.filter(Boolean); return links.length ? `<div class="go">${links.join("")}</div>` : ""; };
+
 const isClash = (p, v) => v.rule === "R4" && !!clashFor(p, v);
 const realViolations = (p) => p.violations.filter(v => !isClash(p, v));
 
@@ -562,7 +674,7 @@ function violationSentence(p, v, who) {
 
 function dot(p) {
   if (realViolations(p).length) return `<span class="flag" title="Needs attention">${icon("alert", ' style="color:var(--warn)"')}</span>`;
-  if (p.violations.length) return `<span class="flag" title="Affected by a clash in the activity data">${icon("alert", ' style="color:var(--caution)"')}</span>`;
+  if (p.violations.length) return `<span class="flag" title="Affected by a clash in the activity data">${icon("clash", ' style="color:var(--clash)"')}</span>`;
   return `<span class="flag"></span>`;
 }
 
@@ -570,15 +682,25 @@ function patientIds() {
   return Object.keys(data.patients).sort((a, b) => Number(a) - Number(b));
 }
 
+// 0 needs attention, 1 clash in the activity data, 2 nothing to look at
+const attention = (p) => realViolations(p).length ? 0 : p.violations.length ? 1 : 2;
+let attnFirst = store.get("explain.attn") === "1", onlyFlagged = false;
+function listIds() {
+  const ids = patientIds();
+  return attnFirst ? ids.sort((a, b) => attention(data.patients[a]) - attention(data.patients[b]) || Number(a) - Number(b)) : ids;
+}
+
 function renderList() {
+  const hadFocus = !!(document.activeElement && document.activeElement.closest && document.activeElement.closest("#plist"));
   const term = $("search").value.trim().toLowerCase();
-  $("plist").innerHTML = patientIds()
+  $("plist").innerHTML = listIds()
     .filter(pid => !term || nameOf(pid).toLowerCase().includes(term) || pid.includes(term))
     .map(pid => {
       const p = data.patients[pid];
-      return `<li><button data-pid="${esc(pid)}" aria-current="${pid === current}"><span>${dot(p)}${esc(nameOf(pid))}</span><span class="free">${esc(hours(p.free_and_easy.total))} free</span></button></li>`;
+      return `<li><button class="p" data-pid="${esc(pid)}" aria-current="${pid === current}">${dot(p)}<span class="nm">${esc(nameOf(pid))}</span><span class="free">${esc(hours(p.free_and_easy.total))} free</span></button></li>`;
     }).join("") || `<li class="muted small">No match</li>`;
-  $("plist").querySelectorAll("button").forEach(b => b.addEventListener("click", () => showPatient(b.dataset.pid)));
+  $("plist").querySelectorAll("button").forEach(b => b.addEventListener("click", () => { showPatient(b.dataset.pid); announce(`Showing ${nameOf(b.dataset.pid)}'s week`); writeHash(true); }));
+  if (hadFocus) { const b = $("plist").querySelector(`[data-pid="${CSS.escape(String(current))}"]`); if (b) b.focus(); }
 }
 
 function showPatient(pid) {
@@ -597,6 +719,9 @@ function showPatient(pid) {
   if (realViolations(p).length) lead += `<span class="error">Some things need attention, see “About ${esc(who)}'s week”.</span>`;
   else if (p.violations.length) lead += `Some times are affected by a clash in the activity data, see “About ${esc(who)}'s week”.`;
   $("plead").innerHTML = lead;
+  $("pgo").innerHTML = api && api.pear && !supervisorView()
+    ? `<p class="muted small go">Links to PEAR's fix screens are left out: those screens are for supervisor accounts.</p>`
+    : goRow([pearLink(patientPath(pid), "Patient profile in PEAR"), prefsLink(pid), exclLink(pid)]);
   renderGrid(pid);
   showSummary(pid);
 }
@@ -607,8 +732,12 @@ function renderGrid(pid) {
   const longest = days.find(d => d.slots.length === rows) || { labels: [] };
   const grid = $("grid");
   grid.style.gridTemplateColumns = `52px repeat(${days.length}, minmax(96px, 1fr))`;
-  grid.style.gridTemplateRows = `auto repeat(${rows}, 26px)`;
-  let html = days.map((d, i) => `<div class="colhead" style="grid-column:${i + 2};grid-row:1">${esc(d.day)}</div>`).join("");
+  grid.style.gridTemplateRows = `auto repeat(${rows}, var(--row))`;
+  const today = isoDate(new Date(Date.now() - new Date().getTimezoneOffset() * 60000));
+  let html = `<div class="corner" style="grid-column:1;grid-row:1"></div>` + days.map((d, i) => {
+    const t = dateOf(d.day), on = t && isoDate(t) === today;
+    return `<div class="colhead${on ? " today" : ""}" style="grid-column:${i + 2};grid-row:1"${on ? ' aria-current="date"' : ""}>${esc(short(d.day))}${t ? `<span class="dt">${fmtDate(t)}</span>` : ""}</div>`;
+  }).join("");
   for (let r = 0; r < rows; r++) {
     const half = start(longest.labels[r]).endsWith(":30") ? " half" : "";
     html += `<div class="timehead${half}" style="grid-column:1;grid-row:${r + 2}">${esc(start(longest.labels[r]))}</div>`;
@@ -620,23 +749,72 @@ function renderGrid(pid) {
     used.add(k);
     const liked = ev.some(e => e.reason === "preferred" || e.reason === "liked") ? icon("heart") : "";
     const med = meds(d, b).length ? icon("pill") : "";
+    const req = k === "request" ? icon("request") : "";
     const odd = ev.some(e => OVERRIDES.has(e.reason)) ? icon("info") : "";
     const here = violationsAt(p, di, b.s, b.n);
     // data clashes in amber, red only for real faults
     const bad = here.some(v => !isClash(p, v)), clash = !bad && here.length > 0;
     const avoid = s.free_and_easy === "LOGIC";
-    const cls = `cell${k === "free" ? " free" : ""}${avoid ? " avoid" : ""}${bad ? " bad" : ""}${clash ? " clash" : ""}`;
+    const cls = `cell${k === "free" ? " free" : ""}${avoid ? " avoid" : ""}${bad ? " bad" : ""}${clash ? " clash" : ""}${bad || avoid || clash ? " flag" : ""}`;
     const bg = kindStyle(k);
-    const flag = bad ? icon("alert", ' style="color:var(--warn)"') : clash ? icon("alert", ' style="color:var(--caution)"') : "";
+    const flag = bad || avoid ? `<span class="badge">${icon("alert")}</span>` : clash ? `<span class="badge">${icon("clash")}</span>` : "";
+    const status = [bad || avoid ? "needs attention" : "", clash ? "clash in the activity data" : "", avoid ? "could have been filled" : "",
+      liked ? "liked" : "", med ? "medication given" : "", odd ? "looks unusual, follows the rules" : ""].filter(Boolean);
     html += `<button class="${cls}" data-d="${di}" data-s="${b.s}" data-n="${b.n}"
       style="grid-column:${di + 2};grid-row:${b.s + 2} / span ${b.n};${bg}"
-      aria-label="${esc(d.day)} ${esc(span(d, b.s, b.n))}: ${esc(s.activity)}, ${esc(KIND[k])}"
-      title="${esc(s.activity)}, ${esc(span(d, b.s, b.n))}"><div class="t">${flag}<span>${esc(s.activity)}</span>${liked}${med}${odd}</div>${b.n > 1 ? `<div class="s">${esc(span(d, b.s, b.n))}</div>` : ""}</button>`;
+      aria-label="${esc(d.day)} ${esc(span(d, b.s, b.n))}: ${esc(s.activity)}${k === "free" ? "" : `, ${esc(KIND[k])}`}${status.length ? `, ${status.join(", ")}` : ""}" tabindex="-1"
+      title="${esc(s.activity)}, ${esc(span(d, b.s, b.n))}"><div class="t">${flag}<span>${esc(s.activity)}</span>${req}${liked}${med}${odd}</div>${b.n > 1 ? `<div class="s">${esc(span(d, b.s, b.n))}</div>${k === "free" ? "" : `<div class="s k">${esc(KIND[k])}</div>`}` : ""}</button>`;
   }));
   grid.innerHTML = html;
-  $("legend").innerHTML = Object.keys(KIND).filter(k => used.has(k))
-    .map(k => `<span><i class="sq" style="${kindStyle(k)}${k === "free" ? ";border-style:dashed" : ""}"></i>${esc(KIND[k])}</span>`).join("");
-  grid.querySelectorAll(".cell").forEach(el => el.addEventListener("click", () => showBlock(pid, el)));
+  const cats = new Set([...used].map(catOf));
+  $("legend").innerHTML = ["sched", "free"].filter(c => cats.has(c))
+    .map(c => `<span><i class="sq" style="--c-bg:var(--${c}-bg);--c-line:var(--${c}-line)${c === "free" ? ";border-style:dashed" : ""}"></i>${CAT_NAME[c]}</span>`).join("");
+  const cells = [...grid.querySelectorAll(".cell")];
+  const flagged = cells.some(c => c.classList.contains("flag"));
+  $("onlyFlagged").hidden = !flagged;
+  grid.classList.toggle("only-flagged", flagged && onlyFlagged);
+  flaggedFirst();
+  cells.forEach(el => el.addEventListener("click", () => { showBlock(pid, el); writeHash(true); }));
+  if (cells[0]) cells[0].tabIndex = 0;
+  grid.onkeydown = (e) => gridKey(e, cells);
+}
+
+// arrow keys between blocks, up/down within a day and left/right to the same time on another day
+function gridKey(e, all) {
+  const cells = $("grid").classList.contains("only-flagged") ? all.filter(c => c.classList.contains("flag")) : all;
+  const el = e.target.closest(".cell");
+  if (!el) return;
+  const d = +el.dataset.d, s = +el.dataset.s, n = +el.dataset.n;
+  const inDay = (dd) => cells.filter(c => +c.dataset.d === dd);
+  const at = (dd, ss) => inDay(dd).find(c => +c.dataset.s <= ss && ss < +c.dataset.s + +c.dataset.n);
+  let to = null;
+  const last = Math.max(...all.map(c => +c.dataset.d));
+  if ($("grid").classList.contains("only-flagged")) {
+    // only flagged, every arrow steps through them in order
+    const i = cells.indexOf(el), step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key];
+    if (step) to = cells[i < 0 ? 0 : i + step];
+    else if (e.key === "Home") to = cells[0];
+    else if (e.key === "End") to = cells[cells.length - 1];
+    else return;
+  }
+  else if (e.key === "ArrowDown") to = inDay(d).find(c => +c.dataset.s >= s + n);
+  else if (e.key === "ArrowUp") to = inDay(d).filter(c => +c.dataset.s < s).pop();
+  else if (e.key === "ArrowRight") { for (let dd = d + 1; !to && dd <= last; dd++) to = at(dd, s) || inDay(dd)[0]; }
+  else if (e.key === "ArrowLeft") { for (let dd = d - 1; !to && dd >= 0; dd--) to = at(dd, s) || inDay(dd)[0]; }
+  else if (e.key === "Home") to = inDay(d)[0];
+  else if (e.key === "End") to = inDay(d).pop();
+  else return;
+  e.preventDefault();
+  if (!to) return;
+  all.forEach(c => { c.tabIndex = -1; });
+  to.tabIndex = 0;
+  to.focus();
+}
+
+function flaggedFirst() {
+  const cells = [...$("grid").querySelectorAll(".cell")], f = cells.find(c => c.classList.contains("flag"));
+  if (!f || !$("grid").classList.contains("only-flagged")) return;
+  cells.forEach(c => { c.tabIndex = c === f ? 0 : -1; });
 }
 
 function showBlock(pid, el) {
@@ -662,6 +840,7 @@ function showBlock(pid, el) {
   const here = violationsAt(p, d, b.s, b.n);
   const bad = groupViolations({ ...p, violations: here.filter(v => !isClash(p, v)) });
   const clash = groupViolations({ ...p, violations: here.filter(v => isClash(p, v)) });
+  const gap = gapSentence(p, pid, who, d, b, here, ev);
   const m = meds(day, b);
   const hist = day.slots.slice(b.s, b.s + b.n).flatMap((x, i) => (x.history || []).map(h =>
     `${start(day.labels[b.s + i])} ${h.stage} wrote ${h.activity}${h.previous ? ` (was ${h.previous})` : ""}`));
@@ -669,14 +848,74 @@ function showBlock(pid, el) {
     <p class="back"><button class="link" id="back">Back to ${esc(who)}'s summary</button></p>
     <h2>${esc(b.slot.activity || "(empty)")}</h2>
     <p class="muted"><time>${esc(day.day)} ${esc(span(day, b.s, b.n))}</time> · <span class="label" style="${kindStyle(k)}${k === "free" ? ";border-style:dashed" : ""}">${esc(KIND[k])}</span></p>
-    ${bad.length ? note("warn", "alert", `<b>Needs attention</b><ul>${bad.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul>`) : ""}
-    ${clash.length ? note("caution", "alert", `<b>Affected by a clash in the activity data</b><ul>${clash.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul>`) : ""}
+    ${bad.length ? note("warn", "alert", `<b>Needs attention</b><ul>${bad.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul>${gap}`) : ""}
+    ${clash.length ? note("caution", "clash", `<b>Affected by a clash in the activity data</b><ul>${clash.map(v => `<li>${violationSentence(p, v, who)}<span class="code tech-only"> ${esc(v.rule)}</span></li>`).join("")}</ul>`) : ""}
     ${odd.length ? note("", "info", `<b>Looks unusual, but follows the rules.</b>`) : ""}
     <h3>Why is this here?</h3><ul class="why">${why.join("")}</ul>
+    ${goRow(fixLinks(pid, k, day, b, clash.length > 0))}
     ${m.length ? `<h3>Medication during this time</h3><ul>${m.map(x => `<li>${icon("pill")} ${esc(x)}</li>`).join("")}</ul>` : ""}
     <div class="tech-only"><h3>How each step filled this time</h3><div class="code">${esc(hist.join("\n")) || "No step wrote here."}</div></div>`;
   $("detail").firstElementChild.classList.add("fade");
-  $("back").addEventListener("click", () => { el.classList.remove("sel"); showSummary(pid); });
+  $("back").addEventListener("click", () => { el.classList.remove("sel"); showSummary(pid); el.focus(); writeHash(true); });
+  if ($("copyDetails")) $("copyDetails").addEventListener("click", () => copyReport(reportText(pid, day, b, here)));
+  el.closest(".grid").querySelectorAll(".cell").forEach(c => { c.tabIndex = c === el ? 0 : -1; });
+  revealDetail();
+}
+
+// a broken rule the reasons don't account for, say why or that it looks like a fault
+function gapSentence(p, pid, who, d, b, here, ev) {
+  const broken = here.filter(v => !isClash(p, v) && !["R4", "R8"].includes(v.rule));
+  if (!broken.length) return "";
+  const pend = ((data.pending || {})[pid] || []).filter(e => e.day === d && e.slot != null && e.slot >= b.s && e.slot < b.s + b.n && e.activity === b.slot.activity);
+  const changed = ev.some(e => String(e.reason || "").startsWith("now_"));
+  if (pend.length) return `<p class="gap">The data changed after this was scheduled. ${pend.map(e => repairSentence(e, who, true)).join(" ")}</p>`;
+  if (changed) return `<p class="gap">The data changed after this was scheduled.</p>`;
+  return `<p class="gap">Nothing recorded explains this, so it looks like a scheduler fault. Please report it to the scheduler team.</p>${copyButton()}`;
+}
+
+// what the scheduler team needs to find a fault, ready to paste
+const copyButton = () => `<p class="go"><button class="btn" id="copyDetails">Copy details for the report</button></p>`;
+function reportText(pid, day, b, here) {
+  return [
+    `Schedule explainer: possible scheduler fault`,
+    `Patient: ${nameOf(pid)} (ID ${pid})`,
+    `When: ${day.day} ${span(day, b.s, b.n)}, week of ${data.week_start}`,
+    `Activity: ${b.slot.activity}`,
+    ...here.map(v => `Rule: ${v.rule} ${v.message || ""}`.trim()),
+    `Schedule: ${data.source}, built ${String(data.generated_at || "").replace("T", " ")}`,
+  ].join("\n");
+}
+// the link is plain http, which has no navigator.clipboard, so fall back to a selected textarea
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* no clipboard API, use the textarea */ }
+  const t = document.createElement("textarea"), back = document.activeElement;
+  t.value = text; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0";
+  document.body.appendChild(t); t.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; } finally { t.remove(); if (back) back.focus(); }
+  return ok;
+}
+async function copyReport(text) {
+  const ok = await copyText(text);
+  announce(ok ? "Details copied. Paste them into your message to the scheduler team." : "Couldn't copy. Select the text in the panel instead.");
+  if (ok) $("copyDetails").textContent = "Copied";
+}
+
+// below 1150px the explanation is under the schedule, so scroll to it and move focus so it's announced
+function revealDetail() {
+  const aside = $("detail"), h = aside.querySelector("h2");
+  if (getComputedStyle(aside).position !== "sticky") aside.scrollIntoView({ block: "start", behavior: reduced() ? "auto" : "smooth" });
+  if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+}
+
+function fixLinks(pid, k, day, b, clash) {
+  if (k === "free") {
+    const r = new Set(day.slots.slice(b.s, b.s + b.n).map(x => x.free_and_easy));
+    return [r.has("no_eligible_activities") ? prefsLink(pid) : "", r.has("no_eligible_activities") ? exclLink(pid) : "",
+      ["pool_exhausted_today", "no_fit_for_gap_length", "fixed_slot_elsewhere"].some(x => r.has(x)) ? ACTIVITIES() : ""];
+  }
+  if (k === "everyone" || clash) return [CENTRE()];
+  return [prefsLink(pid), exclLink(pid)];
 }
 
 function showSummary(pid) {
@@ -698,7 +937,8 @@ function showSummary(pid) {
     return [...out.values()];
   };
   const odd = collect(e => OVERRIDES.has(e.reason) && e.stage !== "repair");
-  const dropped = collect(e => (e.outcome === "DROPPED" || e.outcome === "ERROR") && e.stage !== "repair");
+  // liked-but notes have their own section above
+  const dropped = collect(e => (e.outcome === "DROPPED" || e.outcome === "ERROR") && e.stage !== "repair" && !(e.reason || "").startsWith("liked_but_"));
   const changed = collect(e => e.stage === "repair").sort((x, y) => String(x.e.details.at).localeCompare(String(y.e.details.at)));
   const pending = (data.pending || {})[pid] || [];
   const times = (t) => t.length ? `<div class="when">${esc(t.slice(0, 5).join(", "))}${t.length > 5 ? ` and ${t.length - 5} more` : ""}</div>` : "";
@@ -711,7 +951,7 @@ function showSummary(pid) {
     <h2 class="fade">About ${esc(who)}'s week</h2>
     <p class="muted small">Click any block in the schedule to see why it is there.</p>
     ${bad.length ? note("warn", "alert", `<b>Needs attention</b><ul>${bad.join("")}</ul>`) : ""}
-    ${clash.length ? note("caution", "alert", `<b>Affected by a clash in the activity data</b><ul>${clash.join("")}</ul>`) : ""}
+    ${clash.length ? note("caution", "clash", `<b>Affected by a clash in the activity data</b><ul>${clash.join("")}</ul>`) : ""}
     ${!bad.length && !clash.length ? note("ok", "check", "All scheduling rules are followed.") : ""}
     ${section("Why the Free and Easy time", free.map(([r, n]) =>
       `<li><b>${hours(n)}</b>: ${esc((FREE_WHY[r] || { what: r }).what)}.<span class="code tech-only"> ${esc(r)}</span></li>`), "No Free and Easy.")}
@@ -728,6 +968,7 @@ function showSummary(pid) {
 function renderOverview() {
   const s = data.summary, fe = s.free_and_easy, n = s.patients;
   const pct = s.slots ? Math.round(100 * fe.total / s.slots) : 0;
+  const avoidShare = fe.total ? Math.round(100 * (fe.avoidable_logic || 0) / fe.total) : 0;
   const all = Object.values(data.patients).flatMap(p => p.violations.map(v => [p, v]));
   const real = all.filter(([p, v]) => !isClash(p, v)), clashes = all.length - real.length;
   const viol = real.length;
@@ -756,16 +997,16 @@ function renderOverview() {
   $("tab-overview").innerHTML = `
     ${waiting.length ? note("caution", "info", `<b>Data changed since this week was saved.</b> ${plural(waiting.length, "patient")} will change at the next regenerate: ${esc(waiting.slice(0, 6).map(nameOf).join(", "))}${waiting.length > 6 ? ` and ${waiting.length - 6} more` : ""}.`) : ""}
     <div class="answers">
-      <div class="answer"><div class="q">Patients ${thisWeek()}</div><div class="a">${n}</div><div class="d">Week of <time>${esc(data.week_start)}</time></div></div>
+      <div class="answer"><div class="q">Patients ${thisWeek()}</div><div class="a">${esc(n)}</div><div class="d">Week of ${weekRange()}</div></div>
       <div class="answer"><div class="q">Free and Easy time</div><div class="a">${pct}%</div>
         <div class="stack" role="img" aria-label="${pct}% of all time is Free and Easy, split by reason"><div style="display:flex;width:${pct}%">${bar}</div></div><div class="d">${hours(fe.total)} in total, about ${hours(n ? fe.total / n : 0)} per patient</div></div>
-      <div class="answer ${fe.avoidable_logic ? "warn" : "ok"}"><div class="q">Could the scheduler have filled more?</div>
-        <div class="a">${fe.avoidable_logic ? "Yes" : "No"}</div>
-        <div class="d">${fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity.` : `Every Free and Easy slot was unavoidable with ${thisWeek()}'s activity data.`}</div>
-        <div class="code tech-only">avoidable_logic=${fe.avoidable_logic}, avoidable_rearranging_gap_fill=${fe.avoidable_rearranging_gap_fill ?? 0}</div></div>
-      <div class="answer ${viol ? "warn" : "ok"}"><div class="q">Scheduling rules</div>
-        <div class="a">${viol ? plural(viol, "issue") : "All followed"}</div>
-        <div class="d">${viol ? Object.entries(byRule).map(([r, c]) => `${esc(RULE_NAME[r] || r)}: ${c}`).join("<br>") : "No exclusions, dislikes or doctor's advice were broken."}</div>
+      <div class="answer ${!n ? "" : !fe.avoidable_logic ? "ok" : avoidShare >= 10 ? "warn" : "caution"}"><div class="q">Could the scheduler have filled more?</div>
+        <div class="a">${!n ? "—" : fe.avoidable_logic ? "Yes" : "No"}</div>
+        <div class="d">${!n ? "No schedules to check yet." : fe.avoidable_logic ? `${hours(fe.avoidable_logic)} could have been filled with an allowed activity. That is ${avoidShare < 1 ? "under 1" : avoidShare}% of the Free and Easy.` : `Every Free and Easy slot was unavoidable with ${thisWeek()}'s activity data.`}</div>
+        <div class="code tech-only">avoidable_logic=${esc(fe.avoidable_logic)}, avoidable_rearranging_gap_fill=${esc(fe.avoidable_rearranging_gap_fill ?? 0)}</div></div>
+      <div class="answer ${!n ? "" : viol ? "warn" : "ok"}"><div class="q">Scheduling rules</div>
+        <div class="a">${!n ? "—" : viol ? plural(viol, "rule break") : "All followed"}</div>
+        <div class="d">${!n ? "No schedules to check yet." : viol ? Object.entries(byRule).map(([r, c]) => `${esc(RULE_NAME[r] || r)}: ${r === "R8" ? `on ${plural(c, "day")}` : c}`).join("<br>") : "No exclusions, dislikes or doctor's advice were broken."}</div>
         ${clashes ? `<div class="d" style="margin-top:6px">${plural(clashes, "missing slot")} for activities for everyone come from clashes in the activity data. See <button class="link" data-tab-go="data">Data to fix</button>.</div>` : ""}</div>
     </div>
     <div class="two">
@@ -794,7 +1035,7 @@ function renderOverview() {
       </section>
     </div>`;
   $("tab-overview").querySelectorAll("[data-tab-go]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tabGo)));
-  $("tab-overview").querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => { setTab("patients"); showPatient(b.dataset.open); }));
+  $("tab-overview").querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => { setTab("patients"); showPatient(b.dataset.open); $("ptitle").focus(); writeHash(true); }));
 }
 
 function stepStrategy() {
@@ -834,11 +1075,11 @@ function findIssues() {
   clash.forEach(c => issues.push(c.e.reason === "slot_occupied" ? {
     level: "high", kind: "Clash",
     text: `${q(c.e.activity)} and ${list(c.other)} are both set for everyone at the same time, so ${q(c.e.activity)} is left out.`,
-    when: [...c.when], who: affects(c.who), fix: `Move one of them to a different time.`,
+    when: [...c.when], who: affects(c.who), fix: `Move one of them to a different time.`, go: [CENTRE()],
   } : {
     level: "high", kind: "Closed time",
     text: `${q(c.e.activity)} is set for everyone at a time the centre is closed.`,
-    when: [...c.when], who: affects(c.who), fix: `Change its set time to within opening hours.`,
+    when: [...c.when], who: affects(c.who), fix: `Change its set time to within opening hours.`, go: [CENTRE()],
   }));
 
   // free time most patients share, by reason
@@ -870,14 +1111,14 @@ function findIssues() {
       no_fit_for_gap_length: `Most patients have short gaps at these times, and the activities left are too long for them.`,
       pool_exhausted_today: `Most patients have already done every allowed activity on these days.`,
     }[r] || `Most patients are Free and Easy at these times.`;
-    issues.push({ level: r === "LOGIC" ? "high" : "mid", kind: "Common free time", text, when, who: `${hours(g.slots)} across patients`, fix: FREE_WHY[r] ? FREE_WHY[r].help : "", code: r });
+    issues.push({ level: r === "LOGIC" ? "high" : "mid", kind: "Common free time", text, when, who: `${hours(g.slots)} across patients`, fix: FREE_WHY[r] ? FREE_WHY[r].help : "", code: r, go: r === "LOGIC" ? [] : [ACTIVITIES()] });
   });
 
   // patients with nothing allowed
   pids.forEach(pid => {
     const c = (data.patients[pid].free_and_easy.unavoidable_by_reason || {}).no_eligible_activities;
     if (c) issues.push({ level: "mid", kind: "Patient settings", text: `${esc(nameOf(pid))} has times where every activity is excluded, disliked or not recommended.`,
-      who: hours(c) + " of Free and Easy", fix: `Check ${esc(nameOf(pid))}'s exclusions, dislikes and doctor's 'not recommended' list. Some may be outdated.`, code: "no_eligible_activities" });
+      who: hours(c) + " of Free and Easy", fix: `Check ${esc(nameOf(pid))}'s exclusions, dislikes and doctor's 'not recommended' list. Some may be outdated.`, code: "no_eligible_activities", pid, go: [exclLink(pid), prefsLink(pid)] });
   });
 
   // doctor recommends something the patient dislikes
@@ -887,59 +1128,106 @@ function findIssues() {
   }))));
   conflict.forEach(({ pid, a }) => issues.push({ level: "low", kind: "Conflicting entries",
     text: `A doctor recommends ${q(a)} for ${esc(nameOf(pid))}, but ${esc(nameOf(pid))} dislikes it. The doctor's recommendation is followed.`,
-    fix: `Check whether the dislike or the recommendation is out of date.`, code: "recommended_over_dislike" }));
+    fix: `Check whether the dislike or the recommendation is out of date.`, code: "recommended_over_dislike", pid, go: [prefsLink(pid)] }));
 
   // groups that didn't run
   const groups = new Map();
   (data.centre_events || []).filter(e => e.reason === "below_min_group_size").forEach(e => groups.set(e.activity, e));
   groups.forEach(e => issues.push({ level: "low", kind: "Group didn't run",
-    text: `${q(e.activity)} did not run: it needs ${(e.details || {}).min_people || "more"} people and not enough could join.`,
-    fix: `Lower its minimum group size, or check who is excluded from or dislikes it.`, code: "below_min_group_size" }));
+    text: `${q(e.activity)} did not run: it needs ${esc((e.details || {}).min_people || "more")} people and not enough could join.`,
+    fix: `Lower its minimum group size, or check who is excluded from or dislikes it.`, code: "below_min_group_size", go: [ACTIVITIES()] }));
 
   // names that look like test data, typos or duplicates
   const kinds = titleKinds(), lower = new Map();
   kinds.forEach((k, t) => {
-    if (/test|playwright|dummy|sample/i.test(t)) issues.push({ level: "low", kind: "Test data", text: `${q(t)} looks like test data.`, fix: `Remove it, or rename it if it is real.` });
-    else if (/(\w)\1\1/i.test(t) || /\b[ap]mm\b/i.test(t)) issues.push({ level: "low", kind: "Possible typo", text: `${q(t)} looks like it has a typo.`, fix: `Check the spelling.` });
-    if (k.has("group") && k.has("individual")) issues.push({ level: "low", kind: "Same name twice", text: `${q(t)} is the name of both a group and an individual activity.`, fix: `Rename one so they can be told apart.` });
+    if (/test|playwright|dummy|sample/i.test(t)) issues.push({ level: "low", kind: "Test data", text: `${q(t)} looks like test data.`, fix: `Remove it, or rename it if it is real.`, go: [ACTIVITIES()] });
+    else if (/(\w)\1\1/i.test(t) || /\b[ap]mm\b/i.test(t)) issues.push({ level: "low", kind: "Possible typo", text: `${q(t)} looks like it has a typo.`, fix: `Check the spelling.`, go: [ACTIVITIES()] });
+    if (k.has("group") && k.has("individual")) issues.push({ level: "low", kind: "Same name twice", text: `${q(t)} is the name of both a group and an individual activity.`, fix: `Rename one so they can be told apart.`, go: [ACTIVITIES()] });
     const key = t.toLowerCase().replace(/\s+/g, " ").trim();
     lower.set(key, (lower.get(key) || []).concat(t));
   });
-  lower.forEach(ts => { if (ts.length > 1) issues.push({ level: "low", kind: "Same name twice", text: `${list(ts)} only differ in capital letters or spaces.`, fix: `Check whether they are the same activity, and merge or rename.` }); });
+  lower.forEach(ts => { if (ts.length > 1) issues.push({ level: "low", kind: "Same name twice", text: `${list(ts)} only differ in capital letters or spaces.`, fix: `Check whether they are the same activity, and merge or rename.`, go: [ACTIVITIES()] }); });
 
   // mostly fixed-time activities
   const fx = (data.summary.free_and_easy.unavoidable_by_reason || {}).fixed_slot_elsewhere || 0;
   if (fx && fx >= data.summary.free_and_easy.total / 2) issues.push({ level: "high", kind: "Too few flexible activities",
     text: `Most Free and Easy (${hours(fx)}) is because activities only run at set times, and those times are taken or on other days.`,
-    fix: `Add a few individual activities with no set time, both 30-minute and 60-minute ones. The scheduler can then use them in any free time.`, code: "fixed_slot_elsewhere" });
+    fix: `Add a few individual activities with no set time, both 30-minute and 60-minute ones. The scheduler can then use them in any free time.`, code: "fixed_slot_elsewhere", go: [ACTIVITIES()] });
 
   const order = { high: 0, mid: 1, low: 2 };
   return issues.sort((a, b) => order[a.level] - order[b.level]);
 }
 
+// one row per patient doesn't scale, 3 or more of these become one row with the patients in it
+const GROUPS = {
+  "Patient settings": { text: (n) => `${n} patients have times where every activity is excluded, disliked or not recommended.`,
+    fix: `Check each patient's exclusions, dislikes and doctor's 'not recommended' list. Some may be outdated.` },
+  "Conflicting entries": { text: (n) => `${n} doctor recommendations are for activities the patient dislikes. The doctor's recommendation is followed.`,
+    fix: `Check whether the dislike or the recommendation is out of date.` },
+};
+function groupIssues(issues) {
+  const out = [];
+  issues.forEach(i => {
+    const g = GROUPS[i.kind], same = issues.filter(x => x.kind === i.kind);
+    if (!g || same.length < 3) return out.push(i);
+    if (same[0] !== i) return;
+    out.push({ level: i.level, kind: i.kind, text: g.text(same.length), fix: g.fix, code: i.code, items: same });
+  });
+  return out;
+}
+
+const LEVEL = { high: "High", mid: "Medium", low: "Low" };
+let issueFilter = "all";
+const showSchedule = (pid) => `<button class="link" data-open="${esc(pid)}">Show ${esc(nameOf(pid))}'s schedule</button>`;
+
 function renderData() {
-  const issues = findIssues();
+  const issues = groupIssues(findIssues());
+  const counts = { high: 0, mid: 0, low: 0 };
+  issues.forEach(i => { counts[i.level] += 1; });
   $("issueCount").hidden = !issues.length;
-  $("issueCount").textContent = issues.length;
-  const level = { high: "High", mid: "Medium", low: "Low" };
+  $("issueCount").classList.toggle("high", counts.high > 0);
+  $("issueCount").innerHTML = `${issues.length}<span class="vh"> ${issues.length === 1 ? "issue" : "issues"}</span>`;
+  if (issueFilter !== "all" && !counts[issueFilter]) issueFilter = "all";
+  const chip = (key, label, n) => `<button class="btn" data-filter="${key}" aria-pressed="${issueFilter === key}">${label} <span class="num">${n}</span></button>`;
+  const filters = issues.length > 3 ? `<div class="filters" role="group" aria-label="Show issues">${chip("all", "All", issues.length)}${["high", "mid", "low"].filter(l => counts[l]).map(l => chip(l, LEVEL[l], counts[l])).join("")}</div>` : "";
   $("tab-data").innerHTML = `
-    <div class="lead" style="margin:0 0 16px"><h2>Activity data to check</h2>
-      <p>Found automatically from ${thisWeek()}'s schedule, most important first. Fixing these is the quickest way to reduce Free and Easy. Send this page to whoever looks after the activity data.</p></div>
-    ${issues.length ? `<div class="issues">${issues.map(i => `<div class="issue">
-        <div class="sev"><span class="${i.level}">${level[i.level]}</span><small>${esc(i.kind)}</small></div>
+    <div class="lead" style="margin:0 0 16px"><h2>Data to fix</h2>
+      <p>Found automatically from ${thisWeek()}'s schedule, most important first. Fixing these is the quickest way to reduce Free and Easy. Send this page to whoever looks after the activity data.</p>
+      <div class="go"><button class="btn" id="copyLink">Copy link to this list</button><button class="btn" id="printData">Print</button></div></div>
+    ${filters}
+    ${issues.length ? `<div class="issues">${issues.map(i => `<div class="issue" data-level="${i.level}"${issueFilter !== "all" && issueFilter !== i.level ? " hidden" : ""}>
+        <div class="sev"><span class="${i.level}">${LEVEL[i.level]}</span><small>${esc(i.kind)}</small></div>
         <div>
           <div>${i.text}</div>
           ${i.when && i.when.length ? `<div class="when">When: ${esc(i.when.slice(0, 8).join(", "))}${i.when.length > 8 ? ` and ${i.when.length - 8} more` : ""}</div>` : ""}
           ${i.who ? `<div class="when">Affects: ${esc(i.who)}</div>` : ""}
           ${i.fix ? `<div class="fix"><b>Suggested fix:</b> ${i.fix}</div>` : ""}
+          ${i.items ? `<details class="group"><summary>Show the ${i.items.length} ${i.kind === "Patient settings" ? "patients" : "entries"}</summary><ul>${i.items.map(x =>
+            `<li>${x.text}${x.who ? `<div class="when">${esc(x.who)}</div>` : ""}${goRow([x.pid ? showSchedule(x.pid) : ""].concat(x.go || []))}</li>`).join("")}</ul></details>`
+            : goRow([i.pid ? showSchedule(i.pid) : ""].concat(i.go || []))}
           ${i.code ? `<div class="code tech-only">${esc(i.code)}</div>` : ""}
         </div>
       </div>`).join("")}</div>` : note("ok", "check", `Nothing to fix found in ${thisWeek()}'s data.`)}`;
+  $("tab-data").querySelectorAll("[data-open]").forEach(b => b.addEventListener("click", () => { setTab("patients"); showPatient(b.dataset.open); $("ptitle").focus(); writeHash(true); }));
+  $("copyLink").addEventListener("click", async () => {
+    writeHash(false);
+    const ok = await copyText(location.href);
+    announce(ok ? "Link copied. People who open it sign in first." : "Couldn't copy. Copy the address from the browser bar instead.");
+    if (ok) $("copyLink").textContent = "Link copied";
+  });
+  $("printData").addEventListener("click", () => window.print());
+  $("tab-data").querySelectorAll("[data-filter]").forEach(b => b.addEventListener("click", () => {
+    issueFilter = b.dataset.filter;
+    $("tab-data").querySelectorAll("[data-filter]").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    $("tab-data").querySelectorAll(".issue").forEach(r => { r.hidden = issueFilter !== "all" && r.dataset.level !== issueFilter; });
+    const n = $("tab-data").querySelectorAll(".issue:not([hidden])").length;
+    announce(`${plural(n, "issue")} shown`);
+  }));
 }
 
 
 function setTab(name) {
-  document.querySelectorAll("#tabs [role=tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  document.querySelectorAll("#tabs [role=tab]").forEach(b => { b.setAttribute("aria-selected", String(b.dataset.tab === name)); b.tabIndex = b.dataset.tab === name ? 0 : -1; });
   ["patients", "overview", "data"].forEach(t => { $("tab-" + t).hidden = t !== name; });
   store.set("explain.tab", name);
 }
@@ -951,23 +1239,33 @@ function load(json) {
   $("tabs").hidden = false;
   const strat = stepStrategy().split(",")[0];
   const made = String(data.generated_at || "").replace("T", " ");
-  $("meta").textContent = `Week of ${data.week_start} · ${plural(data.summary.patients, "patient")}${api ? "" : ` · made ${made}`}`;
+  $("meta").innerHTML = `Week of ${weekRange()} · ${plural(Number(data.summary.patients) || 0, "patient")}${api ? "" : ` · made ${esc(made)}`}`;
   $("meta").title = `Gap filling: ${strat}`;
   if (api) {
     $("live").hidden = false;
     $("liveNote").hidden = false;
-    $("liveNote").textContent = data.source === "saved"
+    const msg = data.source === "saved"
       ? `Shows the saved schedule, checked at ${made.slice(11, 16)}.`
       : data.source === "preview"
       ? `Preview of next week, built at ${made.slice(11, 16)} from today's data. Not saved, it can change until Monday's schedule is made.`
       : `Built at ${made.slice(11, 16)} from current data. Nothing is saved for this week yet.`;
+    // not saved yet, as loud as the Supervisor View's "Preview of next week" alert
+    const unsaved = data.source !== "saved";
+    $("liveNote").className = unsaved ? "banner" : "muted";
+    $("liveNote").innerHTML = unsaved ? `${icon("alert")}<span>${esc(msg)}</span>` : esc(msg);
   }
   renderOverview();
   renderData();
   const ids = patientIds();
   if (ids.length) showPatient(ids.includes(current) ? current : ids[0]);
+  $("nopatients").hidden = ids.length > 0;
+  document.querySelector("#tab-patients .patients").hidden = !ids.length;
+  $("nopatientsTitle").textContent = `No schedules for ${thisWeek()} yet`;
   const saved = store.get("explain.tab");
   setTab(["patients", "overview", "data"].includes(saved) ? saved : "overview");
+  if (location.hash.length > 1) applyHash(); else writeHash(false);
+  announce(`Schedules loaded, ${plural(Number(data.summary.patients) || 0, "patient")}.`);
+  if (focusLost()) { const t = document.querySelector('#tabs [aria-selected="true"]'); if (t) t.focus(); }
 }
 
 // link mode: served by the scheduler, sign in and fetch the data
@@ -992,7 +1290,6 @@ function screen(name) {
 
 function signinError(msg) {
   $("signinError").textContent = msg || "";
-  $("signinError").hidden = !msg;
 }
 
 function signOut(msg) {
@@ -1007,10 +1304,14 @@ function signOut(msg) {
   $("user").focus();
 }
 
+let signingIn = false;
+const TWO_STEP = "This account uses two-step sign-in, which this page can't do yet. Use an account without it, or ask the scheduler team.";
 async function signIn(e) {
   e.preventDefault();
+  if (signingIn) return;
+  signingIn = true;
   signinError("");
-  $("signinBtn").disabled = true;
+  $("signinBtn").setAttribute("aria-disabled", "true");
   $("signinBtn").textContent = "Signing in…";
   try {
     const res = await fetch(new URL(api.token, location.href), {
@@ -1019,15 +1320,19 @@ async function signIn(e) {
       body: new URLSearchParams({ username: $("user").value, password: $("pass").value }),
     });
     if (res.status === 503) throw new Error("The sign-in service is unavailable. Try again later.");
-    if (!res.ok) throw new Error("Sign-in failed. Check your username and password.");
+    if (res.status === 403 && /2FA/i.test(String((await res.json().catch(() => ({}))).detail || ""))) throw new Error(TWO_STEP);
+    if (!res.ok) throw new Error("Sign-in failed. Check your email and password.");
     token = (await res.json()).access_token;
+    if (!token) throw new Error(TWO_STEP);
     session.set(token);
     $("pass").value = "";
     await fetchData(false);
   } catch (err) {
     signinError(err instanceof TypeError ? "Can't reach the scheduler. Check your connection." : err.message);
+    $("user").focus();
   } finally {
-    $("signinBtn").disabled = false;
+    signingIn = false;
+    $("signinBtn").removeAttribute("aria-disabled");
     $("signinBtn").textContent = "Sign in";
   }
 }
@@ -1041,18 +1346,62 @@ function buildFailed(msg) {
   $("retry").hidden = false;
 }
 
-function setWeek(w) {
-  if (w === week) return;
+let fetching = false;
+function setWeek(w, fromHash) {
+  if (w === week || fetching) return;
   week = w;
   document.querySelectorAll("#weeks button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.week === w)));
   data = null;
+  if (!fromHash) {
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (w === "next") h.set("week", "next"); else h.delete("week");
+    h.delete("d"); h.delete("s");
+    history.pushState(null, "", "#" + h.toString());
+  }
   fetchData(false);
 }
 
+// where the reader is goes in the address (#tab=patients&p=12&d=0&s=8&week=next), so Back and shared links work
+let applying = false;
+function writeHash(push) {
+  if (applying || !data) return;
+  const h = new URLSearchParams(), tab = (document.querySelector('#tabs [aria-selected="true"]') || {}).dataset;
+  if (tab && tab.tab) h.set("tab", tab.tab);
+  if (tab && tab.tab === "patients" && current != null) {
+    h.set("p", current);
+    const sel = $("grid").querySelector(".cell.sel");
+    if (sel) { h.set("d", sel.dataset.d); h.set("s", sel.dataset.s); }
+  }
+  if (api && week === "next") h.set("week", "next");
+  const url = "#" + h.toString();
+  if (url !== location.hash) history[push ? "pushState" : "replaceState"](null, "", url);
+}
+function applyHash() {
+  if (!data) return;
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (api && (h.get("week") === "next" ? "next" : "this") !== week) return setWeek(h.get("week") === "next" ? "next" : "this", true);
+  applying = true;
+  try {
+    const tab = h.get("tab"), pid = h.get("p");
+    if (["patients", "overview", "data"].includes(tab)) setTab(tab);
+    if (pid && data.patients[pid]) {
+      if (pid !== current) showPatient(pid);
+      const el = h.has("d") && $("grid").querySelector(`.cell[data-d="${CSS.escape(h.get("d"))}"][data-s="${CSS.escape(h.get("s") || "")}"]`);
+      if (el) showBlock(pid, el);
+      else if ($("detail").querySelector("#back")) { $("grid").querySelectorAll(".cell.sel").forEach(c => c.classList.remove("sel")); showSummary(pid); }
+    }
+  } finally { applying = false; }
+}
+addEventListener("popstate", applyHash);
+// print every grouped row, not just the open ones
+addEventListener("beforeprint", () => document.querySelectorAll("details.group").forEach(d => { d.open = true; }));
+
 async function fetchData(refresh) {
+  if (fetching) return;
+  fetching = true;
   const before = data && data.generated_at;
-  document.querySelectorAll("#weeks button").forEach(b => { b.disabled = true; });
-  if (data) { $("refresh").disabled = true; $("refresh").textContent = "Refreshing…"; $("liveMsg").textContent = ""; }
+  document.querySelectorAll("#weeks button").forEach(b => { b.setAttribute("aria-disabled", "true"); });
+  if (data) { $("refresh").setAttribute("aria-disabled", "true"); $("refresh").textContent = "Refreshing…"; $("liveMsg").textContent = ""; }
   else {
     screen("loading");
     $("loadingTitle").textContent = week === "next" ? "Building next week's preview…" : "Building this week's explanation…";
@@ -1074,9 +1423,11 @@ async function fetchData(refresh) {
     load(await res.json());
     if (refresh && data.generated_at === before) $("liveMsg").textContent = "Already up to date, built less than 5 minutes ago.";
   } finally {
-    $("refresh").disabled = false;
+    fetching = false;
+    $("refresh").removeAttribute("aria-disabled");
     $("refresh").textContent = "Refresh";
-    document.querySelectorAll("#weeks button").forEach(b => { b.disabled = false; });
+    document.querySelectorAll("#weeks button").forEach(b => { b.removeAttribute("aria-disabled"); });
+    if (focusLost() && !$("loading").hidden && !$("retry").hidden) $("retry").focus();
   }
 }
 
@@ -1084,11 +1435,42 @@ function readFile(file) {
   file.text().then(t => load(JSON.parse(t))).catch(err => alert(`Could not read ${file.name}: ${err.message}`));
 }
 
-document.querySelectorAll("#tabs [role=tab]").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+document.querySelectorAll("#tabs [role=tab]").forEach(b => b.addEventListener("click", () => { setTab(b.dataset.tab); writeHash(true); }));
+document.querySelector("#tabs [role=tablist]").addEventListener("keydown", (e) => {
+  const tabs = [...document.querySelectorAll("#tabs [role=tab]")], i = tabs.indexOf(e.target);
+  const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+  if (i < 0 || to === undefined) return;
+  e.preventDefault();
+  const t = tabs[(to + tabs.length) % tabs.length];
+  setTab(t.dataset.tab);
+  t.focus();
+  writeHash(true);
+});
 $("tech").checked = store.get("explain.tech") === "1";
 document.body.classList.toggle("tech", $("tech").checked);
 $("tech").addEventListener("change", e => { document.body.classList.toggle("tech", e.target.checked); store.set("explain.tech", e.target.checked ? "1" : "0"); });
-$("search").addEventListener("input", renderList);
+let searchTimer = null;
+$("attnFirst").setAttribute("aria-pressed", String(attnFirst));
+$("onlyFlagged").addEventListener("click", (e) => {
+  onlyFlagged = !onlyFlagged;
+  e.currentTarget.setAttribute("aria-pressed", String(onlyFlagged));
+  $("grid").classList.toggle("only-flagged", onlyFlagged);
+  flaggedFirst();
+  const n = $("grid").querySelectorAll(".cell.flag").length;
+  announce(onlyFlagged ? `Showing ${plural(n, "flagged block")}. Arrow keys move between them.` : "Showing every block.");
+});
+$("attnFirst").addEventListener("click", (e) => {
+  attnFirst = !attnFirst;
+  e.currentTarget.setAttribute("aria-pressed", String(attnFirst));
+  store.set("explain.attn", attnFirst ? "1" : "0");
+  renderList();
+  announce(attnFirst ? "Patients who need attention are listed first." : "Patients are listed by ID.");
+});
+$("search").addEventListener("input", () => {
+  renderList();
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { const n = $("plist").querySelectorAll("button").length; announce(n ? `${plural(n, "patient")} shown` : "No match"); }, 500);
+});
 if (window.EXPLAIN_DATA) load(window.EXPLAIN_DATA);
 else if (api) {
   $("signinForm").addEventListener("submit", signIn);
@@ -1097,6 +1479,10 @@ else if (api) {
   $("signout").addEventListener("click", () => signOut(""));
   $("retry").addEventListener("click", () => fetchData(false));
   token = session.get();
+  if (new URLSearchParams(location.hash.slice(1)).get("week") === "next") {
+    week = "next";
+    document.querySelectorAll("#weeks button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.week === "next")));
+  }
   if (token) fetchData(false);
   else signOut("");
 } else {

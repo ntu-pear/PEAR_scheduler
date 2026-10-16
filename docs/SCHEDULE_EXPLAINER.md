@@ -21,7 +21,7 @@ Same server and port as the scheduler's `/docs` page, with `/schedule/explain/vi
 ### Opening it
 
 1. Open the explainer link for the environment in a browser.
-2. Sign in with your PEAR username and password. Only `SUPERVISOR` and `ADMIN` accounts get in.
+2. Sign in with your PEAR email and password. Only `SUPERVISOR` and `ADMIN` accounts get in. Accounts with two-step sign-in (2FA) can't sign in here yet.
 3. It opens on **Centre overview**. Use **Patients** to look at one patient's week and **Data to fix** for what to change in the activity data.
 4. Close the tab or press **Sign out** when done.
 
@@ -72,9 +72,11 @@ A text summary is always printed to the terminal.
 
 ## Getting it to staging and prod
 
-Nothing extra to deploy, for both the link and the file. The explainer is part of the scheduler code, and the Dockerfile copies the whole repo (including `tools/schedule_explainer.html`) into the image. No new env vars, configmap entries or DB changes.
+Nothing extra to deploy, for both the link and the file. The explainer is part of the scheduler code, and the Dockerfile copies the whole repo (including `tools/schedule_explainer.html`) into the image. No required env vars, configmap entries or DB changes.
 
 The link's sign-in needs `USER_BE_ORIGIN` (the user service address), which is already in the configmap. If it's missing every sign-in gets "The sign-in service is unavailable". "Changed this week" needs `REGENERATE_MODE=repair`, see the push checklist.
+
+Optional: set `EXPLAIN_PEAR_URL` to the Supervisor View's address (e.g. `http://<server>:5173`) to show "Activity preferences", "Activity exclusions" and "Activities in PEAR" links next to the advice. It's a variable in the GitHub Environment (Settings > Environments > staging or prod), CD writes it into the configmap on the next deploy. Without it (or set to `off`) the links are left out.
 
 It goes out the same way as any change:
 
@@ -174,8 +176,10 @@ kubectl get pods -n $NS     # no explain-tmp, the scheduler pod's age unchanged
 - **Patients**: pick a patient, click any block to see why it's there. The panel on the right sums up the patient's week: rules broken, things that look odd but follow the rules, liked activities that weren't scheduled, things that couldn't be added, what changed this week and what will change at the next regenerate.
 - **Data to fix**: problems found in the activity data, most important first, each with a suggested fix. Send this tab to whoever owns the activity data.
 - **Show technical details**: shows the reason codes and which stage wrote each slot, for debugging.
+- **Links and Back**: the address keeps the tab, patient, block and week, so Back works and a copied link opens the same view after sign-in. Data to fix has "Copy link to this list" and "Print".
+- **Admin accounts** see everything, but not the links to PEAR's fix screens, which are supervisor-only.
 
-Block markers: heart liked, capsule medication given, (i) looks unusual but follows the rules, red alert needs attention, amber alert a clash in the activity data. Free and Easy is a dashed open cell, red when it could have been filled.
+Blocks use the Patient Schedule colours: orange for every activity, blue for Free and Easy. A special request has a two-arrows marker. A red ring and alert badge means needs attention (including Free and Easy that could have been filled), an amber ring and two-squares badge a clash in the activity data. "Show only flagged" fades the rest. Small markers: heart liked, capsule medication given, (i) looks unusual but follows the rules, two arrows a special request.
 
 ### Things that look like bugs but aren't
 

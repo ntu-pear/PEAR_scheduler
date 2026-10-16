@@ -39,6 +39,35 @@ class TestSavedWeekTrace:
         assert reasons[(1, 1)] == ("adhoc", "adhoc_request", "Music")
         assert reasons[(1, 2)] == ("recommended_routine", "doctor_recommended", "Physio")
 
+    def test_rules_broken_since_the_save_are_named(self):
+        data = _data(routines={1: {(0, 1): (6, "Walk")}})
+        rules = data.inputs.patients[1]
+        rules.dislikes.add(2)  # Reading, picked as neutral
+        rules.exclusions[1] = None  # Puzzles, excluded with no end
+        rules.not_recommended.add(5)  # Board games
+        rules.exclusions[6] = None  # Walk is a routine, now excluded
+        saved = {1: [["Exercise", "Walk", "Reading", "Puzzles", "Board games", FE],
+                     ["Exercise", FE, FE, FE, FE, FE]], 2: None, 3: None}
+        t = explain.saved_week_trace(saved, data)
+        reasons = {}
+        for e in t.events:
+            if e.patient_id == 1:
+                reasons.setdefault((e.day, e.slot), []).append(e.reason)
+        assert reasons[(0, 2)] == ["now_disliked"]
+        assert reasons[(0, 3)] == ["now_excluded"]
+        assert reasons[(0, 4)] == ["now_not_recommended"]
+        # a routine keeps its reason, the broken rule is added next to it
+        assert reasons[(0, 1)] == ["routine_slot", "now_excluded"]
+
+    def test_recommended_over_dislike_is_not_a_broken_rule(self):
+        data = _data(recommended={1: [Rec(7, "Physio", 1)]})
+        data.inputs.patients[1].dislikes.add(7)
+        data.inputs.patients[1].recommended.add(7)
+        data.inputs.activity_ids_by_title["Physio"] = 7
+        saved = {1: [["Exercise", "Physio", FE, FE, FE, FE], ["Exercise", FE, FE, FE, FE, FE]], 2: None, 3: None}
+        reasons = [e.reason for e in explain.saved_week_trace(saved, data).events if e.patient_id == 1 and e.slot == 1]
+        assert reasons == ["recommended_over_dislike"]
+
     def test_every_slot_has_a_writer(self):
         data = _data()
         week = repair_week({p: None for p in data.patient_ids}, data, set())
