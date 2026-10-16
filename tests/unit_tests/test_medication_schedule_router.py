@@ -136,6 +136,19 @@ class TestCaregiverMedicationList:
     def test_supervisor_sees_everyone(self, today):
         assert self._patients("SUPERVISOR") == [1, 2, 3]
 
+    def test_dose_not_given_has_null_time_not_nat(self, today, monkeypatch):
+        # once one dose today is given the column is datetimes, the others are NaT
+        given = datetime.datetime(2026, 10, 16, 9, 5)
+        monkeypatch.setattr(medication_schedule_router.TodayMedicationScheduleView, "get_data",
+                            lambda *a, **k: pd.DataFrame({"PatientID": [1, 2], "Status": ["1", "0"],
+                                                          "ActualAdministerTime": [given, None],
+                                                          "AdministeredBy": ["5", None]}))
+        res = medication_schedule_router.get_medication_schedule(None, _user("SUPERVISOR"))
+        rows = json.loads(res.body)
+        assert rows[0]["ActualAdministerTime"] == "2026-10-16T09:05:00"
+        assert rows[1]["ActualAdministerTime"] is None
+        assert rows[1]["AdministeredBy"] is None
+
 
 def _undo_body():
     return MedicationScheduleUndo(PatientID=1, PrescriptionName="Paracetamol",

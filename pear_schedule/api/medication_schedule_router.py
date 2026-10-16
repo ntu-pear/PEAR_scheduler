@@ -52,6 +52,8 @@ def get_medication_schedule(request: Request, current_user: JWTPayload = Depends
             # caregivers only see doses for the patients allocated to them
             mine = caregiver_patients(current_user.userId)
             medication_schedules = medication_schedules[medication_schedules["PatientID"].astype(int).isin(mine)]
+        # doses not given yet have no time; NaT would go out as the string "NaT"
+        medication_schedules = medication_schedules.astype(object).where(medication_schedules.notna(), None)
         return JSONResponse(status_code=200, content=jsonable_encoder(medication_schedules.to_dict(orient="records")))
     except Exception as e:
         logger.info(str(e))
