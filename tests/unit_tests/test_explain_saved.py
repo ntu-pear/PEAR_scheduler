@@ -164,3 +164,22 @@ class TestAdhocBeforeItsEvent:
         data.adhoc_replaced[(1, 0, "Reading")] = "Puzzles"
         e = next(e for e in explain.saved_week_trace(saved, data).events if e.patient_id == 1 and e.slot == 1)
         assert e.details == {"replaced": "Puzzles"}
+
+
+class TestGapFillStrategy:
+    """The page used to guess the strategy from events, a saved week has none so it said greedy."""
+
+    def _run(self, strategy):
+        data = _data()
+        week = repair_week({p: None for p in data.patient_ids}, data, set())
+        with patch.object(repair, "load_repair_data", return_value=data), \
+             patch.object(repair, "load_saved", return_value=week), \
+             patch.object(repair, "changes_this_week", return_value=[]):
+            return explain.explain_saved_week({**CFG, "GAP_FILL_STRATEGY": strategy}, now=WEEK)
+
+    def test_strategy_comes_from_the_config(self):
+        assert self._run("optimal")["gap_fill_strategy"] == "optimal"
+        assert self._run("greedy")["gap_fill_strategy"] == "greedy"
+
+    def test_unknown_strategy_is_greedy(self):
+        assert self._run("optimial")["gap_fill_strategy"] == "greedy"

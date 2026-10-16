@@ -1039,6 +1039,9 @@ function renderOverview() {
 }
 
 function stepStrategy() {
+  const named = { optimal: "optimal, fills as much time as possible", greedy: "greedy, fills time from the start of the day" };
+  if (named[data.gap_fill_strategy]) return named[data.gap_fill_strategy];
+  // older files: guess from the events
   for (const p of Object.values(data.patients)) for (const d of p.days) for (const s of d.slots)
     for (const e of s.events || []) if (e.stage === "preferred" && e.details && e.details.strategy === "optimal") return "optimal, fills as much time as possible";
   return "greedy, fills time from the start of the day";

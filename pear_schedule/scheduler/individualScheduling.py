@@ -14,7 +14,7 @@ from pear_schedule.db_utils.views import ActivitiesExcludedView, ActivitiesView,
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
 from pear_schedule.scheduler import trace
-from pear_schedule.scheduler.gapFill import PoolActivity, build_candidates, solve_day
+from pear_schedule.scheduler.gapFill import PoolActivity, build_candidates, gap_fill_strategy, solve_day
 from pear_schedule.scheduler.invariants import PatientRules, free_runs, unfillable_reason
 from pear_schedule.scheduler.medicationScheduling import medicationScheduler
 from pear_schedule.scheduler.utils import checkActivityExcluded, parseFixedTimeArr, rescheduleActivity
@@ -430,10 +430,9 @@ class PreferredActivityScheduler(IndividualActivityScheduler):
         # activities = activities.sample(frac=1)\
         #     .reset_index(drop=True)
 
-        strategy = cls.config.get("GAP_FILL_STRATEGY", "greedy")
-        if strategy not in ("greedy", "optimal"):
-            logger.warning(f"Unknown GAP_FILL_STRATEGY {strategy!r}, using greedy")
-            strategy = "greedy"
+        strategy = gap_fill_strategy(cls.config)
+        if cls.config.get("GAP_FILL_STRATEGY", "greedy") != strategy:
+            logger.warning(f"Unknown GAP_FILL_STRATEGY {cls.config.get('GAP_FILL_STRATEGY')!r}, using greedy")
         pool = [
             PoolActivity(int(r["ActivityID"]), r["ActivityTitle"], int(r["MinDuration"]), frozenset(r["ProcessedTimeSlots"]))
             for _, r in avail_activities.iterrows()

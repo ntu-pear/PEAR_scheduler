@@ -15,6 +15,12 @@ from typing import Dict, FrozenSet, Iterable, List, Mapping, Optional, Sequence,
 DEFAULT_NODE_BUDGET = 200_000
 
 
+def gap_fill_strategy(config: Mapping) -> str:
+    """GAP_FILL_STRATEGY, anything unknown is greedy."""
+    strategy = config.get("GAP_FILL_STRATEGY", "greedy")
+    return strategy if strategy in ("greedy", "optimal") else "greedy"
+
+
 @dataclass(frozen=True)
 class Candidate:
     activity_id: int
