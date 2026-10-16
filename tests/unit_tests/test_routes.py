@@ -268,6 +268,21 @@ class TestPatientTestUtils:
             fake_json_response[1]["Medication Schedule"][fake_patient_wellness_plan['DAY_OF_WEEK_ORDER'][day]] == ['Give Medication@1030: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses', 'Give Medication@1440: Ibuprofen(2 tabs)**Always leave at least 4 hours between doses']
     
     # NOTE: Based on the mock_data, the weekly schedule is incorrect  
+    def test_title_that_is_not_a_current_activity_is_still_counted(self, mock_views):
+        """A renamed or deleted activity left in the saved week used to raise KeyError and fail /patientTest."""
+        tablesDF = getTablesDF()
+        patientInfo = tablesDF['weeklyScheduleViewDF'].iloc[0]
+        json_response = self.create_mock_json_response()
+        activity_count_dict = {}  # no current activity matches anything in the week
+        mondayIndex = tablesDF['weeklyScheduleViewDF'].columns.get_loc("Monday")
+        config = {'DAYS': 5, 'DAY_OF_WEEK_ORDER': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]}
+
+        patient_wellness_plan = getPatientWellnessPlan(tablesDF, 1, config)
+        prepareJsonResponse(json_response, patient_wellness_plan)
+        checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_plan, json_response, activity_count_dict)
+
+        assert sum(activity_count_dict.values()) > 0
+
     def test_check_weekly_schedule_correctness_based_on_mock_data(self, mock_views):
         tablesDF = getTablesDF() 
         patientInfo = tablesDF['weeklyScheduleViewDF'].iloc[0]
@@ -1076,3 +1091,20 @@ class TestGroupActivitiesMinSize:
             "Bingo was not scheduled for any patients this week (requires minimum 2)"
         ]
 
+
+
+class TestNonExpiredWithUnknownTitle:
+    def test_title_that_is_not_a_current_activity_fails_the_check(self):
+        """It used to raise KeyError and fail the whole /systemTest."""
+        import datetime
+
+        from pear_schedule.api.utils import nonExpiredCentreActivitiesSystemTest
+
+        activities = pd.DataFrame({"ActivityTitle": ["Walk"], "StartDate": [datetime.date(2024, 1, 1)], "EndDate": [None]})
+        week = pd.DataFrame({
+            "PatientID": [1], "StartDate": [pd.Timestamp("2024-03-18")],
+            **{d: ['{"09:00-09:30": "Walk", "09:30-10:00": "Breathing AM"}'] for d in ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")},
+        })
+        result = nonExpiredCentreActivitiesSystemTest(activities, week)
+        assert result["testResult"] == "Fail"
+        assert any("Breathing AM" in r and "not a current activity" in r for r in result["testRemarks"])

@@ -384,7 +384,8 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
             '''
             if len(medications_to_give) != 0 and "Give Medication" in activity:
                 activity_name = activity.split(' | ')[0]  # "Breathing+Vital Check | Give Medication@0930: Diphenhydramine(2 tabs)**Always leave at least 4 hours between doses"
-                activity_count_dict[activity_name] += 1
+                # a title that's not a current activity any more (renamed, deleted) still gets counted
+                activity_count_dict[activity_name] = activity_count_dict.get(activity_name, 0) + 1
                 
                 # print(f"Current activity: {activity}")
                 pattern = r'Give Medication@\d{4}: [^,]+'
@@ -398,7 +399,7 @@ def checkWeeklyScheduleCorrectness(mondayIndex, patientInfo, patient_wellness_pl
                         medication_incorrect_schedule[(day-mondayIndex)].append(match)
                 # print(f"Current state of medication_schedule: {medication_schedule[(day-2)]}")
             else:
-                activity_count_dict[activity] += 1
+                activity_count_dict[activity] = activity_count_dict.get(activity, 0) + 1
                 
     return
     
@@ -768,6 +769,15 @@ def nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF):
                 activityTitle = activity.split(" |")[0]
                 
                 if activityTitle == "Free and Easy":
+                    continue
+
+                if activityTitle not in validityMap:
+                    # renamed or deleted since the week was made
+                    result = False
+                    testRemarks.append(
+                        f"{activityTitle} for patient ID {scheduleRecord['PatientID']} "
+                        f"on {dateOfActivity.strftime('%Y-%m-%d')} is not a current activity"
+                    )
                     continue
 
                 startDate, endDate = validityMap[activityTitle]
