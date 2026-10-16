@@ -3,7 +3,12 @@ Schedule explainer at a link, and next week's preview. Supervisors and admins on
 is always checked with the user service, even when AUTH_VERIFY_MODE is shadow. Read-only.
 """
 
+import base64
+import hashlib
+import json
 import logging
+import os
+import re
 import threading
 import time
 from typing import Literal
@@ -77,7 +82,8 @@ def get_explanation(request: Request, refresh: bool = False, week: Literal["this
                     user: VerifiedUser = Depends(require_verified_staff)):
     logger.info(f"Schedule explainer opened by {user.userId} (week={week}, refresh={refresh})")
     try:
-        return JSONResponse(cached_explanation(request.app.state.config, refresh, week=week))
+        # the role decides the PEAR links on the page, a copy since the cached dict is shared
+        return JSONResponse({**cached_explanation(request.app.state.config, refresh, week=week), "viewer_role": user.roleName})
     except Exception as e:
         logger.exception(e)
         raise HTTPException(status_code=500, detail="Could not build the explanation, check the scheduler logs")
@@ -103,7 +109,22 @@ def get_preview(request: Request, refresh: bool = False,
         raise HTTPException(status_code=500, detail="Could not build the preview, check the scheduler logs")
 
 
+def _csp(page: str) -> str:
+    # only the page's own inline scripts run, and it only talks to the scheduler
+    hashes = " ".join(
+        "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
+        for script in re.findall(r"<script>(.*?)</script>", page, re.S))
+    return (f"default-src 'none'; script-src {hashes}; style-src 'unsafe-inline'; img-src data:; "
+            "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+
+
 @router.get("/view/", response_class=HTMLResponse, include_in_schema=False)
 def view_explainer():
     # no data in the page, it signs in and fetches it from the route above
-    return HTMLResponse(explain.viewer_page('<script>window.EXPLAIN_API = {data: "../", token: "../../token"};</script>'))
+    api = {"data": "../", "token": "../../token"}
+    pear = os.getenv("EXPLAIN_PEAR_URL", "").strip()
+    if pear.startswith(("http://", "https://")):
+        api["pear"] = pear  # the PEAR web app, for the "in PEAR" links
+    script = "<script>window.EXPLAIN_API = " + json.dumps(api).replace("</", "<\\/") + ";</script>"
+    page = explain.viewer_page(script)
+    return HTMLResponse(page, headers={"Content-Security-Policy": _csp(page)})

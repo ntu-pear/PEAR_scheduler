@@ -13,7 +13,7 @@ from typing import Any, Dict, FrozenSet, Iterable, List, Mapping, Optional, Tupl
 
 from pear_schedule.db_utils.utils import building_for, building_week, day_timeslot_labels, next_week_start, schedule_day_columns
 from pear_schedule.scheduler import trace as schedule_trace
-from pear_schedule.scheduler.gapFill import PoolActivity
+from pear_schedule.scheduler.gapFill import PoolActivity, is_excluded
 from pear_schedule.scheduler.invariants import (
     FREE_AND_EASY, LOGIC, PatientRules, RuleInputs, analyse_free_and_easy, base_title, check_rules,
 )
@@ -285,6 +285,19 @@ def schedule_rows(explanation: Mapping[str, Any], config: Mapping[str, Any]) -> 
     return rows
 
 
+def _now_against(aid: Optional[int], rules: PatientRules, day: int, week_start: datetime.datetime) -> Optional[str]:
+    """The rule a saved activity breaks with today's data, checked like R1-R3, or None."""
+    if aid is None:
+        return None
+    if is_excluded(aid, rules.exclusions, day, week_start):
+        return "now_excluded"
+    if aid in rules.not_recommended:
+        return "now_not_recommended"
+    if aid in rules.dislikes and aid not in rules.recommended:
+        return "now_disliked"
+    return None
+
+
 def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> schedule_trace.ScheduleTrace:
     """Why each saved slot holds what it does, worked out from current data, as a trace."""
     from pear_schedule.scheduler.repair import _Repair, _runs
@@ -319,9 +332,17 @@ def saved_week_trace(saved: Mapping[Any, Optional[List[List[str]]]], data) -> sc
                               else "liked" if pid in data.group_liked.get(title, set()) else "group_timeslot")
                 else:
                     stage, reason = schedule_trace.STAGE_PREFERRED, "preferred" if aid in rules.likes else "neutral"
+                # data changed since it was saved, say so instead of calling it allowed
+                now = None if kind in ("adhoc", "compulsory") else _now_against(aid, rules, d, data.inputs.week_start)
+                if now == "now_disliked" and reason == "recommended_over_dislike":
+                    now = None
                 for k in range(s, e):
                     t.provenance[(pid, d, k)] = [schedule_trace.SlotWrite(stage, title, "")]
+                if now and reason == "neutral":
+                    reason, now = now, None
                 t.add(schedule_trace.TraceEvent(stage, pid, outcome, reason, activity=title, day=d, slot=s))
+                if now:
+                    t.add(schedule_trace.TraceEvent(stage, pid, outcome, now, activity=title, day=d, slot=s))
     return t
 
 

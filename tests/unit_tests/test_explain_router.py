@@ -2,8 +2,11 @@
 /schedule/explain routes. No DB, no HTTP client.
 """
 
+import base64
 import datetime
+import hashlib
 import json
+import re
 import types
 from unittest.mock import MagicMock
 
@@ -172,6 +175,13 @@ class TestRoutes:
         assert json.loads(res.body)["week_start"] == "2024-03-18"
         writer.assert_not_called()
 
+    def test_says_who_is_viewing_without_touching_the_cache(self, monkeypatch):
+        shared = {"week_start": "2024-03-18"}
+        monkeypatch.setattr(explain_router, "cached_explanation", lambda config, refresh, week="this": shared)
+        res = explain_router.get_explanation(self._request(), refresh=False, user=VerifiedUser("U2", "Ann", "ADMIN", ""))
+        assert json.loads(res.body)["viewer_role"] == "ADMIN"
+        assert "viewer_role" not in shared
+
     def test_build_error_is_500(self, monkeypatch):
         def boom(config, with_names):
             raise RuntimeError("db down")
@@ -191,6 +201,26 @@ class TestRoutes:
         assert "window.EXPLAIN_API" in page
         assert "window.EXPLAIN_DATA =" not in page
         assert "<!-- EXPLAIN_DATA -->" not in page
+
+    def test_view_only_runs_its_own_scripts(self):
+        res = explain_router.view_explainer()
+        csp, page = res.headers["content-security-policy"], res.body.decode()
+        scripts = re.findall(r"<script>(.*?)</script>", page, re.S)
+        assert len(scripts) == 2
+        for script in scripts:
+            digest = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+            assert f"'sha256-{digest}'" in csp
+        assert "default-src 'none'" in csp and "connect-src 'self'" in csp
+
+    def test_view_links_to_pear_when_set(self, monkeypatch):
+        monkeypatch.setenv("EXPLAIN_PEAR_URL", "http://pear.example:5173")
+        page = explain_router.view_explainer().body.decode()
+        assert '"pear": "http://pear.example:5173"' in page
+
+    @pytest.mark.parametrize("value", ["", "javascript:alert(1)", "pear.example"])
+    def test_view_has_no_pear_links_otherwise(self, monkeypatch, value):
+        monkeypatch.setenv("EXPLAIN_PEAR_URL", value)
+        assert '"pear"' not in explain_router.view_explainer().body.decode()
 
     def test_view_needs_no_login(self):
         assert _route("/view/").dependant.dependencies == []

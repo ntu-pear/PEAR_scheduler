@@ -176,3 +176,18 @@ class TestGenerateAccessTokenOnLogin:
         assert isinstance(result, Token)
         assert result.access_token == "abc123"
         assert result.token_type == "bearer"
+
+    def test_two_step_account_is_403_not_500(self):
+        form_data = OAuth2PasswordRequestForm(username="jane", password="pw", scope="")
+        with mock.patch("pear_schedule.api.auth_util.user_login", return_value={"msg": "2FA required"}):
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(generateAccessToken_onLogin(form_data))
+        assert exc.value.status_code == 403
+        assert exc.value.detail == "2FA required"
+
+    def test_no_token_otherwise_is_502(self):
+        form_data = OAuth2PasswordRequestForm(username="jane", password="pw", scope="")
+        with mock.patch("pear_schedule.api.auth_util.user_login", return_value={}):
+            with pytest.raises(HTTPException) as exc:
+                asyncio.run(generateAccessToken_onLogin(form_data))
+        assert exc.value.status_code == 502
