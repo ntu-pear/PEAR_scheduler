@@ -88,6 +88,7 @@ class TestMarkDoseGiven:
         monkeypatch.setattr(medication_schedule_router.MedicationScheduleWrite, "update", fake_update)
         monkeypatch.setattr(medication_schedule_router, "record_administration",
                             lambda *a: seen["patient"].append(a))
+        monkeypatch.setattr(medication_schedule_router, "caregiver_patients", lambda user_id: {1} if user_id == "1" else set())
         return seen
 
     def test_actor_comes_from_token_not_body(self, calls):
@@ -105,6 +106,15 @@ class TestMarkDoseGiven:
         assert exc.value.status_code == 400
         assert calls["written"] is None and calls["patient"] == []
 
+    def test_caregiver_cannot_mark_another_caregivers_patient(self, calls):
+        with pytest.raises(HTTPException) as exc:
+            medication_schedule_router.update_medication_schedule(None, _body(PatientID=2), _user("CAREGIVER"), "tok")
+        assert exc.value.status_code == 403
+        assert calls["written"] is None and calls["patient"] == []
+
+    def test_supervisor_can_mark_any_patient(self, calls):
+        medication_schedule_router.update_medication_schedule(None, _body(PatientID=2), _user("SUPERVISOR"), "tok")
+        assert calls["written"].PatientID == 2
 
     def test_patient_down_is_503(self, monkeypatch):
         def failing_update(data, before_commit=None):
@@ -115,6 +125,7 @@ class TestMarkDoseGiven:
 
         monkeypatch.setattr(medication_schedule_router.MedicationScheduleWrite, "update", failing_update)
         monkeypatch.setattr(medication_schedule_router, "record_administration", patient_down)
+        monkeypatch.setattr(medication_schedule_router, "caregiver_patients", lambda user_id: {1})
         with pytest.raises(HTTPException) as exc:
             medication_schedule_router.update_medication_schedule(None, _body(), _user("CAREGIVER"), "tok")
         assert exc.value.status_code == 503
