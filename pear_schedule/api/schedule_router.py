@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Query, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
 from typing import List, Optional, Annotated, Mapping, Dict
@@ -36,6 +36,12 @@ init(autoreset=True)
 router = APIRouter(tags=["Scheduler"])
 
 
+def require_supervisor(current_user: JWTPayload = Depends(get_current_user)) -> JWTPayload:
+    if not is_supervisor(current_user):
+        raise HTTPException(status_code=403, detail="Only supervisors can use this route")
+    return current_user
+
+
 def _regenerate_build(config, patientSchedules):
     # repair keeps the saved week and only changes what has a reason to
     if config.get("REGENERATE_MODE", "rebuild") == "repair":
@@ -43,7 +49,8 @@ def _regenerate_build(config, patientSchedules):
     return build_schedules(config, patientSchedules)
 
 @router.api_route("/getSchedule/", methods=["GET"])
-def get_schedule(request: Request, date: Optional[datetime.date] = None):
+def get_schedule(request: Request, date: Optional[datetime.date] = None,
+                 current_user: JWTPayload = Depends(get_current_user)):
     try:
         # any day in the week to get, this week if not given
         if date:
@@ -177,7 +184,8 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
 
 
 @router.api_route("/patientTest/", methods=["GET"])
-async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Query(None)): 
+async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Query(None),
+                        current_user: JWTPayload = Depends(require_supervisor)):
     try:
         # 1) Prepare necessary tables and lists 
         tablesDF = getTablesDF() 
@@ -298,7 +306,8 @@ async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Quer
 
 
 @router.api_route("/adhoc/", methods=["PUT"])
-def adhoc_change_schedule(request: Request, data: AdHocRequest):
+def adhoc_change_schedule(request: Request, data: AdHocRequest,
+                          current_user: JWTPayload = Depends(require_supervisor)):
     # find original activity name
     originalDF = ActivityNameView.get_data(arg1=data.OldActivityID)
     if len(originalDF) == 0: # invalid activity
@@ -369,7 +378,7 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
 
 
 @router.api_route("/systemTest/", methods=["GET"])
-async def system_report(request: Request): 
+async def system_report(request: Request, current_user: JWTPayload = Depends(require_supervisor)):
     
     systemTestArray = []
     statisticsArray = []
