@@ -98,9 +98,13 @@ class TestMarkDoseGiven:
         medication_schedule_router.update_medication_schedule(None, _body(), _user("CAREGIVER"), "tok")
         assert calls["patient"] == [("tok", 7, datetime.date(2026, 10, 15), "0900")]
 
-    def test_patient_not_called_when_not_marking_given(self, calls):
-        medication_schedule_router.update_medication_schedule(None, _body(Status="0"), _user("SUPERVISOR"), "tok")
-        assert calls["patient"] == []
+    def test_status_0_is_refused(self, calls):
+        """It used to write who gave it and when onto a dose that wasn't given."""
+        with pytest.raises(HTTPException) as exc:
+            medication_schedule_router.update_medication_schedule(None, _body(Status="0"), _user("SUPERVISOR"), "tok")
+        assert exc.value.status_code == 400
+        assert calls["written"] is None and calls["patient"] == []
+
 
     def test_patient_down_is_503(self, monkeypatch):
         def failing_update(data, before_commit=None):
