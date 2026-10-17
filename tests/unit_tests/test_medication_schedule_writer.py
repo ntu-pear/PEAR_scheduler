@@ -292,3 +292,35 @@ class TestUndoDose:
     def test_missing_dose_raises_not_found(self, monkeypatch):
         result, _ = _undo(monkeypatch, doses=[], rowcounts=[])
         assert isinstance(result, writer_module.MedicationScheduleNotFoundException)
+
+
+class TestWriteTodaysDoses:
+    """generate writes today's doses through the reflected table, where the model's Status default doesn't apply."""
+
+    def test_new_dose_row_gets_status_not_given(self, monkeypatch):
+        from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine, select
+
+        schema = MetaData()
+        table = Table(
+            "MEDICATION_SCHEDULE", schema,
+            Column("MedicationID", Integer, primary_key=True), Column("ScheduleID", Integer, primary_key=True),
+            Column("AdministerTime", String, primary_key=True), Column("AdministerDate", String, primary_key=True),
+            Column("AssignedTo", String), Column("Status", String(1), nullable=False),
+        )
+        engine = create_engine("sqlite:///:memory:")
+        schema.create_all(engine)
+
+        _freeze_today(monkeypatch)
+        monkeypatch.setattr(MedicationScheduleWrite, "config", {
+            "STD_DATE_FORMAT": DATE_FORMAT, "DB_TABLES": SimpleNamespace(MEDICATION_SCHEDULE_TABLE="MEDICATION_SCHEDULE"),
+        }, raising=False)
+        monkeypatch.setattr(writer_module.DB, "schema", schema, raising=False)
+        monkeypatch.setattr(writer_module, "get_week_start", lambda: datetime.datetime(2026, 10, 5))
+        doses = {TODAY.strftime(DATE_FORMAT): [{"MedicationID": 3, "AdministerTime": "0900", "AssignedTo": "cg1", "Status": 0}]}
+        monkeypatch.setattr(writer_module.ExistingScheduleView, "get_data",
+                            lambda *a, **k: pd.DataFrame({"ScheduleID": [5], "MedicationSchedule": [json.dumps(doses)]}))
+
+        with engine.begin() as conn:
+            assert MedicationScheduleWrite._MedicationScheduleWrite__writeRecords(conn)
+            rows = conn.execute(select(table.c.MedicationID, table.c.Status)).all()
+        assert rows == [(3, "0")]
