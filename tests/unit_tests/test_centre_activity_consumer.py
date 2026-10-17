@@ -1,3 +1,5 @@
+import pytest
+
 from messaging.centre_activity_consumer import CentreActivityConsumer
 from tests.utils.scheduler_config import make_scheduler_config
 
@@ -82,6 +84,35 @@ class TestUpdateFixedTimeSlots:
     def test_slots_not_sent_are_left_alone(self):
         _, update = self._update(self._consumer(), min_duration=60)
         assert "FixedTimeSlots" not in update.model_dump(exclude_unset=True)
+
+
+class TestSlotsOnClosedDays:
+    """The activity service takes any weekday. A closed day used to fail the message: updates requeued forever."""
+
+    def test_closed_day_is_skipped_and_the_rest_kept(self):
+        class FakeSelf:
+            config = _config()
+        assert CentreActivityConsumer.reformat_timeslots(FakeSelf, "Monday 09:30,Saturday 10:00") == "0-1"
+
+    def test_space_after_comma_is_fine(self):
+        class FakeSelf:
+            config = _config()
+        assert CentreActivityConsumer.reformat_timeslots(FakeSelf, "Monday 09:30, Tuesday 12:00") == "0-1,1-6"
+
+    def test_no_usable_slot_is_an_error_not_flexible(self):
+        class FakeSelf:
+            config = _config()
+        with pytest.raises(ValueError):
+            CentreActivityConsumer.reformat_timeslots(FakeSelf, "Saturday 10:00")
+
+    def test_update_with_only_closed_days_is_acked_not_requeued(self):
+        from pear_schedule.models.processed_events_model import MessageProcessingResult
+
+        helper = TestUpdateFixedTimeSlots()
+        consumer = helper._consumer()
+        result, update = helper._update(consumer, is_fixed=True, fixed_time_slots="Saturday 10:00")
+        assert result == MessageProcessingResult.FAILED_PERMANENT
+        assert update is None
 
 
 class TestActivityNotSyncedYet:

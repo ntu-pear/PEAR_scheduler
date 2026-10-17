@@ -67,6 +67,13 @@ def update_medication_schedule(
     current_user: JWTPayload = Depends(require_dose_marker),
     token: str = Depends(oauth2_scheme),
 ):
+    # "0" would still write who gave it and when, putting a dose back is /undo/
+    if medication_schedule.Status != "1":
+        raise HTTPException(status_code=400, detail="Only a given dose can be recorded here. Use /undo/ to put one back")
+    # same as the list, caregivers only for their own patients
+    if get_role_name(current_user) == "CAREGIVER" and int(medication_schedule.PatientID) not in caregiver_patients(current_user.userId):
+        raise HTTPException(status_code=403, detail="This patient is not allocated to you")
+
     # who gave the dose comes from the token, never the body
     medication_schedule = medication_schedule.model_copy(update={"AdministeredBy": current_user.userId})
 

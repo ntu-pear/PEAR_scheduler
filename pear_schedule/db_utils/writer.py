@@ -385,6 +385,7 @@ class MedicationScheduleWrite(ConfigDependant):
                     "AdministerTime": med["AdministerTime"],
                     "AdministerDate": today_str,
                     "AssignedTo": med["AssignedTo"],
+                    "Status": "0",  # the model default doesn't apply to this insert
                 }
 
                 composite_key_filters = [
