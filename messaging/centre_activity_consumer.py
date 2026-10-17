@@ -374,6 +374,9 @@ class CentreActivityConsumer(ConfigDependant):
                                 return MessageProcessingResult.SUCCESS
                     except ActivityNotSyncedError as e:
                         return self._retry_later(e)
+                    except ValueError as e:
+                        logger.error(f"Centre activity can't be created during sync: {str(e)}")
+                        return MessageProcessingResult.FAILED_PERMANENT
                     except Exception as e:
                         logger.error(f"Failed to create centre activity during sync: {str(e)}")
                         return MessageProcessingResult.FAILED_RETRYABLE
@@ -386,6 +389,10 @@ class CentreActivityConsumer(ConfigDependant):
             
         except ActivityNotSyncedError as e:
             return self._retry_later(e)
+        except ValueError as e:
+            # retrying won't change the data
+            logger.error(f"Centre activity update can't be applied: {str(e)}")
+            return MessageProcessingResult.FAILED_PERMANENT
         except Exception as e:
             logger.error(f"Error handling centre activity update: {str(e)}")
             import traceback
@@ -470,13 +477,21 @@ class CentreActivityConsumer(ConfigDependant):
         # flexible activities come with None or ""
         if timeslot_str is None or not timeslot_str.strip():
             return None
-        timeslot_list_tmp = timeslot_str.split(",")
-        for i, timeslot_str in enumerate(timeslot_list_tmp):
-            qualified_day = timeslot_str.split(" ")[0]
-            day = self.config['OPEN_DAYS'].index(qualified_day)
-            time_obj = datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
+        out = []
+        for item in timeslot_str.split(","):
+            try:
+                qualified_day, time_str = item.split()
+                day = self.config['OPEN_DAYS'].index(qualified_day)
+                time_obj = datetime.strptime(time_str, "%H:%M")
+            except ValueError:
+                # e.g. a day the centre is closed, skip it instead of failing the message
+                logger.warning(f"Skipping fixed time slot {item!r}, not an open day and HH:MM")
+                continue
             opening_time_obj = datetime.strptime(self.config['WORKING_HOURS'].get(qualified_day.lower()).get("open"), "%H:%M")
             slot = timeslot_index(time_obj - opening_time_obj, self.config['MIN_ACTIVITY_DURATION'])
-            timeslot_list_tmp[i] = f"{day}-{slot}"
-        return ",".join(timeslot_list_tmp)
+            out.append(f"{day}-{slot}")
+        if not out:
+            # fixed with no slot we can use, don't let it turn flexible
+            raise ValueError(f"No usable fixed time slots in {timeslot_str!r}")
+        return ",".join(out)
         
