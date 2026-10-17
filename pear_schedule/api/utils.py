@@ -108,6 +108,11 @@ def getTablesDF():
     return tablesDF
     
     
+def _as_number(column):
+    # IsLike and DoctorRecommendation are text columns, "1" never equals 1
+    return pd.to_numeric(column, errors="coerce")
+
+
 def getPatientWellnessPlan(tablesDF, patientID, config):
     # Extract information from tables
     weekly_schedule = tablesDF['weeklyScheduleViewDF'].loc[tablesDF['weeklyScheduleViewDF']['PatientID'] == patientID]
@@ -119,9 +124,9 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
     medications = tablesDF['medicationViewDF'].loc[tablesDF['medicationViewDF']['PatientID'] == patientID]
 
     # TYPE 'SHOULD SCHEDULE'
-    preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == 1]
+    preferred_activities = centre_activity_preference.loc[_as_number(centre_activity_preference['IsLike']) == 1]
     preferred_activities = preferred_activities['ActivityTitle'].tolist()
-    recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == 1]
+    recommended_activities = centre_activity_recommendation.loc[_as_number(centre_activity_recommendation['DoctorRecommendation']) == 1]
     recommended_activities = recommended_activities['ActivityTitle'].tolist()
     routines_df = tablesDF['routineViewDF'].loc[(tablesDF['routineViewDF']['PatientID'] == patientID) & tablesDF['routineViewDF']["IncludeInSchedule"]]
     routines = routines_df['ActivityTitle'].tolist()
@@ -133,9 +138,9 @@ def getPatientWellnessPlan(tablesDF, patientID, config):
     
     # TYPE 'SHOULD NOT SCHEDULE'
     # -1 is dislike / not recommended, 0 is neutral
-    non_preferred_activities = centre_activity_preference.loc[centre_activity_preference['IsLike'] == -1]
+    non_preferred_activities = centre_activity_preference.loc[_as_number(centre_activity_preference['IsLike']) == -1]
     non_preferred_activities = non_preferred_activities['ActivityTitle'].tolist()
-    non_recommended_activities = centre_activity_recommendation.loc[centre_activity_recommendation['DoctorRecommendation'] == -1]
+    non_recommended_activities = centre_activity_recommendation.loc[_as_number(centre_activity_recommendation['DoctorRecommendation']) == -1]
     non_recommended_activities = non_recommended_activities['ActivityTitle'].tolist()
     activities_excluded = tablesDF['activitiesExcludedViewDF'].loc[tablesDF['activitiesExcludedViewDF']['PatientID'] == patientID]
     activities_excluded = activities_excluded['ActivityTitle'].tolist()

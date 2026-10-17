@@ -140,6 +140,23 @@ class TestPatientTestUtils:
         assert plan['should_not_be_scheduled_activities']['non_preferred'] == ["Disliked Act"]
         assert plan['should_not_be_scheduled_activities']['non_recommended'] == ["Not Rec"]
 
+    def test_text_preference_and_recommendation_are_read(self, mock_views):
+        """The columns are text in the DB, "1" == 1 was never true so tests 2-5 always passed."""
+        tables_df = getTablesDF()
+        tables_df["centreActivityPreferenceViewDF"] = pd.DataFrame({
+            "PatientID": [1, 1, 1], "IsLike": ["1", "0", "-1"], "ActivityTitle": ["Liked", "Neutral", "Disliked"],
+        })
+        tables_df["centreActivityRecommendationViewDF"] = pd.DataFrame({
+            "PatientID": [1, 1, 1], "DoctorRecommendation": ["1", "0", "-1"], "ActivityTitle": ["Rec", "Neutral Rec", "Not Rec"],
+        })
+        config = {'DAYS': 5, 'DAY_OF_WEEK_ORDER': ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]}
+        plan = getPatientWellnessPlan(tables_df, patientID=1, config=config)
+
+        assert plan['should_be_scheduled_activities']['preferred'] == ["Liked"]
+        assert plan['should_be_scheduled_activities']['recommended'] == ["Rec"]
+        assert plan['should_not_be_scheduled_activities']['non_preferred'] == ["Disliked"]
+        assert plan['should_not_be_scheduled_activities']['non_recommended'] == ["Not Rec"]
+
     def test_get_patient_wellness_plan_based_on_mock_data(self, mock_views):
         fake_tables_DF = getTablesDF()
         config = {
