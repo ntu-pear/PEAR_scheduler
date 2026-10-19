@@ -84,10 +84,32 @@ class TestRequireVerifiedStaff:
         with pytest.raises(HTTPException):
             explain_router.require_verified_staff("t")
 
+
+# the explainer itself, the preview above still lets admins in
+class TestRequireSupervisor:
+    def test_supervisor_allowed(self, monkeypatch):
+        _verdict(monkeypatch, Verdict.VALID)
+        assert explain_router.require_supervisor("t").userId == "U1"
+
+    @pytest.mark.parametrize("role", ["ADMIN", "CAREGIVER", "DOCTOR", "GUARDIAN", "supervisor", ""])
+    def test_everyone_else_gets_403(self, monkeypatch, role):
+        _verdict(monkeypatch, Verdict.VALID, role)
+        with pytest.raises(HTTPException) as exc:
+            explain_router.require_supervisor("t")
+        assert exc.value.status_code == 403
+        assert exc.value.detail == "Only supervisors can view the schedule explainer"
+
+    def test_forged_or_expired_token_gets_401(self, monkeypatch):
+        _verdict(monkeypatch, Verdict.REJECTED)
+        with pytest.raises(HTTPException) as exc:
+            explain_router.require_supervisor("t")
+        assert exc.value.status_code == 401
+
     def test_data_route_needs_it(self):
         deps = [d.call for d in _route("/").dependant.dependencies]
-        assert explain_router.require_verified_staff in deps
-        sub = next(d for d in _route("/").dependant.dependencies if d.call is explain_router.require_verified_staff)
+        assert explain_router.require_supervisor in deps
+        assert explain_router.require_verified_staff not in deps
+        sub = next(d for d in _route("/").dependant.dependencies if d.call is explain_router.require_supervisor)
         assert oauth2_scheme in [d.call for d in sub.dependencies]
 
 
@@ -178,8 +200,8 @@ class TestRoutes:
     def test_says_who_is_viewing_without_touching_the_cache(self, monkeypatch):
         shared = {"week_start": "2024-03-18"}
         monkeypatch.setattr(explain_router, "cached_explanation", lambda config, refresh, week="this": shared)
-        res = explain_router.get_explanation(self._request(), refresh=False, user=VerifiedUser("U2", "Ann", "ADMIN", ""))
-        assert json.loads(res.body)["viewer_role"] == "ADMIN"
+        res = explain_router.get_explanation(self._request(), refresh=False, user=VerifiedUser("U2", "Ann", "SUPERVISOR", ""))
+        assert json.loads(res.body)["viewer_role"] == "SUPERVISOR"
         assert "viewer_role" not in shared
 
     def test_build_error_is_500(self, monkeypatch):
