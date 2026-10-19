@@ -1,7 +1,7 @@
 """
 One patient's saved schedule. The token is always checked with the user service.
-Supervisors and admins see any patient, caregivers the patients allocated to them,
-guardians their own patients (asked from patient service). Read-only.
+Supervisors see any patient, caregivers the patients allocated to them, guardians their
+own patients (asked from patient service). Admins and other roles get 403. Read-only.
 """
 
 import datetime
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Scheduler"])
 
-ANY_PATIENT = {"SUPERVISOR", "ADMIN"}
+ANY_PATIENT = {"SUPERVISOR"}
 PATIENT_SERVICE_ENV = "PATIENT_SERVICE_URL"
 REQUEST_TIMEOUT_SECONDS = 3.0
 PAGE_SIZE = 100
