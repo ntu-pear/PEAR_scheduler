@@ -58,9 +58,8 @@ class TestToken:
 
 
 class TestCanView:
-    @pytest.mark.parametrize("role", ["SUPERVISOR", "ADMIN"])
-    def test_supervisor_and_admin_see_anyone(self, role):
-        assert psr.can_view(VerifiedUser("U1", "Sam", role, ""), 999, "t")
+    def test_supervisor_sees_anyone(self):
+        assert psr.can_view(VerifiedUser("U1", "Sam", "SUPERVISOR", ""), 999, "t")
 
     def test_caregiver_sees_own_and_temp_patients_only(self):
         with patch.object(psr.CaregiverAllocatedView, "get_data", return_value=ALLOCATIONS):
@@ -96,7 +95,7 @@ class TestCanView:
         with patch.object(psr.requests, "get", return_value=bad):
             assert _status(lambda: psr.can_view(VerifiedUser("G1", "Gus", "GUARDIAN", ""), 5, "t")) == 503
 
-    @pytest.mark.parametrize("role", ["DOCTOR", "GAME_THERAPIST", "supervisor", ""])
+    @pytest.mark.parametrize("role", ["ADMIN", "DOCTOR", "GAME_THERAPIST", "supervisor", ""])
     def test_other_roles_see_nobody(self, role):
         assert not psr.can_view(VerifiedUser("U1", "Sam", role, ""), 5, "t")
 
@@ -104,6 +103,10 @@ class TestCanView:
 class TestRoute:
     def _df(self):
         return pd.DataFrame({"ScheduleID": [1], "PatientID": [5], "Name": ["Alice"], "Monday": ["{}"]})
+
+    def test_admin_is_403(self, monkeypatch):
+        _user(monkeypatch, "ADMIN")
+        assert _status(lambda: psr.get_patient_schedule(5, None, "t")) == 403
 
     def test_other_patient_is_403(self, monkeypatch):
         _user(monkeypatch, "CAREGIVER", "C9")
@@ -120,7 +123,7 @@ class TestRoute:
         assert body["Data"] == [{"PatientID": 5, "Name": "Alice", "Monday": "{}"}]
 
     def test_date_asks_for_that_week(self, monkeypatch):
-        _user(monkeypatch, "ADMIN")
+        _user(monkeypatch, "SUPERVISOR")
         with patch.object(psr.WeeklyScheduleView, "get_data", return_value=self._df()) as get:
             psr.get_patient_schedule(5, datetime.date(2026, 10, 8), "t")
         get.assert_called_once_with(at=datetime.datetime(2026, 10, 8, 12), patient_id=5)
