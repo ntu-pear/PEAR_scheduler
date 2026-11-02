@@ -1,16 +1,22 @@
 import logging
 import threading
 import json
+import time
 from typing import Dict, Any, Optional
 from datetime import datetime
-from datetime import timedelta
 from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 from pear_schedule.utils import ConfigDependant
+from pear_schedule.db_utils.utils import timeslot_index
+from pear_schedule.crud.ref_centre_activity_crud import ActivityNotSyncedError
 
 logger = logging.getLogger(__name__)
+
+# activity events come on another queue, give them a moment before the redelivery
+PARENT_RETRY_DELAY_SECONDS = 2
 
 class CentreActivityConsumer(ConfigDependant):
     """
@@ -175,6 +181,8 @@ class CentreActivityConsumer(ConfigDependant):
             
             logger.info(f"Processing {event_type} for centre activity {centre_activity_id} (correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})")
             
+            # a cascade can reuse one correlation_id for several events, so key each event on its own
+            message_data['correlation_id'] = correlation_id = event_key(correlation_id, event_type, centre_activity_id)
             with self.get_db_transaction() as db:
                 # For sync events, bypass duplicate check in CRUD
                 if not is_sync_event and self.is_event_already_processed(db, correlation_id):
@@ -231,6 +239,12 @@ class CentreActivityConsumer(ConfigDependant):
             logger.error(f"Failed to parse message: {str(e)}")
             return None
     
+    def _retry_later(self, error: ActivityNotSyncedError) -> MessageProcessingResult:
+        # requeued, and the broker's delivery limit sends it to the DLQ if the activity never comes
+        logger.warning(f"{error}, retrying in {PARENT_RETRY_DELAY_SECONDS}s")
+        time.sleep(PARENT_RETRY_DELAY_SECONDS)
+        return MessageProcessingResult.FAILED_RETRYABLE
+
     def _handle_centre_activity_created(self, db, message_data: Dict[str, Any]) -> MessageProcessingResult:
         """Handle centre activity creation events"""
         try:
@@ -278,6 +292,8 @@ class CentreActivityConsumer(ConfigDependant):
                 logger.error(f"Failed to create centre activity {centre_activity_id}")
                 return MessageProcessingResult.FAILED_RETRYABLE
             
+        except ActivityNotSyncedError as e:
+            return self._retry_later(e)
         except ValueError as e:
             logger.warning(f"Business logic error creating centre activity: {str(e)}")
             return MessageProcessingResult.FAILED_PERMANENT
@@ -306,7 +322,12 @@ class CentreActivityConsumer(ConfigDependant):
             
             logger.debug(f"Mapped update data: {mapped_update_data}")
 
-            mapped_update_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_update_data['FixedTimeSlots'])
+            # the mapper drops None on updates, but a None here means it's flexible now, so clear the slots
+            if 'fixed_time_slots' in centre_activity_data:
+                mapped_update_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_update_data.get('FixedTimeSlots'))
+            # same for name, None means it goes back to the activity title
+            if 'name' in centre_activity_data:
+                mapped_update_data['Name'] = mapped_update_data.get('Name')
             
             from pear_schedule.schemas.ref_centre_activity import RefCentreActivityUpdate
             try:
@@ -339,15 +360,23 @@ class CentreActivityConsumer(ConfigDependant):
                         if mapped_centre_activity_data:
                             mapped_centre_activity_data['FixedTimeSlots'] = self.reformat_timeslots(mapped_centre_activity_data['FixedTimeSlots'])
                             ref_centre_activity_data = RefCentreActivityCreate(**mapped_centre_activity_data)
+                            # the update above already recorded this event, so don't check or record it again
                             create_result, _ = self.create_ref_centre_activity(
                                 db=db,
                                 centre_activity=ref_centre_activity_data,
                                 correlation_id=correlation_id,
-                                created_by=modified_by
+                                created_by=modified_by,
+                                skip_duplicate_check=True,
+                                record_event=False
                             )
                             if create_result:
                                 logger.info(f"Successfully created centre activity {centre_activity_id} during sync")
                                 return MessageProcessingResult.SUCCESS
+                    except ActivityNotSyncedError as e:
+                        return self._retry_later(e)
+                    except ValueError as e:
+                        logger.error(f"Centre activity can't be created during sync: {str(e)}")
+                        return MessageProcessingResult.FAILED_PERMANENT
                     except Exception as e:
                         logger.error(f"Failed to create centre activity during sync: {str(e)}")
                         return MessageProcessingResult.FAILED_RETRYABLE
@@ -358,6 +387,12 @@ class CentreActivityConsumer(ConfigDependant):
             logger.info(f"Successfully updated centre activity {centre_activity_id}")
             return MessageProcessingResult.SUCCESS
             
+        except ActivityNotSyncedError as e:
+            return self._retry_later(e)
+        except ValueError as e:
+            # retrying won't change the data
+            logger.error(f"Centre activity update can't be applied: {str(e)}")
+            return MessageProcessingResult.FAILED_PERMANENT
         except Exception as e:
             logger.error(f"Error handling centre activity update: {str(e)}")
             import traceback
@@ -438,15 +473,25 @@ class CentreActivityConsumer(ConfigDependant):
             self.client.close()
             logger.info("Scheduler centre activity consumer connections closed")
     
-    def reformat_timeslots(self, timeslot_str: str) -> str:
-        timeslot_list_tmp = timeslot_str.split(",")
-        for i, timeslot_str in enumerate(timeslot_list_tmp):
-            qualified_day = timeslot_str.split(" ")[0]
-            day = self.config['OPEN_DAYS'].index(qualified_day)
-            time_obj = datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
+    def reformat_timeslots(self, timeslot_str: Optional[str]) -> Optional[str]:
+        # flexible activities come with None or ""
+        if timeslot_str is None or not timeslot_str.strip():
+            return None
+        out = []
+        for item in timeslot_str.split(","):
+            try:
+                qualified_day, time_str = item.split()
+                day = self.config['OPEN_DAYS'].index(qualified_day)
+                time_obj = datetime.strptime(time_str, "%H:%M")
+            except ValueError:
+                # e.g. a day the centre is closed, skip it instead of failing the message
+                logger.warning(f"Skipping fixed time slot {item!r}, not an open day and HH:MM")
+                continue
             opening_time_obj = datetime.strptime(self.config['WORKING_HOURS'].get(qualified_day.lower()).get("open"), "%H:%M")
-            slot = (time_obj - opening_time_obj) // -timedelta(minutes=self.config['MIN_ACTIVITY_DURATION']-1) * -1
-            slot = 0 if not slot else slot-1
-            timeslot_list_tmp[i] = f"{day}-{slot}"
-        return ",".join(timeslot_list_tmp)
+            slot = timeslot_index(time_obj - opening_time_obj, self.config['MIN_ACTIVITY_DURATION'])
+            out.append(f"{day}-{slot}")
+        if not out:
+            # fixed with no slot we can use, don't let it turn flexible
+            raise ValueError(f"No usable fixed time slots in {timeslot_str!r}")
+        return ",".join(out)
         

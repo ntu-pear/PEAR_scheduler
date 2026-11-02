@@ -31,6 +31,9 @@ class RabbitMQClient:
         self.shutdown_event = None
         self.consuming = False
         self.consumer_tags = []  # Track our own consumer tags
+
+        self._subscriptions = []   # list of (queue_name, wrapped_callback, auto_ack)
+        self._prefetch = 1         # qos to re-apply on every (re)connect
     
     def set_shutdown_event(self, shutdown_event: threading.Event):
         """Set the shutdown event for graceful shutdown"""
@@ -52,6 +55,10 @@ class RabbitMQClient:
                 
                 self.connection = pika.BlockingConnection(parameters)
                 self.channel = self.connection.channel()
+                
+                # Enable publisher confirms for reliability
+                self.channel.confirm_delivery()
+                
                 self.is_connected = True
                 
                 logger.info(f"{self.service_name} connected to RabbitMQ at {self.host}:{self.port}")
@@ -86,6 +93,10 @@ class RabbitMQClient:
             try:
                 self.ensure_connection()
                 
+                # Log the message before publishing
+                correlation_id = message.get('correlation_id', 'unknown')
+                logger.info(f"Publishing message {correlation_id} to {exchange}/{routing_key} (attempt {attempt+1})")
+                
                 self.channel.basic_publish(
                     exchange=exchange,
                     routing_key=routing_key,
@@ -93,11 +104,13 @@ class RabbitMQClient:
                     properties=pika.BasicProperties(
                         delivery_mode=2,  # Persistent message
                         timestamp=int(time.time()),
-                        content_type='application/json'
+                        content_type='application/json',
+                        correlation_id=correlation_id,
+                        message_id=f"{self.service_name}_{int(time.time() * 1000)}"
                     )
                 )
                 
-                logger.info(f"{self.service_name} published: {exchange}/{routing_key}")
+                logger.info(f"Successfully published {correlation_id} to {exchange}/{routing_key}")
                 return True
                 
             except Exception as e:
@@ -145,51 +158,83 @@ class RabbitMQClient:
                 if not auto_ack:
                     channel.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
         
-        try:
-            self.ensure_connection()
-            self.channel.basic_qos(prefetch_count=1)
-            
-            # Set up consumer and track the consumer tag
+        # Record the subscription so the subscription can be rebuilt automatically if the connection drops.
+        self._subscriptions.append((queue_name, wrapped_callback, auto_ack))
+        logger.info(f"{self.service_name} registered subscription for {queue_name}")
+    
+    def _should_stop(self):
+        """True if a deliberate shutdown was requested."""
+        return self.shutdown_event is not None and self.shutdown_event.is_set()
+
+    def _apply_subscriptions(self):
+        """(Re)register prefetch + all recorded subscriptions on the CURRENT channel.
+        Runs on first start and after every reconnect - rebuilds the channel-level
+        state (prefetch + basic_consume) that dies with a dropped connection."""
+        self.consumer_tags = []  # old tags belonged to the dead channel
+        self.channel.basic_qos(prefetch_count=self._prefetch)
+        for queue_name, wrapped_callback, auto_ack in self._subscriptions:
             consumer_tag = self.channel.basic_consume(
                 queue=queue_name,
                 on_message_callback=wrapped_callback,
                 auto_ack=auto_ack
             )
             self.consumer_tags.append(consumer_tag)
-            logger.info(f"{self.service_name} set up consumer for {queue_name} with tag {consumer_tag}")
-            
-        except Exception as e:
-            logger.error(f"Failed to set up consumer: {str(e)}")
-            raise
-    
+            logger.info(f"{self.service_name} subscribed to {queue_name} (tag={consumer_tag})")
+
+    def _safe_close(self):
+        """Best-effort close of a dead connection to release its socket/FD."""
+        try:
+            if self.connection and not self.connection.is_closed:
+                self.connection.close()
+        except Exception:
+            pass
+        self.is_connected = False
+
+    def _reconnect(self):
+        """Close the dead connection, reconnect (connect() = 5 tries + exp backoff),
+        and re-subscribe. Returns True on success, False if all tries failed."""
+        self._safe_close()
+        if self._should_stop():
+            return False
+        if self.connect():                 # 5 tries, exponential backoff
+            self._apply_subscriptions()     # re-hire the subscriptions on the fresh channel
+            return True
+        return False
+
     def start_consuming(self):
-        """Start consuming messages (blocking)"""
+        """Consume with automatic reconnect + re-subscribe.
+
+        On a connection drop, reconnect (connect()'s 5 tries + exp backoff) and
+        replay all subscriptions. If reconnect still fails, give up and let the
+        thread end so the consumer watchdog (Layer B) can restart it.
+        """
+        self.consuming = True
         try:
             self.ensure_connection()
-            logger.info(f"{self.service_name} starting to consume messages...")
-            self.consuming = True
-            
-            # Use Pika's built-in start_consuming but with custom stop logic
-            while self.consuming and not (self.shutdown_event and self.shutdown_event.is_set()):
+            self._apply_subscriptions()  # first-time hire (basic_qos + basic_consume)
+            logger.info(f"{self.service_name} consuming ({len(self._subscriptions)} subscriptions)")
+
+            while self.consuming and not self._should_stop():
                 try:
-                    # Process events with a timeout to allow checking shutdown signal
+                    # Pump events with a timeout so we can check shutdown each second
                     self.connection.process_data_events(time_limit=1)
-                    
-                    # Check if there are any pending events
-                    if not self.connection.is_open:
-                        logger.warning(f"{self.service_name} connection closed")
+
+                except (pika.exceptions.AMQPConnectionError,
+                        pika.exceptions.StreamLostError,
+                        pika.exceptions.ChannelClosedByBroker) as e:
+                    if self._should_stop():
                         break
-                        
-                except pika.exceptions.AMQPConnectionError:
-                    logger.warning(f"{self.service_name} connection lost, attempting to reconnect...")
-                    if not self.connect():
+                    logger.warning(f"{self.service_name} connection lost ({e}); reconnecting...")
+                    if not self._reconnect():
+                        logger.error(f"{self.service_name} reconnect failed after retries; "
+                                     f"giving up (watchdog will restart)")
                         break
                 except Exception as e:
-                    logger.error(f"Error processing data events: {str(e)}")
+                    logger.error(f"{self.service_name} unexpected consume error: {str(e)}", exc_info=True)
                     break
-            
+
             logger.info(f"{self.service_name} stopping consumption...")
-            
+
         except KeyboardInterrupt:
             logger.info(f"{self.service_name} stopping consumption due to KeyboardInterrupt...")
         except Exception as e:

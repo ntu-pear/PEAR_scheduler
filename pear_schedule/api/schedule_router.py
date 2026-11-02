@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Query, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.encoders import jsonable_encoder
 from typing import List, Optional, Annotated, Mapping, Dict
@@ -10,12 +10,16 @@ import pandas as pd
 from pear_schedule.db import DB
 from sqlalchemy.orm import Session
 import datetime
+from dateutil.parser import parse
 from pear_schedule.db_utils.writer import ScheduleWriter, MedicationScheduleWrite
+from pear_schedule.services.care_centre_util import refresh_centre_hours
 
-from pear_schedule.api.utils import AdHocRequest, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
+from pear_schedule.api.utils import AdHocRequest, dropPastDays, activitiesExcludedPatientTest, checkWeeklyScheduleCorrectness, generateStatistics, isWithinDateRange, getDaysFromDates, medicationPatientTest, nonPreferredActivitiesPatientTest, nonRecommendedActivitiesPatientTest, preferredActivitiesPatientTest, prepareJsonResponse, printWellnessPlan, recommendedActivitiesPatientTest, replaceActivitiesInSchedule, allPatientScheduleGeneratedSystemTest, allCompulsoryActivitiesAtCorrectSlotSystemTest,nonExpiredCentreActivitiesSystemTest,fixedActivitiesScheduledCorrectlySystemTest, groupActivitiesMinSizeSystemTest, groupActivitiesCorrectTimeslotSystemTest, routinesPatientTest, systemLevelStatistics,clashInFixedTimeSlotWarning, getTablesDF, getPatientWellnessPlan
 from pear_schedule.scheduler.individualScheduling import PreferredActivityScheduler
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
+from pear_schedule.scheduler.repair import note_adhoc, repair_schedules
+from pear_schedule.api import explain_router
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import DBTABLES
 
@@ -31,10 +35,28 @@ init(autoreset=True)
 
 router = APIRouter(tags=["Scheduler"])
 
+
+def require_supervisor(current_user: JWTPayload = Depends(get_current_user)) -> JWTPayload:
+    if not is_supervisor(current_user):
+        raise HTTPException(status_code=403, detail="Only supervisors can use this route")
+    return current_user
+
+
+def _regenerate_build(config, patientSchedules):
+    # repair keeps the saved week and only changes what has a reason to
+    if config.get("REGENERATE_MODE", "rebuild") == "repair":
+        return repair_schedules(config, patientSchedules)
+    return build_schedules(config, patientSchedules)
+
 @router.api_route("/getSchedule/", methods=["GET"])
-def get_schedule(request: Request):
+def get_schedule(request: Request, date: Optional[datetime.date] = None,
+                 current_user: JWTPayload = Depends(get_current_user)):
     try:
-        weeklyScheduleViewDF = WeeklyScheduleView.get_data()
+        # any day in the week to get, this week if not given
+        if date:
+            weeklyScheduleViewDF = WeeklyScheduleView.get_data(at=datetime.datetime.combine(date, datetime.time(12)))
+        else:
+            weeklyScheduleViewDF = WeeklyScheduleView.get_data()
         weeklyScheduleViewDF.pop("ScheduleID")
         if len(weeklyScheduleViewDF) == 0:
             responseData = {"Status": "404", "Message": "No schedules found", "Data": ""} 
@@ -58,7 +80,8 @@ def get_schedule(request: Request):
 @router.api_route("/generate/", methods=["GET"])
 def generate_schedule(request: Request):
     config = request.app.state.config
-    
+    refresh_centre_hours(config)
+
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
@@ -67,6 +90,7 @@ def generate_schedule(request: Request):
 
         if ScheduleWriter.write(patientSchedules, medicationScheduleRef, overwriteExisting=False) \
             and MedicationScheduleWrite.write():
+            explain_router.reset_cache()  # saved week changed
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -86,12 +110,13 @@ def generate_schedule(request: Request):
     #     return JSONResponse(jsonable_encoder(responseData))
     
     config = request.app.state.config
-    
+    refresh_centre_hours(config)
+
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = _regenerate_build(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -103,6 +128,7 @@ def generate_schedule(request: Request):
 
         if ScheduleWriter.write(patientSchedules, medicationScheduleRef, schedule_meta=scheduleMeta, overwriteExisting=True) and \
             MedicationScheduleWrite.write():
+            explain_router.reset_cache()  # saved week changed
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": ""} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -122,12 +148,13 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
         return JSONResponse(jsonable_encoder(responseData))
     
     config = request.app.state.config
-    
+    refresh_centre_hours(config)
+
     # Set up patient schedule structure
     patientSchedules = {} # patient id: [[],[],[],[],[]]
 
     try:
-        medicationScheduleRef: medicationScheduleData = build_schedules(config, patientSchedules)
+        medicationScheduleRef: medicationScheduleData = _regenerate_build(config, patientSchedules)
         with DB.get_engine().begin() as conn:
             latestSchedules = PreferredActivityScheduler.getMostUpdatedSchedules(patientSchedules.keys(), conn)
         
@@ -142,6 +169,7 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
             weeklyScheduleViewDF = WeeklyScheduleView.get_data()
             weeklyScheduleViewDF.pop("ScheduleID")
             schedules_json = weeklyScheduleViewDF.to_dict(orient="records")
+            explain_router.reset_cache()  # saved week changed
             responseData = {"Status": "200", "Message": "Generated Schedule Successfully", "Data": schedules_json} 
             return JSONResponse(jsonable_encoder(responseData))
         else:
@@ -156,7 +184,8 @@ def generate_schedule(request: Request, current_user: JWTPayload = Depends(get_c
 
 
 @router.api_route("/patientTest/", methods=["GET"])
-async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Query(None)): 
+async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Query(None),
+                        current_user: JWTPayload = Depends(require_supervisor)):
     try:
         # 1) Prepare necessary tables and lists 
         tablesDF = getTablesDF() 
@@ -277,7 +306,8 @@ async def test_schedule(request: Request, patientIDs: Optional[List[int]] = Quer
 
 
 @router.api_route("/adhoc/", methods=["PUT"])
-def adhoc_change_schedule(request: Request, data: AdHocRequest):
+def adhoc_change_schedule(request: Request, data: AdHocRequest,
+                          current_user: JWTPayload = Depends(require_supervisor)):
     # find original activity name
     originalDF = ActivityNameView.get_data(arg1=data.OldActivityID)
     if len(originalDF) == 0: # invalid activity
@@ -309,14 +339,21 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
         return JSONResponse(jsonable_encoder(responseData))
 
 
-    chosenDays = getDaysFromDates(data.StartDate, data.EndDate, request.app.state.config["DAY_OF_WEEK_ORDER"])
+    # past days already happened, only change today onwards
+    dates = dropPastDays(data.StartDate, data.EndDate, datetime.date.today())
+    if dates is None:
+        responseData = {"Status": "400", "Message": "Can't change days that have already passed", "Data": ""}
+        return JSONResponse(jsonable_encoder(responseData))
+    startDate, endDate = dates
+
+    chosenDays = getDaysFromDates(startDate, endDate, request.app.state.config["DAY_OF_WEEK_ORDER"])
 
     filteredAdHocDF = adHocDF[[c for c in adHocDF.columns if c in chosenDays + ["ScheduleID"]]]
     
     # replace activities
     isSuccess = replaceActivitiesInSchedule(filteredAdHocDF, oldActivityName, newActivityName, chosenDays)
     if not isSuccess:
-        responseData = {"Status": "400", "Message": f"{oldActivityName} (old activity) cannnot be found in some/all days of patient schedule for {data.StartDate.split('T')[0]} to {data.EndDate.split('T')[0]}", "Data": ""} 
+        responseData = {"Status": "400", "Message": f"{oldActivityName} (old activity) cannnot be found in some/all days of patient schedule for {startDate.split('T')[0]} to {endDate.split('T')[0]}", "Data": ""} 
         return JSONResponse(jsonable_encoder(responseData))
                 
     
@@ -324,6 +361,10 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
     db_tables: DBTABLES = request.app.state.config["DB_TABLES"]
     schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
     responseData = ScheduleWriter.updateDB(schedule_table, filteredAdHocDF, chosenDays)
+    if responseData.get("Status") == "200":
+        # so the explainer and repair know it before ADHOC_CREATED arrives
+        note_adhoc(data.PatientID, parse(startDate).date(), parse(endDate).date(), oldActivityName, newActivityName)
+    explain_router.reset_cache()  # saved week changed
     
     return JSONResponse(jsonable_encoder(responseData))
 
@@ -337,7 +378,7 @@ def adhoc_change_schedule(request: Request, data: AdHocRequest):
 
 
 @router.api_route("/systemTest/", methods=["GET"])
-async def system_report(request: Request): 
+async def system_report(request: Request, current_user: JWTPayload = Depends(require_supervisor)):
     
     systemTestArray = []
     statisticsArray = []
@@ -355,20 +396,20 @@ async def system_report(request: Request):
         return JSONResponse(jsonable_encoder(responseData))
     
 
-    # 1. All patient weekly schedule is generated"
+    # 1. Every patient has a weekly schedule
     systemTestArray.append(allPatientScheduleGeneratedSystemTest(weeklyScheduleViewDF, patientsDF))
 
-    # 2. All compulsory activities are scheduled at correct time slots  
+    # 2. All compulsory activities are scheduled at correct time slots
     systemTestArray.append(allCompulsoryActivitiesAtCorrectSlotSystemTest(weeklyScheduleViewDF, compulsoryActivitiesDF, request))
 
-    # 3. Only centre activities "not expired" are scheduled
+    # 3. No expired centre activities are scheduled
     systemTestArray.append(nonExpiredCentreActivitiesSystemTest(activitiesDF, weeklyScheduleViewDF))
 
-    # 4. Fixed time centre activities are scheduled in the correct timeslot (fixed and routine activities)
+    # 4. Fixed-time and routine activities are scheduled in their designated slot
     systemTestArray.append(fixedActivitiesScheduledCorrectlySystemTest(activitiesDF, validRoutinesDF, weeklyScheduleViewDF, request))
 
-    # 5. Group activities meet the minimum number of people   
-    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF))
+    # 5. Group activities reach minimum attendance per session
+    systemTestArray.append(groupActivitiesMinSizeSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))
 
     # 6. Group activities are scheduled in the correct timeslot
     systemTestArray.append(groupActivitiesCorrectTimeslotSystemTest(groupActivitiesDF, weeklyScheduleViewDF, request))

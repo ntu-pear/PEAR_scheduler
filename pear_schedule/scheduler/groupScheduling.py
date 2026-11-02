@@ -5,6 +5,7 @@ from pear_schedule.db_utils.views import PatientsOnlyView, GroupActivitiesOnlyVi
 import logging
 
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,11 @@ class GroupActivityScheduler(BaseScheduler):
                     patients.remove(id)
 
 
+            disliked_ids = set(groupPreferenceDF[
+                (groupPreferenceDF["CentreActivityID"] == centreActivityID) &
+                (groupPreferenceDF["IsLike"].astype(int) == -1)
+            ]["PatientID"])
+
             # Find recommended patients of activity
             recommendedDF = groupRecommendationDF[
                 (groupRecommendationDF["CentreActivityID"] == centreActivityID) &
@@ -75,7 +81,15 @@ class GroupActivityScheduler(BaseScheduler):
                     activityMap[(activityTitle, duration)].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
-            
+                    trace.note_reason(("group", id, activityTitle),
+                                      "recommended_over_dislike" if id in disliked_ids else "recommended")
+
+            # patients who dislike it are kept out, unless recommended
+            for id in disliked_ids - set(recommendedDF["PatientID"]):
+                activityExclusionMap[activityTitle].add(id)
+                if id in patients:
+                    patients.remove(id)
+
         
             # Find preferred patients of activity
             preferredDF = groupPreferenceDF[
@@ -87,6 +101,7 @@ class GroupActivityScheduler(BaseScheduler):
                     activityMap[(activityTitle, duration)].add(id)
                     patients.remove(id)
                     patientActivityCountMap[id] += 1
+                    trace.note_reason(("group", id, activityTitle), "liked")
 
         
         toRemoveList = []
@@ -108,12 +123,16 @@ class GroupActivityScheduler(BaseScheduler):
                 shortfall = activityMinSizeMap[activityTitle] - activityCount
                 if len(leftOverPatients) < shortfall: # not enough to hit minimum requirement
                     toRemoveList.append(key)
+                    trace.record(trace.STAGE_GROUP, None, trace.DROPPED, "below_min_group_size",
+                                 activity=activityTitle, round=1, interested=activityCount,
+                                 available_to_fill=len(leftOverPatients), min_people=int(activityMinSizeMap[activityTitle]))
                     continue
 
                 elif len(leftOverPatients) == shortfall: # just nice enough to hit min requirement
                     for id in leftOverPatients:
                         activityMap[(activityTitle, duration)].add(id)
                         patientActivityCountMap[id] += 1 
+                        trace.note_reason(("group", id, activityTitle), "filled_to_min_size")
 
                 else: # more leftover patients than shortfall, need to allocate patients with lower group activity count
                     minHeap = [(patientActivityCountMap[id], id) for id in leftOverPatients]
@@ -123,6 +142,7 @@ class GroupActivityScheduler(BaseScheduler):
                         _, pid = minHeap[i]
                         activityMap[(activityTitle, duration)].add(pid)
                         patientActivityCountMap[pid] += 1
+                        trace.note_reason(("group", pid, activityTitle), "filled_to_min_size")
 
             
         # Need to remove because nvr hit min size requirement
@@ -173,6 +193,9 @@ class GroupActivityScheduler(BaseScheduler):
             patientSet = totalPatientSet.copy()
             availablePatients = patientSet.difference(activityExclusionMap[activityTitle])
             if len(availablePatients) < activityMinSizeMap[activityTitle]: # not enough available patients to hit min size
+                trace.record(trace.STAGE_GROUP, None, trace.DROPPED, "below_min_group_size",
+                             activity=activityTitle, round=2, available=len(availablePatients),
+                             min_people=int(activityMinSizeMap[activityTitle]))
                 continue
 
 
@@ -187,6 +210,7 @@ class GroupActivityScheduler(BaseScheduler):
                 if pid not in activityExclusionMap[activityTitle]: # not being excluded 
                     secondActivityMap[key].add(pid)
                     patientActivityCountMap[pid] += 1
+                    trace.note_reason(("group", pid, activityTitle), "filled_to_min_size")
         
        
         logger.info("Second Round Scheduling")
@@ -221,7 +245,7 @@ class GroupActivityScheduler(BaseScheduler):
             while toAdd != 0 and canBeScheduledSet:
                 activity = canBeScheduledSet.pop()
                 activitySlot = activityToTimeSlotMap[activity]
-                activityDuration = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]["MinDuration"]
+                activityDuration = groupActivityDF[groupActivityDF["ActivityTitle"] == activity].iloc[0]["MinDuration"]
                 i = 0
                 bin: list = secondTimeTable[pid][activitySlot]
                 slots = activityDuration // cls.config["MIN_ACTIVITY_DURATION"]
@@ -233,6 +257,7 @@ class GroupActivityScheduler(BaseScheduler):
                     for j in range(slots):
                         secondTimeTable[pid][activitySlot][j] = activity
                     toAdd -= 1
+                    trace.note_reason(("group", pid, activity), "top_up_to_weekly_target")
                 # if secondTimeTable[pid][activitySlot][0] == "" and pid not in activityExclusionMap[activity]:
                 #     secondTimeTable[pid][activitySlot][0] = activity
                 #     toAdd -= 1
@@ -270,7 +295,7 @@ class GroupActivityScheduler(BaseScheduler):
         If the activity is not fixed, then it is assumed to be schedulable in any group time slot.
         """
         def get_possible_slots(activity):
-            row = groupActivityDF.query(f"ActivityTitle == '{activity}'").iloc[0]
+            row = groupActivityDF[groupActivityDF["ActivityTitle"] == activity].iloc[0]
             if int(row['IsFixed']) == 1:
                 return cls.getFixedTimeArr(row['FixedTimeSlots'])
             else:
@@ -333,7 +358,7 @@ class GroupActivityScheduler(BaseScheduler):
                 list(activityMap.keys()),
                 key=lambda a: (
                     slot_count(a[0]),
-                    int(groupActivityDF.query(f"ActivityTitle == '{a[0]}'").iloc[0]['IsFixed']) == 0,  # fixed
+                    int(groupActivityDF[groupActivityDF["ActivityTitle"] == a[0]].iloc[0]['IsFixed']) == 0,  # fixed
                 )
             )
 
@@ -350,22 +375,23 @@ class GroupActivityScheduler(BaseScheduler):
     """
     @classmethod
     def getFixedTimeArr(cls, fixedTimeSlots):
+        timeSlotMappingReverse = {
+            slot: i for i, slot in enumerate(cls.config["GROUP_TIMESLOT_MAPPING"])
+        }
+
+        if not isinstance(fixedTimeSlots, str) or not fixedTimeSlots.strip():
+            raise ValueError(f"Invalid group time slots: {fixedTimeSlots!r}")
+
         fixedTimeArr = fixedTimeSlots.split(",")
-        validTimeSlots = [x for x in fixedTimeArr if x in cls.config["GROUP_TIMESLOT_MAPPING"]]
-        if len(validTimeSlots):
-            raise ValueError(f"Invalid group time slots")
-
-        timeSlotMappingReverse = {}
-        for i , slot in enumerate(cls.config["GROUP_TIMESLOT_MAPPING"]):
-            timeSlotMappingReverse[slot] = i
-
-        # Reformat data
-        for i in range(len(validTimeSlots)):
-            value = validTimeSlots[i]
-            valueArr = value.split("-")
-            day = int(valueArr[0])
-            slot = int(valueArr[1])
-            validTimeSlots[i] = timeSlotMappingReverse[(day,slot)]
+        validTimeSlots = []
+        for entry in fixedTimeArr:
+            parts = entry.split("-")
+            if len(parts) != 2 or not all(p.strip().isdigit() for p in parts):
+                raise ValueError(f"Invalid group time slots: {entry!r}")
+            key = (int(parts[0]), int(parts[1]))
+            if key not in timeSlotMappingReverse:
+                raise ValueError(f"Invalid group time slots: {entry!r}")
+            validTimeSlots.append(timeSlotMappingReverse[key])
 
         return validTimeSlots
 

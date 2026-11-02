@@ -2,7 +2,9 @@ import pytest
 from unittest import mock
 from datetime import date, datetime
 
+from sqlalchemy.exc import IntegrityError
 from pear_schedule.crud.ref_centre_activity_crud import (
+    ActivityNotSyncedError,
     create_ref_centre_activity,
     update_ref_centre_activity,
     delete_ref_centre_activity,
@@ -64,7 +66,7 @@ def test_create_ref_centre_activity_success(mock_idempotent_process, db_session_
     """Should create a new centre activity successfully"""
 
     # Mock no existing centre activity found
-    db_session_mock.query().filter().first.side_effect = [None, sample_centre_activity]
+    db_session_mock.query().filter().first.side_effect = [None, (1,), sample_centre_activity]  # existing, parent activity, created
 
     # Mock idempotency service returns not duplicate
     def fake_process_idempotent(db, correlation_id, event_type, aggregate_id, processed_by, operation):
@@ -92,7 +94,7 @@ def test_create_ref_centre_activity_skip_duplicate_check(mock_records_processed_
     """Should create a new centre activity without duplicate check"""
 
     # Mock no existing centre activity found
-    db_session_mock.query().filter().first.side_effect = [None, sample_centre_activity]
+    db_session_mock.query().filter().first.side_effect = [None, (1,), sample_centre_activity]  # existing, parent activity, created
 
     mock_records_processed_event.return_value = None
 
@@ -149,7 +151,7 @@ def test_create_ref_centre_activity_duplicate_detected(mock_idempotent_process, 
 def test_create_ref_centre_activity_skip_duplicate_check_record_fail(mock_record_processed_event, db_session_mock, sample_created_ref_centre_activity_data, sample_centre_activity):
     """Skip duplicate check but record_processed_event fails (non-critical)"""
 
-    db_session_mock.query().filter().first.side_effect = [None, sample_centre_activity]
+    db_session_mock.query().filter().first.side_effect = [None, (1,), sample_centre_activity]  # existing, parent activity, created
 
     mock_record_processed_event.side_effect = Exception("DB not reachable")
 
@@ -171,7 +173,7 @@ def test_create_ref_centre_activity_creation_fails(db_session_mock, sample_creat
     """Should raise Exception if centre activity creation verification fails"""
 
     # Both queries return None → simulate failed insert
-    db_session_mock.query().filter().first.side_effect = [None, None]
+    db_session_mock.query().filter().first.side_effect = [None, (1,), None]
 
     with pytest.raises(Exception, match="Failed to create centre activity"):
         create_ref_centre_activity(
@@ -181,6 +183,69 @@ def test_create_ref_centre_activity_creation_fails(db_session_mock, sample_creat
             created_by="test_user",
             skip_duplicate_check=True
         )
+
+# ==== activity not synced yet ====
+def test_activity_not_synced_error_is_retryable_kind():
+    # ValueError is marked processed as permanent, IntegrityError is read as a duplicate
+    assert not issubclass(ActivityNotSyncedError, ValueError)
+    assert not issubclass(ActivityNotSyncedError, IntegrityError)
+
+
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.mark_as_processed')
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.is_already_processed', return_value=False)
+def test_create_before_activity_synced_raises(mock_processed, mock_mark, db_session_mock, sample_created_ref_centre_activity_data):
+    """Used to hit the FK, which process_idempotent took as a duplicate, so the event was dropped"""
+    db_session_mock.query().filter().first.side_effect = [None, None]  # not there yet, activity missing
+
+    with pytest.raises(ActivityNotSyncedError):
+        create_ref_centre_activity(
+            db=db_session_mock,
+            centre_activity=sample_created_ref_centre_activity_data,
+            correlation_id="corr_parent_missing",
+            created_by="test_user"
+        )
+
+    db_session_mock.execute.assert_not_called()
+    db_session_mock.commit.assert_not_called()
+    db_session_mock.rollback.assert_called_once()
+    mock_mark.assert_not_called()
+
+
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.record_processed_event')
+def test_create_sync_without_recording(mock_record, db_session_mock, sample_created_ref_centre_activity_data, sample_centre_activity):
+    """The sync update already recorded the event, so its fallback create doesn't record it again"""
+    db_session_mock.query().filter().first.side_effect = [None, (1,), sample_centre_activity]
+
+    result, was_duplicate = create_ref_centre_activity(
+        db=db_session_mock,
+        centre_activity=sample_created_ref_centre_activity_data,
+        correlation_id="corr_sync",
+        created_by="test_user",
+        skip_duplicate_check=True,
+        record_event=False
+    )
+
+    assert result == sample_centre_activity and was_duplicate is False
+    db_session_mock.execute.assert_called_once()
+    mock_record.assert_not_called()
+
+
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.record_processed_event')
+def test_update_to_activity_not_synced_raises(mock_record, db_session_mock, sample_updated_ref_centre_activity_data, sample_centre_activity):
+    db_session_mock.query().filter().first.side_effect = [sample_centre_activity, None]  # row, new activity 10 missing
+
+    with pytest.raises(ActivityNotSyncedError):
+        update_ref_centre_activity(
+            db=db_session_mock,
+            centre_activity_id=1,
+            centre_activity_update=sample_updated_ref_centre_activity_data,
+            correlation_id="corr_upd_parent",
+            skip_duplicate_check=True
+        )
+
+    assert sample_centre_activity.ActivityID == 1
+    db_session_mock.commit.assert_not_called()
+
 
 # ==== update_ref_centre_activity tests ====
 @mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.process_idempotent')
@@ -250,8 +315,9 @@ def test_update_ref_centre_activity_duplicate_event(mock_idempotent_process, db_
     assert result == sample_centre_activity
     db_session_mock.commit.assert_not_called()
 
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.is_already_processed', return_value=False)
 @mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.record_processed_event')
-def test_update_ref_centre_activity_skip_duplicate_check(mock_record_processed_event, db_session_mock, sample_updated_ref_centre_activity_data, sample_centre_activity):
+def test_update_ref_centre_activity_skip_duplicate_check(mock_record_processed_event, mock_processed, db_session_mock, sample_updated_ref_centre_activity_data, sample_centre_activity):
     """Should update an existing centre activity without duplicate check"""
 
     # Mock existing centre_activity found
@@ -272,8 +338,27 @@ def test_update_ref_centre_activity_skip_duplicate_check(mock_record_processed_e
     db_session_mock.commit.assert_called_once()
     mock_record_processed_event.assert_called_once()
 
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.is_already_processed', return_value=True)
 @mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.record_processed_event')
-def test_update_ref_centre_activity_skip_duplicate_check_record_fail(mock_record_processed_event, db_session_mock, sample_updated_ref_centre_activity_data, sample_centre_activity):
+def test_update_sync_redelivery_is_not_recorded_twice(mock_record, mock_processed, db_session_mock, sample_updated_ref_centre_activity_data):
+    """A second insert of the same event used to fail the flush, so the commit and every retry failed"""
+    db_session_mock.query().filter().first.return_value = None  # still missing, the fallback create will retry
+
+    result, was_duplicate = update_ref_centre_activity(
+        db=db_session_mock,
+        centre_activity_id=40,
+        centre_activity_update=sample_updated_ref_centre_activity_data,
+        correlation_id="corr_sync_again",
+        skip_duplicate_check=True
+    )
+
+    assert result is None and was_duplicate is False
+    mock_record.assert_not_called()
+    db_session_mock.commit.assert_called_once()
+
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.is_already_processed', return_value=False)
+@mock.patch('pear_schedule.crud.ref_centre_activity_crud.IdempotencyService.record_processed_event')
+def test_update_ref_centre_activity_skip_duplicate_check_record_fail(mock_record_processed_event, mock_processed, db_session_mock, sample_updated_ref_centre_activity_data, sample_centre_activity):
     """Skip duplicate check but record_processed_event fails (non-critical)"""
 
     db_session_mock.query().filter().first.return_value = sample_centre_activity

@@ -3,7 +3,9 @@ import datetime
 import pandas as pd
 from typing import List, Mapping, Dict
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 from pear_schedule.db_utils.views import MedicationView, CaregiverAllocatedView, ExistingScheduleView
+from pear_schedule.db_utils.utils import building_for, timeslot_index
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,10 @@ class medicationScheduleData:
             # print(f"PatientID: {pid} | Medication: {row['PrescriptionName']}")
             
             # ======== Check what is the start and end date of the medication in the given week ========
-            today = datetime.datetime.now()
+            today = building_for() or datetime.datetime.now()
             start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
             start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-            end_of_week = start_of_week + datetime.timedelta(days=4, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+            end_of_week = start_of_week + datetime.timedelta(days=len(cls.config["OPEN_DAYS"]) - 1, hours=23, minutes=59, seconds=59, microseconds=0)  # last open day -> 23:59:59
             
             if startDateTime <= start_of_week: # Medication starts either before or start of this week
                 pass
@@ -49,7 +51,7 @@ class medicationScheduleData:
 
             
             # ======== Inserting medication into the scheduler ========
-            slots = administerTime.split(",")
+            slots = administer_times(administerTime)
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
             assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId'] or allocation_row.iloc[0]['supervisorId']) if not allocation_row.empty \
                 else "UNASSIGNED"
@@ -114,28 +116,32 @@ class medicationScheduler(BaseScheduler):
         medicationSchedule_ref = medicationScheduleData(cls)
         medicationSchedules: Mapping[int, List[Dict]] = medicationSchedule_ref.medicationSchedules
         for pid, med in medicationSchedules.items():
-            for med_info in med:
-              # unpack
-              day, hour, slot, prescription, dosage, instruction = (
-                  med_info['day'],
-                  med_info['hour'],
-                  med_info['administerTime'],
-                  med_info['prescription'],
-                  med_info['dosage'],
-                  med_info['instruction']
-              )
+            try:
+                for med_info in med:
+                  # unpack
+                  day, hour, slot, prescription, dosage, instruction = (
+                      med_info['day'],
+                      med_info['hour'],
+                      med_info['administerTime'],
+                      med_info['prescription'],
+                      med_info['dosage'],
+                      med_info['instruction']
+                  )
 
-              # fill schedule
-              s = "{begin}@{slot}: {prescription}({dosage}){end}"
-              s = s.format(
-                begin = " | Give Medication" if "Give Medication" not in patientSchedules[pid][day][hour] else ", Give Medication",
-                slot = slot,
-                prescription = prescription,
-                dosage = dosage,
-                end = "" if instruction is None or not instruction.strip() or instruction.lower() in ["nil", "-"] else f"**{instruction}"
-              )
-                            
-              patientSchedules[pid][day][hour] += s
+                  # fill schedule
+                  s = "{begin}@{slot}: {prescription}({dosage}){end}"
+                  s = s.format(
+                    begin = " | Give Medication" if "Give Medication" not in patientSchedules[pid][day][hour] else ", Give Medication",
+                    slot = slot,
+                    prescription = prescription,
+                    dosage = dosage,
+                    end = "" if instruction is None or not instruction.strip() or instruction.lower() in ["nil", "-"] else f"**{instruction}"
+                  )
+
+                  patientSchedules[pid][day][hour] += s
+            except Exception as e:
+                logger.exception(f"Medication scheduling failed for patient {pid}, skipping")
+                trace.record(trace.STAGE_MEDICATION, pid, trace.ERROR, "stage_exception", error=repr(e))
         
         return medicationSchedule_ref
     
@@ -166,7 +172,7 @@ class medicationScheduler(BaseScheduler):
             allocation_row: pd.DataFrame = allocationDF[allocationDF['patientId'] == pid]
             assigned_caregiver: str = (allocation_row.iloc[0]['caregiverId'].strip() or allocation_row.iloc[0]['tempCaregiverId'] or allocation_row.iloc[0]['supervisorId']) if not allocation_row.empty \
                 else "UNASSIGNED"
-            administerTimes: list = administerTimes.split(",")
+            administerTimes: list = administer_times(administerTimes)
             for time in administerTimes:
                 qualified_day = today.strftime("%A")
                 if qualified_day not in cls.config["OPEN_DAYS"]:
@@ -185,6 +191,11 @@ class medicationScheduler(BaseScheduler):
         return medicationSchedules
 
 
+def administer_times(value) -> List[str]:
+    """'0930, 1300' -> ['0930', '1300']"""
+    return [t.strip() for t in str(value or "").split(",") if t.strip()]
+
+
 def getTimeSlot(cls, day, time):
     """
     getTimeSlot() returns the index of the time slot based on the given time.
@@ -198,7 +209,11 @@ def getTimeSlot(cls, day, time):
         E.g. 1730 administration time returns 8, 0830 returns -1
     """
     if (not time.strip()): return -1
-    parsed_time = datetime.datetime.strptime(time, "%H%M")
+    try:
+        parsed_time = datetime.datetime.strptime(time.strip(), "%H%M")
+    except ValueError:
+        # one bad time only skips that dose
+        logger.warning(f"Skipping medication time {time!r}, expected HHMM")
+        return -1
     timeDiff_fromOpening: datetime.timedelta = parsed_time-datetime.datetime.strptime(cls.config["WORKING_HOURS"].get(day.lower()).get("open"), "%H:%M")
-    numSlotsFromOpening: int = (timeDiff_fromOpening // -datetime.timedelta(minutes=cls.config["MIN_ACTIVITY_DURATION"]-1)) * -1
-    return 0 if timeDiff_fromOpening == datetime.timedelta() else numSlotsFromOpening - 1
+    return timeslot_index(timeDiff_fromOpening, cls.config["MIN_ACTIVITY_DURATION"])

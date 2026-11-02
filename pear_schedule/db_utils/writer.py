@@ -3,17 +3,22 @@ import logging
 import traceback
 import pandas as pd
 import json
-from typing import Mapping, List, Dict
+from typing import Callable, Mapping, List, Dict, Optional
 
-from sqlalchemy import Connection, column, delete, select, func, literal_column, column
+from sqlalchemy import Connection, column, delete, select, func, literal_column, update
 from pear_schedule.db import DB
+from pear_schedule.db_utils.utils import get_week_start, get_week_end, schedule_day_columns
 from pear_schedule.db_utils.views import ExistingScheduleView, DeletedMedicationView, WeeklyScheduleView
 from pear_schedule.scheduler.medicationScheduling import medicationScheduleData
 from pear_schedule.utils import ConfigDependant, DBTABLES
 from pear_schedule.models.schedule_model import Schedule
 from pear_schedule.models.medication_schedule_model import MedicationSchedule
 from pear_schedule.models.ref_patient_medication_model import RefPatientMedication
-from pear_schedule.api.utils import MedicationAlreadyAdministeredException, MedicationScheduleNotFoundException
+from pear_schedule.api.utils import (
+    MedicationAlreadyAdministeredException,
+    MedicationNotAdministeredException,
+    MedicationScheduleNotFoundException,
+)
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -22,6 +27,59 @@ logger = logging.getLogger(__name__)
 
 # TODO: REPLACE THIS FOR AUDIT / LOGGING
 SYSTEM_USER_ID = "SYSTEM"
+
+WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _past_day_columns(start_of_week: datetime.datetime, today: datetime.datetime) -> set:
+    """Day columns already in the past, shouldn't be overwritten."""
+    return {
+        day for i, day in enumerate(WEEKDAYS)
+        if (start_of_week.date() + datetime.timedelta(days=i)) < today.date()
+    }
+
+
+def _past_medication_dates(start_of_week: datetime.datetime, today: datetime.datetime, date_format: str) -> set:
+    """Medication dates already in the past, shouldn't be overwritten."""
+    return {
+        (start_of_week.date() + datetime.timedelta(days=i)).strftime(date_format)
+        for i in range(7)
+        if (start_of_week.date() + datetime.timedelta(days=i)) < today.date()
+    }
+
+
+def _merge_medication_schedule(existing_json: str, new_data: Dict, past_dates: set) -> str:
+    """Keeps past dates from existing_json, uses new_data for the rest."""
+    try:
+        existing = json.loads(existing_json) if existing_json else {}
+    except (TypeError, ValueError):
+        existing = {}
+
+    merged = dict(new_data)
+    for date_str in past_dates:
+        if date_str in existing:
+            merged[date_str] = existing[date_str]
+        else:
+            merged.pop(date_str, None)
+    return json.dumps(merged)
+
+def _expired_medication_rows(rows: pd.DataFrame, today: datetime.date) -> pd.DataFrame:
+    """Medication schedule rows dated before today."""
+    dates = pd.to_datetime(rows["AdministerDate"]).dt.date
+    return rows[dates < today].copy()
+
+
+def _group_medication_log(log: pd.DataFrame, date_format: str) -> Dict[int, Dict[str, List[Dict]]]:
+    """Groups log rows as {ScheduleID: {date: [records]}}, using each row's own date."""
+    log = log.copy()
+    log["AdministerDate"] = pd.to_datetime(log["AdministerDate"]).dt.strftime(date_format)
+    grouped = {}
+    for (schedule_id, date_str), rows in log.groupby(["ScheduleID", "AdministerDate"]):
+        records = rows.drop(columns=["ScheduleID", "AdministerDate"])
+        # to_json handles Timestamps, NaT and numpy types that json.dumps can't
+        grouped.setdefault(int(schedule_id), {})[date_str] = json.loads(records.to_json(orient="records", date_format="iso"))
+    return grouped
+
 
 class ScheduleWriter(ConfigDependant):
     @classmethod
@@ -52,43 +110,26 @@ class ScheduleWriter(ConfigDependant):
         schedule_table = DB.schema.tables[db_tables.SCHEDULE_TABLE]
 
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
-        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
+        start_of_week = get_week_start()
+        end_of_week = get_week_end()
+        past_days = _past_day_columns(start_of_week, today)
+        past_medication_dates = _past_medication_dates(start_of_week, today, cls.config["STD_DATE_FORMAT"])
 
         medication_schedule: Mapping[int, Dict[datetime.date, List[Dict]]] = medicationScheduleRef.reformatMedicationScheduleData(cls)
 
         logger.info(f"writing schedules to db for week start {start_of_week}")
         try:
             for p, slots in patientSchedules.items():
-                
-                days = cls.config["OPEN_DAYS"]
-                converted_schedule = {}
+                converted_schedule = schedule_day_columns(slots, cls.config)
 
-                for i, day in enumerate(days):
-                    activities = {}
-                    # skip_ahead = 0
-                    for j, activity in enumerate(slots[i]):
-                        # if skip_ahead:
-                        #    skip_ahead -= 1
-                        #    continue
+                existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
+                existing_medication_schedule = (
+                    existingScheduleDF.iloc[0]["MedicationSchedule"] if len(existingScheduleDF) > 0 else None
+                )
+                medication_schedule_json = _merge_medication_schedule(
+                    existing_medication_schedule, medication_schedule.get(int(p), {}), past_medication_dates
+                )
 
-                        # if activities share the same title, assume that they are the same and combine.
-                        key = cls.config["DAY_TIMESLOTS"][j]
-                        # k = j
-                        # # find longest consecutive sequence of same activity
-                        # merged = key.split("-")
-                        # while k + 1 < len(slots[i]) and slots[i][k] == slots[i][k+1]:
-                        #    k+=1
-                        #    merged+=cls.config["DAY_TIMESLOTS"][k].split("-")
-                        
-                        # # storing json as VARCHAR(max) is still ok; VARCHAR for non-unicode, NVARCHAR for unicode
-                        # key = f"{merged[0]}-{merged[-1]}" if k > j else key
-                        activities[key] = 'Free and Easy' if not activity else activity
-                        # if k > j: skip_ahead = k - j
-                    # activities = "--".join(['Free and Easy' if activity == '' else activity for activity in slots[i]])
-                    converted_schedule[day] = json.dumps(activities)
-                
                 schedule_data = {
                     ## "ScheduleID": _ (not necessary as it is a primary key which will automatically be created)
                     "PatientID": p,
@@ -101,18 +142,17 @@ class ScheduleWriter(ConfigDependant):
                     "Friday": converted_schedule.get("Friday", ""),
                     "Saturday": converted_schedule.get("Saturday", ""),
                     "Sunday": converted_schedule.get("Sunday", ""),
-                    "MedicationSchedule": json.dumps(medication_schedule.get(int(p), {})),
+                    "MedicationSchedule": medication_schedule_json,
                     # "MedicationLog": "",
-                    "IsDeleted": 0, ## Mandatory Field 
-                    "UpdatedDateTime": today, ## Mandatory Field 
+                    "IsDeleted": 0, ## Mandatory Field
+                    "UpdatedDateTime": today, ## Mandatory Field
                     "CreatedById": SYSTEM_USER_ID,
                     "ModifiedById": SYSTEM_USER_ID
                 }
 
                 if not overwriteExisting:
                     # check if have existing schedule, if have then just ignore
-                    existingScheduleDF = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week, patient_id=p)
-                    schedule_data["CreatedDateTime"] = today ## Mandatory Field 
+                    schedule_data["CreatedDateTime"] = today ## Mandatory Field
                     if len(existingScheduleDF) > 0:
                         null_schedule = False
                         for day in cls.config["OPEN_DAYS"]:
@@ -121,7 +161,8 @@ class ScheduleWriter(ConfigDependant):
                               break
                         if not null_schedule:
                            continue
-                        schedule_instance = schedule_table.update().values(schedule_data).where(
+                        update_data = {k: v for k, v in schedule_data.items() if k not in past_days}
+                        schedule_instance = schedule_table.update().values(update_data).where(
                             schedule_table.c["ScheduleID"] == int(existingScheduleDF.iloc[0]["ScheduleID"])
                         )
                     else:
@@ -142,7 +183,8 @@ class ScheduleWriter(ConfigDependant):
 
                         schedule_data.update(schedule_meta[p])
                         schedule_data.pop("ScheduleID")
-                        schedule_instance = schedule_table.update().values(schedule_data).where(
+                        update_data = {k: v for k, v in schedule_data.items() if k not in past_days}
+                        schedule_instance = schedule_table.update().values(update_data).where(
                             schedule_table.c["ScheduleID"] == schedule_meta[p]["ScheduleID"]
                         )
                 conn.execute(schedule_instance)
@@ -220,42 +262,99 @@ class MedicationScheduleWrite(ConfigDependant):
               return False
     
     @classmethod
-    def update(cls, medication_data) -> datetime:
+    def update(cls, medication_data, before_commit: Optional[Callable[[int], None]] = None) -> datetime:
+      """Marks one dose. before_commit(medication_id) runs after the row is updated and before
+      the commit; if it raises, nothing is saved here."""
       with DB.get_engine().begin() as conn:
         with Session(bind=conn) as session:
-          # returns None if no results
-          try: 
-            # get MedicationID
-            medication_record = session.execute(select(RefPatientMedication).where(
-               RefPatientMedication.PatientID == medication_data.PatientID,
-               RefPatientMedication.PrescriptionName == medication_data.PrescriptionName
-            )).scalar_one()
-
-            # get ScheduleID
-            schedule_record = session.execute(select(Schedule).where(
-               Schedule.PatientID == medication_data.PatientID,
-               Schedule.EndDate >= medication_data.AdministerDate
-            )).scalar_one()
-            
-            composite_key = {
-               "MedicationID": medication_record.MedicationID,
-               "ScheduleID": schedule_record.ScheduleID,
-               "AdministerDate": medication_data.AdministerDate,
-               "AdministerTime": medication_data.AdministerTime
-            }
-            existingSchedule = session.get(MedicationSchedule, composite_key)
-            if not existingSchedule: raise MedicationScheduleNotFoundException()
-            if existingSchedule.Status == '1': raise MedicationAlreadyAdministeredException()
-            existingSchedule.Status = medication_data.Status
-            existingSchedule.AdministeredBy = medication_data.AdministeredBy
+          try:
+            # find the dose row directly, so two courses of the same drug or several
+            # schedules for the patient don't break the lookup
+            doses = session.execute(
+              select(MedicationSchedule.MedicationID, MedicationSchedule.ScheduleID)
+              .join(RefPatientMedication, MedicationSchedule.MedicationID == RefPatientMedication.MedicationID)
+              .where(
+                RefPatientMedication.PatientID == medication_data.PatientID,
+                RefPatientMedication.PrescriptionName == medication_data.PrescriptionName,
+                MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+              )
+            ).all()
+            if not doses: raise MedicationScheduleNotFoundException()
 
             timestamp = datetime.datetime.now()
-            existingSchedule.ActualAdministerTime = timestamp
-            session.commit()
-            return timestamp
+            for dose in doses:
+              # Status check is part of the UPDATE, so two caregivers can't both mark the same dose
+              result = session.execute(
+                update(MedicationSchedule)
+                .where(
+                  MedicationSchedule.MedicationID == dose.MedicationID,
+                  MedicationSchedule.ScheduleID == dose.ScheduleID,
+                  MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                  MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+                  MedicationSchedule.Status == '0',
+                )
+                .values(
+                  Status=medication_data.Status,
+                  AdministeredBy=medication_data.AdministeredBy,
+                  ActualAdministerTime=timestamp,
+                )
+                .execution_options(synchronize_session=False)
+              )
+              if result.rowcount == 1:
+                if before_commit is not None:
+                  before_commit(dose.MedicationID)
+                session.commit()
+                return timestamp
+            raise MedicationAlreadyAdministeredException()
           except Exception as e:
             logger.exception(e)
             logger.error(f"Error updating medication schedule: {traceback.format_exc()}")
+            session.rollback()
+            raise e
+
+    @classmethod
+    def undo(cls, medication_data, before_commit: Optional[Callable[[int], None]] = None) -> None:
+      """Puts a given dose back to not given. before_commit(medication_id) runs after the row is
+      updated and before the commit; if it raises, nothing is saved here."""
+      with DB.get_engine().begin() as conn:
+        with Session(bind=conn) as session:
+          try:
+            doses = session.execute(
+              select(MedicationSchedule.MedicationID, MedicationSchedule.ScheduleID)
+              .join(RefPatientMedication, MedicationSchedule.MedicationID == RefPatientMedication.MedicationID)
+              .where(
+                RefPatientMedication.PatientID == medication_data.PatientID,
+                RefPatientMedication.PrescriptionName == medication_data.PrescriptionName,
+                MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+              )
+            ).all()
+            if not doses: raise MedicationScheduleNotFoundException()
+
+            for dose in doses:
+              # Status check is part of the UPDATE, so only a given dose can be undone
+              result = session.execute(
+                update(MedicationSchedule)
+                .where(
+                  MedicationSchedule.MedicationID == dose.MedicationID,
+                  MedicationSchedule.ScheduleID == dose.ScheduleID,
+                  MedicationSchedule.AdministerDate == medication_data.AdministerDate,
+                  MedicationSchedule.AdministerTime == medication_data.AdministerTime,
+                  MedicationSchedule.Status == '1',
+                )
+                .values(Status='0', AdministeredBy=None, ActualAdministerTime=None)
+                .execution_options(synchronize_session=False)
+              )
+              if result.rowcount == 1:
+                if before_commit is not None:
+                  before_commit(dose.MedicationID)
+                session.commit()
+                return
+            raise MedicationNotAdministeredException()
+          except Exception as e:
+            logger.exception(e)
+            logger.error(f"Error undoing medication schedule: {traceback.format_exc()}")
             session.rollback()
             raise e
 
@@ -266,7 +365,7 @@ class MedicationScheduleWrite(ConfigDependant):
 
         # Need to get the ScheduleID, retrieve existing schedule
         today = datetime.datetime.now()
-        start_of_week = datetime.datetime.combine(today.date() - datetime.timedelta(days=today.weekday()), datetime.datetime.min.time()) # Monday 00:00:00
+        start_of_week = get_week_start()
         # get existing schedules for the week for all patients, pid should be unique in this df
         existingSchedules: pd.DataFrame = ExistingScheduleView.get_data(conn=conn, start_dateTime=start_of_week)
 
@@ -286,6 +385,7 @@ class MedicationScheduleWrite(ConfigDependant):
                     "AdministerTime": med["AdministerTime"],
                     "AdministerDate": today_str,
                     "AssignedTo": med["AssignedTo"],
+                    "Status": "0",  # the model default doesn't apply to this insert
                 }
 
                 composite_key_filters = [
@@ -307,10 +407,9 @@ class MedicationScheduleWrite(ConfigDependant):
     @classmethod
     def __writeRecordsUsingSchedules(cls, conn: Connection, schedules: Mapping[int, List[int]]) -> bool:
         today = datetime.datetime.now()
-        start_of_week = today - datetime.timedelta(days=today.weekday())  # Monday -> 00:00:00
-        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_week = start_of_week + datetime.timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=0)  # Sunday -> 23:59:59
-        
+        start_of_week = get_week_start()
+        end_of_week = get_week_end()
+
         schedule_table = DB.schema.tables[cls.config["DB_TABLES"].SCHEDULE_TABLE]
         for patient_id, meds in schedules.items():
           if len(meds) == 0: continue
@@ -359,7 +458,7 @@ class MedicationScheduleWrite(ConfigDependant):
         # if there are existing records. First filter out any records that have expired
         today = datetime.datetime.now().date()
         # if generate/regenerate was submitted midday, the schedules would not have expired yet
-        expiredSchedules = existingMedicationSchedule[existingMedicationSchedule["AdministerDate"] == today.strftime(cls.config["STD_DATE_FORMAT"])]
+        expiredSchedules = _expired_medication_rows(existingMedicationSchedule, today)
         expiredSchedules["LoggedReason"] = "Expired"
 
         session.execute(delete(MedicationSchedule).where(MedicationSchedule.AdministerDate < today).execution_options(synchronize_session=False))
@@ -368,15 +467,22 @@ class MedicationScheduleWrite(ConfigDependant):
         # then check whether medication for patient has been deleted, flush any outstanding records (for current day)
         # this only checks for medication that was already scheduled before being later deleted
         deletedMedications: pd.DataFrame = DeletedMedicationView.get_data(conn) # returns existing schema + MedicationCourseDeleted
+        # doses already given stay on the day's schedule
+        deletedMedications = deletedMedications[deletedMedications["Status"] == '0']
         # simply adds on that the medication course has been deleted.
         deletedMedications.rename(columns={"MedicationCourseDeleted": "LoggedReason"}, inplace=True)
         deletedMedications["LoggedReason"] = deletedMedications["LoggedReason"].apply(lambda x: "Medication course deleted")
-        session.execute(delete(MedicationSchedule).where(MedicationSchedule.MedicationID.in_(deletedMedications["MedicationID"].unique().tolist())))
+        session.execute(
+          delete(MedicationSchedule)
+          .where(MedicationSchedule.MedicationID.in_(deletedMedications["MedicationID"].unique().tolist()))
+          .where(MedicationSchedule.Status == '0')
+        )
         session.flush()
 
         # check for administerTime changes for the day, delete any records with changes
         # inserting medication schedules for only one day. Records with duplicate medID, different administer times
-        subquery = select(column("value")) \
+        # trimmed, times can be sent as "0930, 1300"
+        subquery = select(func.ltrim(func.rtrim(column("value")))) \
             .select_from(func.string_split(RefPatientMedication.AdministerTime, ",")) \
             .scalar_subquery()
         
@@ -384,6 +490,7 @@ class MedicationScheduleWrite(ConfigDependant):
           select(MedicationSchedule, RefPatientMedication.AdministerTime.label("CurrentAdministerTimes"))
           .join(RefPatientMedication, MedicationSchedule.MedicationID == RefPatientMedication.MedicationID)
           .where(MedicationSchedule.AdministerTime.not_in(subquery))
+          .where(MedicationSchedule.Status == '0')
         )
 
         medication_records = session.execute(statement).all()
@@ -395,15 +502,11 @@ class MedicationScheduleWrite(ConfigDependant):
         
         medicationLog = pd.concat([expiredSchedules, deletedMedications, alteredMedications])
         if medicationLog.empty: return # if there is nothing that was deleted, then no need to update logs, return
-        medicationLog["AdministerDate"] = pd.to_datetime(medicationLog["AdministerDate"]).dt.strftime(cls.config["STD_DATE_FORMAT"])
-        date_str = medicationLog["AdministerDate"].mode()[0]
-        medicationLog = medicationLog.drop("AdministerDate", axis=1).set_index("ScheduleID").groupby(level=0).apply(lambda x: x.to_dict(orient="records")).to_dict()
-
-        for scheduleID, log in medicationLog.items():
+        for scheduleID, logByDate in _group_medication_log(medicationLog, cls.config["STD_DATE_FORMAT"]).items():
           # retrieve existing medication log, append to it, then update back
           schedule = session.get(Schedule, scheduleID)
-          # all records are created by the day, meaning about-to-be-flushed records all belong to the same day
           existingLog = json.loads(schedule.MedicationLog) if schedule.MedicationLog else {} # {date: []}
-          existingLog.setdefault(date_str, []).extend(log)
+          for date_str, log in logByDate.items():
+            existingLog.setdefault(date_str, []).extend(log)
           schedule.MedicationLog = json.dumps(existingLog)
           flag_modified(schedule, "MedicationLog") # sqlalchemy may not detect if internal contents of mutable have been modified

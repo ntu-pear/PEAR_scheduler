@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +127,8 @@ class PatientAllocationConsumer:
     def _handle_message_wrapper(self, message: Dict[str, Any]) -> bool:
         """Wrapper for message handling with proper acknowledgment logic."""
         try:
-            message_correlation = message.get('data', {}).get('correlation_id', 'UNKNOWN')
+            data = message.get('data') if isinstance(message, dict) else None
+            message_correlation = data.get('correlation_id', 'UNKNOWN') if isinstance(data, dict) else 'UNKNOWN'
             logger.debug(f"RECEIVED MESSAGE: correlation_id={message_correlation}")
             
             if self.shutdown_event and self.shutdown_event.is_set():
@@ -180,6 +182,8 @@ class PatientAllocationConsumer:
                 f"(correlation: {correlation_id}, sync: {is_sync_event}, reason: {sync_reason})"
             )
             
+            # a cascade can reuse one correlation_id for several events, so key each event on its own
+            message_data['correlation_id'] = correlation_id = event_key(correlation_id, event_type, allocation_id)
             with self.get_db_transaction() as db:
                 # For sync events, bypass duplicate check in CRUD
                 if not is_sync_event and self.is_event_already_processed(db, correlation_id):
@@ -203,6 +207,10 @@ class PatientAllocationConsumer:
                 
                 logger.debug(f"Transaction completed for {correlation_id}")
             
+            # only a success records the event, a bad payload checked here would requeue forever
+            if result != MessageProcessingResult.SUCCESS:
+                return result
+
             verification_db = next(self.get_db())
             try:
                 verified = self.is_event_already_processed(verification_db, correlation_id)
@@ -225,7 +233,10 @@ class PatientAllocationConsumer:
     def _parse_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Parse and validate message structure."""
         try:
-            message_data = message.get('data', {})
+            message_data = message.get('data') if isinstance(message, dict) else None
+            if not isinstance(message_data, dict):
+                logger.error("Message has no data object")
+                return None
             
             required_fields = ['correlation_id', 'event_type', 'allocation_id']
             for field in required_fields:

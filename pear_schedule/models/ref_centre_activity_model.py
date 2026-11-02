@@ -18,6 +18,7 @@ class RefCentreActivity(Base):
     MaxDuration = Column(Integer, nullable=False)
     MinPeopleReq = Column(Integer, nullable=False)
     FixedTimeSlots = Column(String, nullable=True)
+    Name = Column(String(200), nullable=True)  # shown instead of the activity title when set
     
     CreatedDateTime = Column(DateTime, nullable=False)
     UpdatedDateTime = Column(DateTime, nullable=False)
@@ -29,3 +30,4 @@ class RefCentreActivity(Base):
     preferences = relationship("RefActivityPreference", back_populates="centre_activity")
     recommendations = relationship("RefActivityRecommendation", back_populates="centre_activity")
     exclusions = relationship("RefActivityExclusion", back_populates="centre_activity")
+    availabilities = relationship("RefCentreActivityAvailability", back_populates="centre_activity")

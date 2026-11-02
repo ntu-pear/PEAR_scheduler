@@ -33,8 +33,7 @@ DB_TABLES = DBTABLES(
     CENTRE_ACTIVITY_PREFERENCE_TABLE = "REF_ACTIVITY_PREFERENCE",
     CENTRE_ACTIVITY_RECOMMENDATION_TABLE = "REF_ACTIVITY_RECOMMENDATION",
     PATIENT_TABLE = "REF_PATIENT",
-    # ROUTINE_TABLE = "REF_ROUTINE",
-    # ROUTINE_ACTIVITY_TABLE = "REF_ROUTINEACTIVITY",
+    ROUTINE_TABLE = "REF_ACTIVITY_ROUTINE",
     MEDICATION_TABLE = "REF_PATIENT_MEDICATION",
     ALLOCATION_TABLE = "REF_PATIENT_ALLOCATION",
     SCHEDULE_TABLE = "SCHEDULE",
@@ -64,3 +63,11 @@ MIN_ACTIVITY_DURATION: int = 30 # in minutes
 MAX_ACTIVITY_DURATION: int = 60 # in minutes
 STD_DATE_FORMAT = "%Y-%m-%d"
 CARE_CENTRE_ID = 1
+# working hours come from here when set, else from REF_CARE_CENTRE
+ACTIVITY_SERVICE_URL = os.getenv("ACTIVITY_SERVICE_URL", "")
+# how gaps get filled: "greedy" (original) or "optimal" (scheduler/gapFill.py)
+GAP_FILL_STRATEGY = os.getenv("GAP_FILL_STRATEGY", "greedy")
+# how regenerate works: "rebuild" (whole week again) or "repair" (scheduler/repair.py, only what has a reason to change)
+REGENERATE_MODE = os.getenv("REGENERATE_MODE", "rebuild")
+# "true": activities with availability rows take their slots from REF_CENTRE_ACTIVITY_AVAILABILITY (db_utils/availability.py)
+USE_ACTIVITY_AVAILABILITY = os.getenv("USE_ACTIVITY_AVAILABILITY", "false").strip().lower() == "true"

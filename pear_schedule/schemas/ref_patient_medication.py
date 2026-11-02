@@ -29,8 +29,8 @@ class RefPatientMedicationUpdate(BaseModel):
     Dosage: Optional[str] = None
     AdministerTime: str
     Instruction: Optional[str] = None
-    StartDate: Optional[datetime] = None
-    EndDate: Optional[datetime] = None
+    StartDateTime: Optional[datetime] = None
+    EndDateTime: Optional[datetime] = None
     PrescriptionRemarks: Optional[str] = None
     UpdatedDateTime: datetime
     ModifiedById: str = Field(json_schema_extra={"example": "scheduler_service"})

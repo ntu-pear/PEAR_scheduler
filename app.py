@@ -6,9 +6,6 @@ import sys
 import threading
 import signal
 import asyncio
-import json
-import pandas as pd
-import datetime
 from typing import Any, Mapping
 
 import uvicorn
@@ -17,6 +14,7 @@ from dotenv import load_dotenv
 from pear_schedule.db import DB
 from pear_schedule.db_utils.writer import ScheduleWriter
 from pear_schedule.db_utils.views import CareCentreView
+from pear_schedule.services.care_centre_util import apply_centre_hours, centre_hours_config, read_saved_working_hours
 
 from pear_schedule.scheduler.scheduleUpdater import ScheduleRefresher
 from pear_schedule.scheduler.utils import build_schedules
@@ -81,7 +79,9 @@ def create_app():
     from pear_schedule.api import (
         schedule_router,
         integrity_router,
-        medication_schedule_router
+        medication_schedule_router,
+        explain_router,
+        patient_schedule_router,
     )
     app = FastAPI(
         title="PEAR FYP Scheduler Service",
@@ -90,6 +90,9 @@ def create_app():
     app.include_router(schedule_router.router, prefix="/schedule")
     app.include_router(integrity_router.router, prefix="/integrity")
     app.include_router(medication_schedule_router.router, prefix="/MedicationSchedule")
+    app.include_router(explain_router.router, prefix="/schedule/explain")
+    app.include_router(explain_router.preview_router, prefix="/schedule/preview")
+    app.include_router(patient_schedule_router.router, prefix="/schedule/patient")
     #Add Origins so CORS allows these URLS to pass through so Front-end to be able to call APIs
     origins = [
         "http://localhost",
@@ -116,45 +119,8 @@ def create_app():
     DB.init_app(app.state.config["DB_CONN_STR"], app.state.config)
     logger.info("Initialising Care Centre View")
     CareCentreView.init_app(app.state.config)
-    careCentreView: pd.DataFrame = CareCentreView.get_data()
-    workingHours_str = ""
-    try:
-        workingHours_str = careCentreView.iloc[0]["WorkingHours"]
-    except IndexError:
-        raise Exception("No care centre found in database.")
-    if not workingHours_str:
-        raise Exception("Working hours not found for care centre.")
-    workingHours: dict = json.loads(workingHours_str)
-    # data format: day in lowercase -> open, close (24hr format, e.g. 0900, 1700)
-    schedulable_days = []
-    num_slots_per_day = {}
-    for day in app.state.config["DAY_OF_WEEK_ORDER"]:
-        opening_info: dict = workingHours.get(day.lower())
-        if opening_info.get("open"):
-            schedulable_days.append(day)
-            open_hour = datetime.datetime.strptime(workingHours.get(day.lower()).get("open"), "%H:%M")
-            closing_hour = datetime.datetime.strptime(workingHours.get(day.lower()).get("close"), "%H:%M")
-            num_slots_per_day[day] = (closing_hour - open_hour) // datetime.timedelta(minutes=app.state.config["MIN_ACTIVITY_DURATION"])
-    
-    # push this as global config variable for writer.py to use. reload configs for all subclasses of ConfigDependant
-    app.state.config["OPEN_DAYS"] = schedulable_days
-    app.state.config["WORKING_HOURS"] = workingHours
-    app.state.config["SLOTS_PER_DAY"] = num_slots_per_day
-
-    for i, timeslot_str in enumerate(app.state.config["GROUP_TIMESLOT_MAPPING"]):
-        qualified_day = timeslot_str.split(" ")[0]
-        if qualified_day not in app.state.config["OPEN_DAYS"]:
-            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because centre is not open on {qualified_day}.")
-        day = app.state.config["OPEN_DAYS"].index(qualified_day)
-        
-        time_obj = datetime.datetime.strptime(timeslot_str.split(" ")[1], "%H:%M")
-        opening_time_obj = datetime.datetime.strptime(app.state.config["WORKING_HOURS"].get(qualified_day.lower()).get("open"), "%H:%M")
-        slot = (time_obj - opening_time_obj) // -datetime.timedelta(minutes=app.state.config["MIN_ACTIVITY_DURATION"]-1) * -1
-        slot = 0 if not slot else slot-1
-        if slot < 0 or slot >= app.state.config["SLOTS_PER_DAY"].get(qualified_day):
-            raise Exception(f"Group timeslot mapping not schedulable on {timeslot_str} because timing is out of bounds for center's working hours.")
-        app.state.config["GROUP_TIMESLOT_MAPPING"][i] = (day, slot)
-    
+    # working hours from Activity service, falls back to REF_CARE_CENTRE
+    apply_centre_hours(app.state.config)
     logger.info(f"check group timeslot mapping: {app.state.config['GROUP_TIMESLOT_MAPPING']}")
     loadConfigs(app.state.config) # then load config for the rest of the classes
 
@@ -275,6 +241,41 @@ def generate_schedules(config: Mapping[str, Any], args):
         logger.error("Error in writing schedule to DB. Check logs")
         exit(1)
 
+def explain_schedule(config: Mapping[str, Any], args):
+    """Read-only, builds and explains this week's schedules without writing to the DB."""
+    from pear_schedule.scheduler.explain import dump_html, dump_json, explain_saved_week, format_text, preview_next_week, run_explanation
+
+    config = {item: getattr(config, item) for item in dir(config)}
+    DB.init_app(config["DB_CONN_STR"], config)
+    CareCentreView.init_app(config)
+    config.setdefault("GROUP_TIMESLOT_MAPPING_RAW", list(config["GROUP_TIMESLOT_MAPPING"]))
+    config.update(centre_hours_config(config, read_saved_working_hours()))
+    if getattr(args, "strategy", None):
+        config["GAP_FILL_STRATEGY"] = args.strategy
+    loadConfigs(config)
+
+    with_names = getattr(args, "with_names", False)
+    with_what_if = getattr(args, "what_if", False)
+    if getattr(args, "week", "this") == "next":
+        if getattr(args, "saved", False):
+            print("Nothing is saved for next week, run --week next without --saved")
+            return
+        explanation = preview_next_week(config, args.patient, with_names=with_names, with_what_if=with_what_if)
+    elif getattr(args, "saved", False):
+        explanation = explain_saved_week(config, args.patient, with_names=with_names, with_what_if=with_what_if)
+        if explanation is None:
+            print("Nothing saved for this week yet, run without --saved to build one")
+            return
+    else:
+        explanation = run_explanation(config, args.patient, with_names=with_names, with_what_if=with_what_if)
+    print(format_text(explanation, args.patient))
+    if args.json:
+        dump_json(explanation, args.json)
+        print(f"\nWrote {args.json}")
+    if getattr(args, "html", None):
+        dump_html(explanation, args.html)
+        print(f"\nWrote {args.html}, open it in a browser")
+
 def start_consumers_only(config: Mapping[str, Any], args):
     """Start only the RabbitMQ consumers (no FastAPI server)"""
     logger.info("Starting consumers only mode...")
@@ -335,6 +336,19 @@ def parse_args():
     generate_parser.add_argument("-c", "--config", required=True)
     generate_parser.set_defaults(func=generate_schedules)
     
+    # read-only, explains how this week's schedule gets built
+    explain_parser = subparsers.add_parser("explain_schedule", help="explain schedule decisions without writing anything")
+    explain_parser.add_argument("-c", "--config", required=True)
+    explain_parser.add_argument("--patient", type=int, nargs="*", help="only show these patient IDs")
+    explain_parser.add_argument("--json", help="also write the full explanation to this JSON file")
+    explain_parser.add_argument("--strategy", choices=["greedy", "optimal"], help="override GAP_FILL_STRATEGY for this run")
+    explain_parser.add_argument("--html", help="also write a single page to open in a browser")
+    explain_parser.add_argument("--with-names", action="store_true", help="show patient names (off by default, the file then has names in it)")
+    explain_parser.add_argument("--saved", action="store_true", help="explain the saved schedule instead of building one")
+    explain_parser.add_argument("--what-if", action="store_true", help="also show how much Free and Easy each data change would fill")
+    explain_parser.add_argument("--week", choices=["this", "next"], default="this", help="next builds a preview of next week from today's data")
+    explain_parser.set_defaults(func=explain_schedule)
+
     # NEW: add args for running only consumers (useful for separate consumer processes)
     consumer_parser = subparsers.add_parser("start_consumers", help="start only RabbitMQ consumers")
     consumer_parser.add_argument("-c", "--config", required=True)

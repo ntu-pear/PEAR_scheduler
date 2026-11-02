@@ -9,10 +9,12 @@ from .activity_exclusion_consumer import ActivityExclusionConsumer
 from .activity_preference_consumer import ActivityPreferenceConsumer
 from .activity_recommendation_consumer import ActivityRecommendationConsumer
 from .adhoc_consumer import AdhocConsumer
+from .centre_activity_availability_consumer import CentreActivityAvailabilityConsumer
 from .centre_activity_consumer import CentreActivityConsumer
 from .patient_allocation_consumer import PatientAllocationConsumer
 from .patient_consumer import PatientConsumer
 from .patient_medication_consumer import PatientMedicationConsumer
+from .routine_consumer import RoutineConsumer
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,18 @@ class ConsumerManager:
         self.executor = None
         self.running = False
         self.shutdown_event = None
+
+        self._watchdog_thread = None
+        self._watchdog_enabled = False
+        self._watchdog_interval = 10       # seconds between health checks
+        self._watchdog_max_backoff = 60    # cap on per-consumer restart backoff
+        self._watchdog_alert_after = 5     # log an ERROR once after this many consecutive failed restarts
+        self._watchdog_stable_after = 30   # seconds alive before a restart counts as success
+        self._restart_backoff = {}         # name -> current backoff seconds
+        self._next_restart_at = {}         # name -> earliest epoch time to retry
+        self._restart_attempts = {}        # name -> consecutive failed restarts
+        self._alive_since = {}             # name -> epoch when consumer was first seen alive
+        self._alerted = set()              # names already reported as persistently failing
         
     def set_shutdown_event(self, shutdown_event: threading.Event):
         """Set the shutdown event for graceful shutdown"""
@@ -56,7 +70,86 @@ class ConsumerManager:
             future = self.executor.submit(self._run_consumer, name, consumer_class)
             self.threads[name] = future
             logger.info(f"Started consumer thread: {name}")
-    
+
+        # Start the supervisor that revives any consumer thread that dies
+        self._start_watchdog()
+
+    def _start_watchdog(self):
+        """Start the supervisor thread that restarts dead consumers."""
+        if self._watchdog_enabled:
+            return
+        self._watchdog_enabled = True
+        self._watchdog_thread = threading.Thread(target=self._watchdog_loop, daemon=True)
+        self._watchdog_thread.start()
+        logger.info("Consumer watchdog started")
+
+    def _watchdog_loop(self):
+        """Every interval, restart any consumer whose thread has died (unless we
+        are shutting down), with per-consumer exponential backoff.
+
+        It never gives up: a broker that is down for a few minutes looks the same
+        as one that is down for longer. After _watchdog_alert_after consecutive
+        failures it logs an ERROR once, then keeps retrying at the capped backoff.
+        """
+        while self._watchdog_enabled:
+            time.sleep(self._watchdog_interval)
+            if not self._watchdog_enabled:
+                break
+            if self.shutdown_event and self.shutdown_event.is_set():
+                break
+
+            now = time.time()
+            for name in list(self.consumers.keys()):
+                if not self._watchdog_enabled:
+                    break
+
+                future = self.threads.get(name)
+                alive = future is not None and not future.done()
+                if alive:
+                    first_seen = self._alive_since.setdefault(name, now)
+                    if now - first_seen >= self._watchdog_stable_after:
+                        if name in self._alerted:
+                            logger.info(f"Watchdog: consumer '{name}' recovered")
+                        self._restart_backoff.pop(name, None)
+                        self._next_restart_at.pop(name, None)
+                        self._restart_attempts.pop(name, None)
+                        self._alerted.discard(name)
+                    continue
+
+                self._alive_since.pop(name, None)
+
+                if now < self._next_restart_at.get(name, 0):
+                    continue
+
+                attempts = self._restart_attempts.get(name, 0)
+                if attempts >= self._watchdog_alert_after and name not in self._alerted:
+                    self._alerted.add(name)
+                    logger.error(f"Watchdog: consumer '{name}' still failing after {attempts} "
+                                 f"consecutive restarts - RabbitMQ may be down. Will keep "
+                                 f"retrying every {self._watchdog_max_backoff}s.")
+
+                self._log_consumer_death(name, future)
+                logger.warning(f"Watchdog: consumer '{name}' is not running - restarting "
+                               f"(attempt {attempts + 1})")
+                self.start_consumer(name)
+                self._restart_attempts[name] = attempts + 1
+
+                # schedule next allowed restart with exponential backoff (capped)
+                cur = self._restart_backoff.get(name, self._watchdog_interval)
+                self._next_restart_at[name] = time.time() + cur
+                self._restart_backoff[name] = min(cur * 2, self._watchdog_max_backoff)
+
+        logger.info("Consumer watchdog stopped")
+
+    def _log_consumer_death(self, name, future):
+        """Log why a consumer ended, if it raised."""
+        try:
+            exc = future.exception(timeout=0) if future else None
+            if exc:
+                logger.error(f"Consumer '{name}' died with exception: {exc}")
+        except Exception:
+            pass
+
     def start_consumer(self, name: str):
         """Start a specific consumer"""
         if name not in self.consumers:
@@ -101,9 +194,14 @@ class ConsumerManager:
             return
         
         logger.info("Stopping all consumers...")
-        
+
+        # Stop the watchdog first so it does not revive consumers we're stopping
+        self._watchdog_enabled = False
+        if self._watchdog_thread and self._watchdog_thread.is_alive():
+            self._watchdog_thread.join(timeout=self._watchdog_interval + 2)
+
         # First, stop all consumer instances gracefully
-        for name, consumer in self.consumer_instances.items():
+        for name, consumer in list(self.consumer_instances.items()):
             try:
                 logger.info(f"Stopping consumer: {name}")
                 consumer.stop()
@@ -129,6 +227,12 @@ class ConsumerManager:
         # Clear state
         self.consumer_instances.clear()
         self.threads.clear()
+        # Clear watchdog bookkeeping so a later start_all_consumers() begins clean
+        self._restart_backoff.clear()
+        self._next_restart_at.clear()
+        self._restart_attempts.clear()
+        self._alive_since.clear()
+        self._alerted.clear()
         self.running = False
         logger.info("All consumers stopped")
     
@@ -143,7 +247,7 @@ class ConsumerManager:
                     status[name] = "Completed"
             else:
                 status[name] = "Running"
-        
+
         return status
     
     def _run_consumer(self, name: str, consumer_class):
@@ -197,8 +301,9 @@ def create_scheduler_consumer_manager() -> ConsumerManager:
     manager.register_consumer("activity_preference", ActivityPreferenceConsumer)
     manager.register_consumer("activity_recommendation", ActivityRecommendationConsumer)
     manager.register_consumer("centre_activity", CentreActivityConsumer)
-    # TODO: register adhoc consumer when ready
-    # manager.register_consumer("adhoc", AdhocConsumer)
+    manager.register_consumer("centre_activity_availability", CentreActivityAvailabilityConsumer)
+    manager.register_consumer("routine", RoutineConsumer)
+    manager.register_consumer("adhoc", AdhocConsumer)
     
     return manager
 

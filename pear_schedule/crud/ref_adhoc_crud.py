@@ -45,9 +45,9 @@ def create_ref_adhoc(
 
         query = text(
             """
-            SET IDENTITY_INSERT [ADHOC] ON;
+            SET IDENTITY_INSERT [REF_ADHOC] ON;
 
-            INSERT INTO [ADHOC] (
+            INSERT INTO [REF_ADHOC] (
                 AdhocID, PatientID, OldCentreActivityID, NewCentreActivityID,
                 StartDate, EndDate, Status, IsDeleted,
                 CreatedDateTime, UpdatedDateTime, CreatedById, ModifiedById
@@ -57,7 +57,7 @@ def create_ref_adhoc(
                 :CreatedDateTime, :UpdatedDateTime, :CreatedById, :ModifiedById
             );
 
-            SET IDENTITY_INSERT [ADHOC] OFF;
+            SET IDENTITY_INSERT [REF_ADHOC] OFF;
         """
         )
 

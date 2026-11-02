@@ -18,14 +18,14 @@ class DBTABLES:
     CENTRE_ACTIVITY_PREFERENCE_TABLE: str
     CENTRE_ACTIVITY_RECOMMENDATION_TABLE: str
     PATIENT_TABLE: str
-    # ROUTINE_TABLE: str
-    # ROUTINE_ACTIVITY_TABLE: str
+    ROUTINE_TABLE: str
     SCHEDULE_TABLE: str
     MEDICATION_SCHEDULE_TABLE: str
     MEDICATION_TABLE: str
     ALLOCATION_TABLE: str
     CARE_CENTRE_TABLE: str
     ADHOC_TABLE: str
+    CENTRE_ACTIVITY_AVAILABILITY_TABLE: str = "REF_CENTRE_ACTIVITY_AVAILABILITY"
 
 
 # ACTIVITY_AVAILABILITY_TABLE: str
@@ -39,6 +39,7 @@ class MICROSERVICE_TABLES:
     REF_ACTIVITY: str = "REF_ACTIVITY"
     REF_CENTRE_ACTIVITY: str = "REF_CENTRE_ACTIVITY"
     REF_ACTIVITY_EXCLUSION: str = "REF_ACTIVITY_EXCLUSION"
+    REF_CENTRE_ACTIVITY_AVAILABILITY: str = "REF_CENTRE_ACTIVITY_AVAILABILITY"
     REF_ACTIVITY_PREFERENCE: str = "REF_ACTIVITY_PREFERENCE"
     REF_ACTIVITY_RECOMMENDATION: str = "REF_ACTIVITY_RECOMMENDATION"
     REF_ACTIVITY_ROUTINE: str = "REF_ACTIVITY_ROUTINE"
@@ -75,6 +76,7 @@ def get_ref_table_mapping():
         "Activity": "REF_ACTIVITY",
         "CentreActivity": "REF_CENTRE_ACTIVITY",
         "ActivityExclusion": "REF_ACTIVITY_EXCLUSION",
+        "CentreActivityAvailability": "REF_CENTRE_ACTIVITY_AVAILABILITY",
         "CentreActivityPreference": "REF_ACTIVITY_PREFERENCE",
         "CentreActivityRecommendation": "REF_ACTIVITY_RECOMMENDATION",
         "Routine": "REF_ACTIVITY_ROUTINE",
@@ -98,6 +100,7 @@ def get_model_for_table(table_name: str):
     from pear_schedule.models.ref_activity_model import RefActivity
     from pear_schedule.models.ref_centre_activity_model import RefCentreActivity
     from pear_schedule.models.ref_activity_exclusion_model import RefActivityExclusion
+    from pear_schedule.models.ref_centre_activity_availability_model import RefCentreActivityAvailability
     from pear_schedule.models.ref_activity_preference_model import RefActivityPreference
     from pear_schedule.models.ref_activity_recommendation_model import (
         RefActivityRecommendation,
@@ -114,6 +117,7 @@ def get_model_for_table(table_name: str):
         "REF_ACTIVITY": RefActivity,
         "REF_CENTRE_ACTIVITY": RefCentreActivity,
         "REF_ACTIVITY_EXCLUSION": RefActivityExclusion,
+        "REF_CENTRE_ACTIVITY_AVAILABILITY": RefCentreActivityAvailability,
         "REF_ACTIVITY_PREFERENCE": RefActivityPreference,
         "REF_ACTIVITY_RECOMMENDATION": RefActivityRecommendation,
         "REF_ACTIVITY_ROUTINE": RefActivityRoutine,

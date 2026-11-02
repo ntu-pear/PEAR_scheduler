@@ -1,0 +1,25 @@
+name: CD (Staging)
+
+on:
+  push:
+    branches: ['scheduler_staging']
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-staging:
+    uses: ./.github/workflows/base-cd.yaml
+    secrets: inherit
+    with:
+      # must match the GitHub Environment name exactly (case-sensitive)
+      environment: 'staging'
+      runner-label: '["self-hosted","Linux","X64","scheduler_staging"]'
+      namespace: 'staging'
+      deployment-name: 'scheduler-service-stg'
+      container-name: 'scheduler-service'
+      configmap-name: 'scheduler-service-stg-env'
+      docker-image-name: 'scheduler_service_stg'
+      kube-deployment-file: './k8s/scheduler_deployment_staging.yaml'
+      kube-cronjob-file: './k8s/scheduler_cronjob.yaml'
+      dockerfile: 'Dockerfile.dev'

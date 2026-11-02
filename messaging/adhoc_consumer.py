@@ -5,6 +5,7 @@ from contextlib import contextmanager
 
 from .rabbitmq_client import RabbitMQClient
 from pear_schedule.models.processed_events_model import MessageProcessingResult
+from pear_schedule.services.idempotency_service import event_key
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,8 @@ class AdhocConsumer:
             )
 
             # Use context manager for guaranteed transaction handling
+            # a cascade can reuse one correlation_id for several events, so key each event on its own
+            message_data['correlation_id'] = correlation_id = event_key(correlation_id, event_type, adhoc_id)
             with self.get_db_transaction() as db:
                 # Quick check for duplicates (BYPASS for sync events)
                 if not is_sync_event and self.is_event_already_processed(db, correlation_id):
@@ -243,7 +246,7 @@ class AdhocConsumer:
         try:
             correlation_id = message_data["correlation_id"]
             adhoc_id = message_data["adhoc_id"]
-            adhoc_data = message_data.get("activity_data", {})
+            adhoc_data = message_data.get("adhoc_data", {})
             created_by = message_data.get("created_by", "activity_service")
 
             logger.info(f"Handling adhoc creation for adhoc {adhoc_id}")
@@ -302,7 +305,7 @@ class AdhocConsumer:
             modified_by = message_data.get("modified_by", "activity_service")
             is_sync_event = message_data.get("is_sync_event", False)
 
-            logger.info(f"Handling adhoc creation for adhoc {adhoc_id}")
+            logger.info(f"Handling adhoc update for adhoc {adhoc_id}")
             logger.debug(f"Adhoc data: {adhoc_data}")
 
             # Convert new adhoc data to scheduler's RefAdhoc format

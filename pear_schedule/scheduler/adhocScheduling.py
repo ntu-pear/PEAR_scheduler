@@ -2,8 +2,10 @@ import datetime
 import logging
 from typing import List, Mapping, Optional
 
+from pear_schedule.db_utils.utils import building_for
 from pear_schedule.db_utils.views import AdhocActivityView
 from pear_schedule.scheduler.baseScheduler import BaseScheduler
+from pear_schedule.scheduler import trace
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +31,9 @@ class AdhocScheduler(BaseScheduler):
         if adhoc_df.empty:
             return
 
-        today = datetime.datetime.now()
+        today = building_for() or datetime.datetime.now()
         week_start = (today - datetime.timedelta(days=today.weekday())).date()
-        week_end = week_start + datetime.timedelta(days=cls.config["DAYS"] - 1)
+        week_end = week_start + datetime.timedelta(days=len(cls.config["OPEN_DAYS"]) - 1)
         replacements_applied = 0
 
         for _, row in adhoc_df.iterrows():
@@ -39,29 +41,35 @@ class AdhocScheduler(BaseScheduler):
             if patient_id not in schedules:
                 continue
 
-            old_activity = row.get("OldActivityTitle")
-            new_activity = row.get("NewActivityTitle")
-            if not old_activity or not new_activity:
-                continue
+            try:
+                old_activity = row.get("OldActivityTitle")
+                new_activity = row.get("NewActivityTitle")
+                if not old_activity or not new_activity:
+                    continue
 
-            start_date = _to_date(row.get("StartDate"))
-            end_date = _to_date(row.get("EndDate"))
+                start_date = _to_date(row.get("StartDate"))
+                end_date = _to_date(row.get("EndDate"))
 
-            if start_date is None or end_date is None:
-                continue
+                if start_date is None or end_date is None:
+                    continue
 
-            if start_date > week_end or end_date < week_start:
-                continue
+                if start_date > week_end or end_date < week_start:
+                    continue
 
-            overlap_start = max(start_date, week_start)
-            overlap_end = min(end_date, week_end)
-            start_idx = (overlap_start - week_start).days
-            end_idx = (overlap_end - week_start).days
+                overlap_start = max(start_date, week_start)
+                overlap_end = min(end_date, week_end)
+                start_idx = (overlap_start - week_start).days
+                end_idx = (overlap_end - week_start).days
 
-            for day_idx in range(start_idx, end_idx + 1):
-                for slot_idx, activity in enumerate(schedules[patient_id][day_idx]):
-                    if activity == old_activity:
-                        schedules[patient_id][day_idx][slot_idx] = new_activity
-                        replacements_applied += 1
+                for day_idx in range(start_idx, end_idx + 1):
+                    for slot_idx, activity in enumerate(schedules[patient_id][day_idx]):
+                        if activity == old_activity:
+                            schedules[patient_id][day_idx][slot_idx] = new_activity
+                            replacements_applied += 1
+                            trace.record(trace.STAGE_ADHOC, patient_id, trace.REPLACED, "adhoc_request",
+                                         activity=new_activity, day=day_idx, slot=slot_idx, replaced=old_activity)
+            except Exception as e:
+                logger.exception(f"Adhoc scheduling failed for patient {patient_id}, skipping")
+                trace.record(trace.STAGE_ADHOC, patient_id, trace.ERROR, "stage_exception", error=repr(e))
         if replacements_applied:
             logger.info(f"Applied {replacements_applied} adhoc slot replacements")
